@@ -22,6 +22,10 @@ const orderRoutes =
 const paymentRoutes =
   require('./routes/payments');
 
+const tableRoutes =
+  require('./routes/table');
+
+// API Routes
 app.use('/api/menu', menuRoutes);
 
 app.use('/api/orders', orderRoutes);
@@ -31,12 +35,19 @@ app.use(
   paymentRoutes
 );
 
+app.use(
+  '/api/tables',
+  tableRoutes
+);
+
+// Default route
 app.get('/', (req, res) => {
   res.send(
     'DineSync+ API is running'
   );
 });
 
+// Test route
 app.post('/test', (req, res) => {
   console.log('TEST ROUTE HIT');
 
@@ -54,7 +65,8 @@ app.post('/test', (req, res) => {
       'Backend reached successfully',
   });
 });
-// IMPORTANT FIX
+
+// Start server
 app.listen(
   PORT,
   '0.0.0.0',

@@ -9,9 +9,115 @@ const {
   isConfigured,
 } = require('../supabaseClient');
 
+// =========================
+// DEFAULT IPAD TABLE
+// =========================
+
+const DEFAULT_TABLE_NUMBER = 1;
+
+// =========================
+// BEST SELLERS
+// IMPORTANT: This must be before router.get('/:id')
+// =========================
+
+router.get(
+  '/best-sellers/list',
+  async (req, res) => {
+    try {
+      if (!isConfigured) {
+        return res.json({
+          success: true,
+          data: [],
+        });
+      }
+
+      const {
+        data,
+        error,
+      } = await supabase
+        .from('order_items')
+        .select(`
+          menu_item_id,
+          quantity,
+          menu_items (
+            id,
+            name,
+            price,
+            category,
+            image
+          )
+        `);
+
+      if (error) {
+        return res.status(500).json({
+          success: false,
+          message: error.message,
+        });
+      }
+
+      const salesMap = {};
+
+      for (const row of data || []) {
+        const item = row.menu_items;
+
+        if (!item) continue;
+
+        const itemId = item.id;
+
+        if (!salesMap[itemId]) {
+          salesMap[itemId] = {
+            ...item,
+            total_sales: 0,
+          };
+        }
+
+        salesMap[itemId].total_sales += Number(
+          row.quantity || 0
+        );
+      }
+
+      const bestSellers =
+        Object.values(salesMap)
+          .sort(
+            (a, b) =>
+              b.total_sales -
+              a.total_sales
+          )
+          .slice(0, 3);
+
+      return res.json({
+        success: true,
+        data: bestSellers,
+      });
+    } catch (error) {
+      console.log(error);
+
+      return res.status(500).json({
+        success: false,
+        message: error.message,
+      });
+    }
+  }
+);
+
+// =========================
+// CREATE ORDER
+// =========================
+
 router.post('/', async (req, res) => {
   try {
-    const { items } = req.body;
+    const {
+      items,
+      table_number,
+      tableNumber,
+    } = req.body;
+
+    const finalTableNumber =
+      Number(
+        table_number ||
+          tableNumber ||
+          DEFAULT_TABLE_NUMBER
+      );
 
     console.log(
       'REQ BODY:',
@@ -21,6 +127,11 @@ router.post('/', async (req, res) => {
     console.log(
       'ITEMS:',
       JSON.stringify(items, null, 2)
+    );
+
+    console.log(
+      'TABLE NUMBER:',
+      finalTableNumber
     );
 
     if (!items || items.length === 0) {
@@ -37,6 +148,7 @@ router.post('/', async (req, res) => {
     if (!isConfigured) {
       const newOrder = {
         id: db.orders.length + 1,
+        table_number: finalTableNumber,
         items,
         status: 'Pending',
         createdAt: new Date().toISOString(),
@@ -51,6 +163,27 @@ router.post('/', async (req, res) => {
     }
 
     // =========================
+    // GET TABLE
+    // =========================
+
+    const {
+      data: tableRow,
+      error: tableError,
+    } = await supabase
+      .from('restaurant_tables')
+      .select('*')
+      .eq('table_number', finalTableNumber)
+      .single();
+
+    if (tableError || !tableRow) {
+      return res.status(404).json({
+        success: false,
+        message:
+          `Table No. ${finalTableNumber} was not found in restaurant_tables.`,
+      });
+    }
+
+    // =========================
     // CHECK INVENTORY FIRST
     // =========================
 
@@ -58,7 +191,11 @@ router.post('/', async (req, res) => {
       const menuItemId = item.menu_item_id;
       const orderedQty = Number(item.quantity);
 
-      if (!menuItemId || !orderedQty || orderedQty <= 0) {
+      if (
+        !menuItemId ||
+        !orderedQty ||
+        orderedQty <= 0
+      ) {
         return res.status(400).json({
           success: false,
           message: 'Invalid order item quantity',
@@ -96,7 +233,8 @@ router.post('/', async (req, res) => {
       ) {
         return res.status(400).json({
           success: false,
-          message: `${menuItem.name} has no recipe/inventory setup.`,
+          message:
+            `${menuItem.name} has no recipe/inventory setup.`,
         });
       }
 
@@ -122,7 +260,8 @@ router.post('/', async (req, res) => {
         if (ingredientError || !ingredientRow) {
           return res.status(400).json({
             success: false,
-            message: `${menuItem.name} has missing ingredient data.`,
+            message:
+              `${menuItem.name} has missing ingredient data.`,
           });
         }
 
@@ -133,7 +272,8 @@ router.post('/', async (req, res) => {
         if (currentStock < totalNeeded) {
           return res.status(400).json({
             success: false,
-            message: `${menuItem.name} is no longer available in the requested quantity.`,
+            message:
+              `${menuItem.name} is no longer available in the requested quantity.`,
           });
         }
       }
@@ -205,16 +345,34 @@ router.post('/', async (req, res) => {
     }
 
     // =========================
+    // UPDATE TABLE STATUS
+    // =========================
+
+    const {
+      error: tableUpdateError,
+    } = await supabase
+      .from('restaurant_tables')
+      .update({
+        status: 'occupied',
+        current_order_id: orderId,
+        occupied_at: new Date().toISOString(),
+      })
+      .eq('table_number', finalTableNumber);
+
+    if (tableUpdateError) {
+      console.log(
+        'TABLE UPDATE ERROR:',
+        tableUpdateError
+      );
+    }
+
+    // =========================
     // INVENTORY DEDUCTION
     // =========================
 
     for (const item of items) {
       const menuItemId = item.menu_item_id;
       const orderedQty = Number(item.quantity);
-
-      // =========================
-      // GET RECIPE INGREDIENTS
-      // =========================
 
       const {
         data: recipeRows,
@@ -238,16 +396,12 @@ router.post('/', async (req, res) => {
         recipeRows
       );
 
-      for (const recipe of recipeRows) {
+      for (const recipe of recipeRows || []) {
         const ingredientId = recipe.ingredient_id;
 
         const totalNeeded =
           Number(recipe.quantity_required) *
           orderedQty;
-
-        // =========================
-        // GET INGREDIENT STOCK
-        // =========================
 
         const {
           data: ingredientRow,
@@ -277,10 +431,6 @@ router.post('/', async (req, res) => {
           '→',
           newStock
         );
-
-        // =========================
-        // UPDATE INGREDIENT STOCK
-        // =========================
 
         const {
           error: updateError,
@@ -325,7 +475,7 @@ router.post('/', async (req, res) => {
           continue;
         }
 
-        for (const batch of batchRows) {
+        for (const batch of batchRows || []) {
           if (remainingNeeded <= 0) break;
 
           const available = Number(
@@ -391,6 +541,8 @@ router.post('/', async (req, res) => {
       success: true,
       data: {
         id: orderId,
+        table_number: finalTableNumber,
+        table_id: tableRow.id,
         status: orderRow.status,
         order_number: orderRow.order_number,
       },
@@ -409,6 +561,10 @@ router.post('/', async (req, res) => {
     });
   }
 });
+
+// =========================
+// GET ORDER BY ID
+// =========================
 
 router.get('/:id', async (req, res) => {
   const orderId = parseInt(req.params.id);
