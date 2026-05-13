@@ -15,30 +15,18 @@ router.post('/', async (req, res) => {
 
     console.log(
       'REQ BODY:',
-      JSON.stringify(
-        req.body,
-        null,
-        2
-      )
+      JSON.stringify(req.body, null, 2)
     );
 
     console.log(
       'ITEMS:',
-      JSON.stringify(
-        items,
-        null,
-        2
-      )
+      JSON.stringify(items, null, 2)
     );
 
-    if (
-      !items ||
-      items.length === 0
-    ) {
+    if (!items || items.length === 0) {
       return res.status(400).json({
         success: false,
-        message:
-          'Order must contain items',
+        message: 'Order must contain items',
       });
     }
 
@@ -51,8 +39,7 @@ router.post('/', async (req, res) => {
         id: db.orders.length + 1,
         items,
         status: 'Pending',
-        createdAt:
-          new Date().toISOString(),
+        createdAt: new Date().toISOString(),
       };
 
       db.orders.push(newOrder);
@@ -61,6 +48,95 @@ router.post('/', async (req, res) => {
         success: true,
         data: newOrder,
       });
+    }
+
+    // =========================
+    // CHECK INVENTORY FIRST
+    // =========================
+
+    for (const item of items) {
+      const menuItemId = item.menu_item_id;
+      const orderedQty = Number(item.quantity);
+
+      if (!menuItemId || !orderedQty || orderedQty <= 0) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid order item quantity',
+        });
+      }
+
+      const {
+        data: menuItem,
+        error: menuItemError,
+      } = await supabase
+        .from('menu_items')
+        .select('id, name')
+        .eq('id', menuItemId)
+        .single();
+
+      if (menuItemError || !menuItem) {
+        return res.status(404).json({
+          success: false,
+          message: 'Menu item not found',
+        });
+      }
+
+      const {
+        data: recipeRows,
+        error: recipeError,
+      } = await supabase
+        .from('menu_item_ingredients')
+        .select('*')
+        .eq('menu_item_id', menuItemId);
+
+      if (
+        recipeError ||
+        !recipeRows ||
+        recipeRows.length === 0
+      ) {
+        return res.status(400).json({
+          success: false,
+          message: `${menuItem.name} has no recipe/inventory setup.`,
+        });
+      }
+
+      for (const recipe of recipeRows) {
+        const ingredientId = recipe.ingredient_id;
+
+        const quantityRequired = Number(
+          recipe.quantity_required
+        );
+
+        const totalNeeded =
+          quantityRequired * orderedQty;
+
+        const {
+          data: ingredientRow,
+          error: ingredientError,
+        } = await supabase
+          .from('ingredients')
+          .select('id, name, current_stock')
+          .eq('id', ingredientId)
+          .single();
+
+        if (ingredientError || !ingredientRow) {
+          return res.status(400).json({
+            success: false,
+            message: `${menuItem.name} has missing ingredient data.`,
+          });
+        }
+
+        const currentStock = Number(
+          ingredientRow.current_stock
+        );
+
+        if (currentStock < totalNeeded) {
+          return res.status(400).json({
+            success: false,
+            message: `${menuItem.name} is no longer available in the requested quantity.`,
+          });
+        }
+      }
     }
 
     // =========================
@@ -75,13 +151,10 @@ router.post('/', async (req, res) => {
     } = await supabase
       .from('orders')
       .insert({
-        order_number:
-          orderNumber,
+        order_number: orderNumber,
         status: 'Pending',
       })
-      .select(
-        'id, status, order_number'
-      )
+      .select('id, status, order_number')
       .single();
 
     if (orderError || !orderRow) {
@@ -101,34 +174,18 @@ router.post('/', async (req, res) => {
     // CREATE ORDER ITEMS
     // =========================
 
-    const orderItemsPayload =
-      items.map((i) => ({
-        order_id: orderId,
-
-        menu_item_id:
-          i.menu_item_id,
-
-        quantity: i.quantity,
-
-        price: i.price || 0,
-      }));
+    const orderItemsPayload = items.map((i) => ({
+      order_id: orderId,
+      menu_item_id: i.menu_item_id,
+      quantity: i.quantity,
+      price: i.price || 0,
+    }));
 
     console.log(
       'ORDER ITEMS PAYLOAD:',
-      JSON.stringify(
-        orderItemsPayload,
-        null,
-        2
-      )
+      JSON.stringify(orderItemsPayload, null, 2)
     );
-    console.log(
-      'INSERTING INTO ORDER_ITEMS:',
-      JSON.stringify(
-        orderItemsPayload,
-        null,
-        2
-      )
-    );
+
     const {
       error: orderItemsError,
     } = await supabase
@@ -143,8 +200,7 @@ router.post('/', async (req, res) => {
 
       return res.status(500).json({
         success: false,
-        message:
-          orderItemsError.message,
+        message: orderItemsError.message,
       });
     }
 
@@ -153,11 +209,8 @@ router.post('/', async (req, res) => {
     // =========================
 
     for (const item of items) {
-      const menuItemId =
-        item.menu_item_id;
-
-      const orderedQty =
-        Number(item.quantity);
+      const menuItemId = item.menu_item_id;
+      const orderedQty = Number(item.quantity);
 
       // =========================
       // GET RECIPE INGREDIENTS
@@ -167,14 +220,9 @@ router.post('/', async (req, res) => {
         data: recipeRows,
         error: recipeError,
       } = await supabase
-        .from(
-          'menu_item_ingredients'
-        )
+        .from('menu_item_ingredients')
         .select('*')
-        .eq(
-          'menu_item_id',
-          menuItemId
-        );
+        .eq('menu_item_id', menuItemId);
 
       if (recipeError) {
         console.log(
@@ -191,13 +239,11 @@ router.post('/', async (req, res) => {
       );
 
       for (const recipe of recipeRows) {
-        const ingredientId =
-          recipe.ingredient_id;
+        const ingredientId = recipe.ingredient_id;
 
         const totalNeeded =
-          Number(
-            recipe.quantity_required
-          ) * orderedQty;
+          Number(recipe.quantity_required) *
+          orderedQty;
 
         // =========================
         // GET INGREDIENT STOCK
@@ -208,19 +254,11 @@ router.post('/', async (req, res) => {
           error: ingredientError,
         } = await supabase
           .from('ingredients')
-          .select(
-            'id,current_stock'
-          )
-          .eq(
-            'id',
-            ingredientId
-          )
+          .select('id,current_stock')
+          .eq('id', ingredientId)
           .single();
 
-        if (
-          ingredientError ||
-          !ingredientRow
-        ) {
+        if (ingredientError || !ingredientRow) {
           console.log(
             'INGREDIENT ERROR:',
             ingredientError
@@ -230,9 +268,8 @@ router.post('/', async (req, res) => {
         }
 
         const newStock =
-          Number(
-            ingredientRow.current_stock
-          ) - totalNeeded;
+          Number(ingredientRow.current_stock) -
+          totalNeeded;
 
         console.log(
           `Ingredient ${ingredientId} stock:`,
@@ -250,13 +287,9 @@ router.post('/', async (req, res) => {
         } = await supabase
           .from('ingredients')
           .update({
-            current_stock:
-              newStock,
+            current_stock: newStock,
           })
-          .eq(
-            'id',
-            ingredientId
-          );
+          .eq('id', ingredientId);
 
         if (updateError) {
           console.log(
@@ -269,28 +302,19 @@ router.post('/', async (req, res) => {
         // FIFO BATCH DEDUCTION
         // =========================
 
-        let remainingNeeded =
-          totalNeeded;
+        let remainingNeeded = totalNeeded;
 
         const {
           data: batchRows,
           error: batchError,
         } = await supabase
-          .from(
-            'inventory_batches'
-          )
+          .from('inventory_batches')
           .select('*')
-          .eq(
-            'ingredient_id',
-            ingredientId
-          )
+          .eq('ingredient_id', ingredientId)
           .eq('status', 'active')
-          .order(
-            'received_date',
-            {
-              ascending: true,
-            }
-          );
+          .order('received_date', {
+            ascending: true,
+          });
 
         if (batchError) {
           console.log(
@@ -302,28 +326,21 @@ router.post('/', async (req, res) => {
         }
 
         for (const batch of batchRows) {
-          if (
-            remainingNeeded <= 0
-          )
-            break;
+          if (remainingNeeded <= 0) break;
 
-          const available =
-            Number(
-              batch.quantity_remaining
-            );
+          const available = Number(
+            batch.quantity_remaining
+          );
 
-          if (available <= 0)
-            continue;
+          if (available <= 0) continue;
 
-          const deductAmount =
-            Math.min(
-              available,
-              remainingNeeded
-            );
+          const deductAmount = Math.min(
+            available,
+            remainingNeeded
+          );
 
           const updatedRemaining =
-            available -
-            deductAmount;
+            available - deductAmount;
 
           console.log(
             `Batch ${batch.id}:`,
@@ -333,17 +350,14 @@ router.post('/', async (req, res) => {
           );
 
           await supabase
-            .from(
-              'inventory_batches'
-            )
+            .from('inventory_batches')
             .update({
               quantity_remaining:
                 updatedRemaining,
             })
             .eq('id', batch.id);
 
-          remainingNeeded -=
-            deductAmount;
+          remainingNeeded -= deductAmount;
         }
 
         // =========================
@@ -353,17 +367,11 @@ router.post('/', async (req, res) => {
         const {
           error: usageError,
         } = await supabase
-          .from(
-            'ingredient_usages'
-          )
+          .from('ingredient_usages')
           .insert({
-            ingredient_id:
-              ingredientId,
-
+            ingredient_id: ingredientId,
             order_id: orderId,
-
-            quantity_used:
-              totalNeeded,
+            quantity_used: totalNeeded,
           });
 
         if (usageError) {
@@ -383,10 +391,8 @@ router.post('/', async (req, res) => {
       success: true,
       data: {
         id: orderId,
-        status:
-          orderRow.status,
-        order_number:
-          orderRow.order_number,
+        status: orderRow.status,
+        order_number: orderRow.order_number,
       },
     });
   } catch (error) {
@@ -405,9 +411,7 @@ router.post('/', async (req, res) => {
 });
 
 router.get('/:id', async (req, res) => {
-  const orderId = parseInt(
-    req.params.id
-  );
+  const orderId = parseInt(req.params.id);
 
   if (!isConfigured) {
     const order = db.orders.find(
@@ -432,16 +436,11 @@ router.get('/:id', async (req, res) => {
     error: orderError,
   } = await supabase
     .from('orders')
-    .select(
-      'id, status, order_number'
-    )
+    .select('id, status, order_number')
     .eq('id', orderId)
     .single();
 
-  if (
-    orderError ||
-    !orderRow
-  ) {
+  if (orderError || !orderRow) {
     return res.status(404).json({
       success: false,
       message: 'Not found',
