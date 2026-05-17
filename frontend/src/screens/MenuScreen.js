@@ -190,14 +190,23 @@ export default function MenuScreen({
         ? existingItem.quantity
         : 0;
 
-    if (stock <= 0) {
-      Alert.alert(
-        'Not Available',
-        'This item is currently not available.'
-      );
-
-      return;
-    }
+        if (stock <= 0) {
+          Alert.alert(
+            'Not Available',
+            'This item is currently not available.'
+          );
+        
+          return;
+        }
+        
+        if (currentQty >= stock) {
+          Alert.alert(
+            'Insufficient Stock',
+            'You cannot add more of this item because it has limited availability.'
+          );
+        
+          return;
+        }
 
     if (currentQty >= stock) {
       Alert.alert(
@@ -220,14 +229,14 @@ export default function MenuScreen({
     const itemId =
       getItemId(item);
 
-    if (item.quantity >= stock) {
-      Alert.alert(
-        'Insufficient Stock',
-        'You cannot add more of this item because it has limited availability.'
-      );
-
-      return;
-    }
+      if (item.quantity >= stock) {
+        Alert.alert(
+          'Insufficient Stock',
+          'You cannot add more of this item because it has limited availability.'
+        );
+      
+        return;
+      }
 
     updateQuantity(
       itemId,
@@ -296,23 +305,21 @@ export default function MenuScreen({
     ),
   ];
 
-  const filteredItems = menuItems
-    .filter((item) => {
-      const byCategory =
-        selectedCategory === 'All' ||
-        item.category ===
-          selectedCategory;
-
-      const bySearch =
-        !search ||
-        (item.name || '')
-          .toLowerCase()
-          .includes(
-            search.toLowerCase()
-          );
-
-      return byCategory && bySearch;
-    })
+  const filteredItems = menuItems.filter((item) => {
+    const byCategory =
+      selectedCategory === 'All' ||
+      item.category === selectedCategory;
+  
+    const bySearch =
+      !search ||
+      (item.name || '')
+        .toLowerCase()
+        .includes(
+          search.toLowerCase()
+        );
+  
+    return byCategory && bySearch;
+  })
     .sort((a, b) => {
       const aAvailable =
         a.is_available === true &&
@@ -344,8 +351,12 @@ export default function MenuScreen({
     const imageUri =
       getItemImage(item);
 
-    const isAvailable =
-      item.is_available === true &&
+      const isAvailable =
+      (
+        item.is_available === true ||
+        item.is_available === 1 ||
+        item.is_available === 'true'
+      ) &&
       stock > 0;
 
     const bestSeller =

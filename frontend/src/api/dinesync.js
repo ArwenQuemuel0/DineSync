@@ -236,4 +236,19 @@ export const getOrderStatus =
     return response.data;
   };
 
+// =========================
+// GET ACTIVE TABLE ORDERS
+// Connected to database through Node backend
+// =========================
+
+export const getActiveTableOrders =
+  async (tableNumber) => {
+    const response =
+      await api.get(
+        `/orders/table/${tableNumber}/active`
+      );
+
+    return response.data;
+  };
+
 export default api;

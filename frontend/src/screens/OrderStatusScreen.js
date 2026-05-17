@@ -9,22 +9,29 @@ import {
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
+  FlatList,
 } from 'react-native';
 
-import { getOrderStatus } from '../api/dinesync';
+import {
+  getActiveTableOrders,
+} from '../api/dinesync';
+
 import { useAuth } from '../context/AuthContext';
 
 export default function OrderStatusScreen({
-  route,
   navigation,
 }) {
-  const { orderId } =
-    route.params || {};
+  const {
+    tableNumber,
+    user,
+  } = useAuth();
 
-  const { tableNumber } = useAuth();
+  const finalTableNumber =
+    tableNumber ||
+    user?.table_number;
 
-  const [order, setOrder] =
-    useState(null);
+  const [orders, setOrders] =
+    useState([]);
 
   const [loading, setLoading] =
     useState(true);
@@ -33,16 +40,18 @@ export default function OrderStatusScreen({
     useState('');
 
   useEffect(() => {
-    fetchOrderStatus();
+    fetchOrders();
 
-    const interval = setInterval(() => {
-      fetchOrderStatus(false);
-    }, 5000);
+    const interval =
+      setInterval(() => {
+        fetchOrders(false);
+      }, 5000);
 
-    return () => clearInterval(interval);
-  }, [orderId]);
+    return () =>
+      clearInterval(interval);
+  }, [finalTableNumber]);
 
-  const fetchOrderStatus = async (
+  const fetchOrders = async (
     showLoading = true
   ) => {
     try {
@@ -50,113 +59,319 @@ export default function OrderStatusScreen({
         setLoading(true);
       }
 
-      if (!orderId) {
-        setError('No order ID found.');
+      if (!finalTableNumber) {
+        setError(
+          'No table number found.'
+        );
+
         return;
       }
 
       const response =
-        await getOrderStatus(orderId);
+        await getActiveTableOrders(
+          finalTableNumber
+        );
 
       if (response.success) {
-        setOrder(response.data);
+        setOrders(
+          response.data || []
+        );
+
         setError('');
       } else {
         setError(
           response.message ||
-            'Failed to get order status.'
+            'Failed to load orders.'
         );
       }
     } catch (err) {
       console.log(
-        'ORDER STATUS ERROR:',
+        'ACTIVE ORDERS ERROR:',
         err?.response?.data ||
           err.message ||
           err
       );
 
       setError(
-        'Unable to load order status.'
+        'Unable to load active orders.'
       );
     } finally {
       setLoading(false);
     }
   };
 
-  const getStatusInfo = () => {
-    const status =
-      order?.status || 'Pending';
+  const formatMoney = (value) => {
+    const n = Number(value);
 
-    const normalized =
-      String(status).toLowerCase();
-
-    if (normalized === 'pending') {
-      return {
-        icon: '✓',
-        title: 'Order Placed',
-        message:
-          'Your order has been received.',
-      };
-    }
-
-    if (normalized === 'preparing') {
-      return {
-        icon: '🍳',
-        title: 'Preparing',
-        message:
-          'Your order is now being prepared.',
-      };
-    }
-
-    if (normalized === 'ready') {
-      return {
-        icon: '🍽️',
-        title: 'Ready',
-        message:
-          'Your order is ready to be served.',
-      };
-    }
-
-    if (normalized === 'completed') {
-      return {
-        icon: '✅',
-        title: 'Completed',
-        message:
-          'Your order has been completed.',
-      };
-    }
-
-    if (normalized === 'cancelled') {
-      return {
-        icon: '×',
-        title: 'Cancelled',
-        message:
-          'Your order was cancelled.',
-      };
-    }
-
-    return {
-      icon: '🍽️',
-      title: status,
-      message:
-        'Your order status has been updated.',
-    };
+    return Number.isFinite(n)
+      ? n.toFixed(2)
+      : '0.00';
   };
 
-  const statusInfo =
-    getStatusInfo();
+  const formatDateTime = (value) => {
+    if (!value) return '';
+
+    const date = new Date(value);
+
+    if (
+      Number.isNaN(
+        date.getTime()
+      )
+    ) {
+      return '';
+    }
+
+    return date.toLocaleString();
+  };
+
+  const normalizeStatus = (
+    status
+  ) => {
+    return String(
+      status || 'pending'
+    ).toLowerCase();
+  };
+
+  const getStatusLabel = (
+    status
+  ) => {
+    const normalized =
+      normalizeStatus(status);
+
+    if (
+      normalized === 'pending'
+    ) {
+      return 'Pending';
+    }
+
+    if (
+      normalized === 'preparing'
+    ) {
+      return 'Preparing';
+    }
+
+    if (
+      normalized === 'ready'
+    ) {
+      return 'Ready';
+    }
+
+    return status || 'Pending';
+  };
+
+  const getStatusStyle = (
+    status
+  ) => {
+    const normalized =
+      normalizeStatus(status);
+
+    if (
+      normalized === 'pending'
+    ) {
+      return styles.statusPending;
+    }
+
+    if (
+      normalized === 'preparing'
+    ) {
+      return styles.statusPreparing;
+    }
+
+    if (
+      normalized === 'ready'
+    ) {
+      return styles.statusReady;
+    }
+
+    return styles.statusDefault;
+  };
+
+  const getOrderTotal = (
+    order
+  ) => {
+    if (
+      order.total_amount ||
+      order.total
+    ) {
+      return Number(
+        order.total_amount ||
+          order.total
+      );
+    }
+
+    const items =
+      order.items ||
+      order.order_items ||
+      [];
+
+    return items.reduce(
+      (sum, item) => {
+        const price =
+          Number(
+            item.price ||
+              item.menu_item?.price ||
+              0
+          );
+
+        const quantity =
+          Number(
+            item.quantity || 0
+          );
+
+        return (
+          sum + price * quantity
+        );
+      },
+      0
+    );
+  };
+
+  const renderOrderItem = ({
+    item,
+  }) => {
+    const items =
+      item.items ||
+      item.order_items ||
+      [];
+
+    return (
+      <View style={styles.orderCard}>
+        <View style={styles.orderHeader}>
+          <View style={styles.orderHeaderLeft}>
+            <Text style={styles.orderTitle}>
+              {item.order_number
+                ? item.order_number
+                : `Order #${item.id}`}
+            </Text>
+
+            <Text style={styles.orderDate}>
+              {formatDateTime(
+                item.created_at
+              )}
+            </Text>
+          </View>
+
+          <View
+            style={[
+              styles.statusBadge,
+              getStatusStyle(
+                item.status
+              ),
+            ]}
+          >
+            <Text
+              style={
+                styles.statusBadgeText
+              }
+            >
+              {getStatusLabel(
+                item.status
+              )}
+            </Text>
+          </View>
+        </View>
+
+        <View style={styles.divider} />
+
+        {items.length === 0 ? (
+          <Text style={styles.noItemsText}>
+            No order items found.
+          </Text>
+        ) : (
+          items.map(
+            (
+              orderItem,
+              index
+            ) => {
+              const name =
+                orderItem.name ||
+                orderItem.menu_name ||
+                orderItem.menu_item
+                  ?.name ||
+                'Menu Item';
+
+              const quantity =
+                Number(
+                  orderItem.quantity ||
+                    0
+                );
+
+              const price =
+                Number(
+                  orderItem.price ||
+                    orderItem.menu_item
+                      ?.price ||
+                    0
+                );
+
+              return (
+                <View
+                  key={`${item.id}-${index}`}
+                  style={styles.itemRow}
+                >
+                  <View style={styles.itemLeft}>
+                    <Text
+                      style={
+                        styles.itemName
+                      }
+                      numberOfLines={2}
+                    >
+                      {name}
+                    </Text>
+
+                    <Text
+                      style={
+                        styles.itemQty
+                      }
+                    >
+                      Qty: {quantity}
+                    </Text>
+                  </View>
+
+                  <Text
+                    style={
+                      styles.itemPrice
+                    }
+                  >
+                    ₱
+                    {formatMoney(
+                      price *
+                        quantity
+                    )}
+                  </Text>
+                </View>
+              );
+            }
+          )
+        )}
+
+        <View style={styles.totalRow}>
+          <Text style={styles.totalLabel}>
+            Total
+          </Text>
+
+          <Text style={styles.totalValue}>
+            ₱
+            {formatMoney(
+              getOrderTotal(item)
+            )}
+          </Text>
+        </View>
+      </View>
+    );
+  };
 
   if (loading) {
     return (
       <View style={styles.frame}>
-        <View style={styles.container}>
+        <View style={styles.loadingContainer}>
           <ActivityIndicator
             size="large"
             color="#f68c45"
           />
 
           <Text style={styles.loadingText}>
-            Loading order status...
+            Loading active orders...
           </Text>
         </View>
       </View>
@@ -166,207 +381,379 @@ export default function OrderStatusScreen({
   return (
     <View style={styles.frame}>
       <View style={styles.container}>
-        <Text style={styles.tableText}>
-          Table {tableNumber || order?.table_number || '-'}
-        </Text>
+        <View style={styles.topBar}>
+          <TouchableOpacity
+            onPress={() =>
+              navigation.navigate(
+                'Menu'
+              )
+            }
+          >
+            <Text style={styles.backText}>
+              {'<'} Back to Menu
+            </Text>
+          </TouchableOpacity>
 
-        <View style={styles.statusCircle}>
-          <Text style={styles.statusIcon}>
-            {statusInfo.icon}
+          <Text style={styles.tableText}>
+            Table {finalTableNumber || '-'}
           </Text>
         </View>
 
         <Text style={styles.header}>
-          {statusInfo.title}
+          Order Status
         </Text>
 
-        {order?.order_number ? (
-          <Text style={styles.orderNumber}>
-            {order.order_number}
-          </Text>
-        ) : orderId ? (
-          <Text style={styles.orderNumber}>
-            Order ID: {orderId}
+        <Text style={styles.subHeader}>
+          Active Orders
+        </Text>
+
+        {error ? (
+          <Text style={styles.errorText}>
+            {error}
           </Text>
         ) : null}
 
-        <View style={styles.statusBox}>
-          <Text style={styles.statusLabel}>
-            Current Status
+        {orders.length === 0 ? (
+          <View style={styles.emptyBox}>
+            <Text style={styles.emptyIcon}>
+              🧾
+            </Text>
+
+            <Text style={styles.emptyTitle}>
+              No Active Orders
+            </Text>
+
+            <Text style={styles.emptyText}>
+              Pending, preparing, and ready orders will appear here.
+            </Text>
+          </View>
+        ) : (
+          <FlatList
+            data={orders}
+            keyExtractor={(item) =>
+              String(item.id)
+            }
+            renderItem={renderOrderItem}
+            showsVerticalScrollIndicator={
+              false
+            }
+            contentContainerStyle={{
+              paddingBottom: 120,
+            }}
+          />
+        )}
+
+        <View style={styles.bottomBar}>
+          <Text style={styles.autoText}>
+            Updates every 5 seconds
           </Text>
 
-          <Text style={styles.statusText}>
-            {order?.status || 'Pending'}
-          </Text>
+          <TouchableOpacity
+            style={styles.refreshBtn}
+            onPress={() =>
+              fetchOrders(true)
+            }
+          >
+            <Text style={styles.refreshText}>
+              Refresh
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={styles.menuBtn}
+            onPress={() =>
+              navigation.navigate(
+                'Menu'
+              )
+            }
+          >
+            <Text style={styles.menuText}>
+              Continue Ordering
+            </Text>
+          </TouchableOpacity>
         </View>
-
-        <Text style={styles.subText}>
-          {error || statusInfo.message}
-        </Text>
-
-        <Text style={styles.autoText}>
-          This page updates automatically every 5 seconds.
-        </Text>
-
-        <TouchableOpacity
-          style={styles.refreshBtn}
-          onPress={() =>
-            fetchOrderStatus(true)
-          }
-        >
-          <Text style={styles.refreshBtnText}>
-            Refresh Status
-          </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.homeBtn}
-          onPress={() =>
-            navigation.navigate('Menu')
-          }
-        >
-          <Text style={styles.homeBtnText}>
-            Continue Ordering
-          </Text>
-        </TouchableOpacity>
       </View>
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  frame: {
-    flex: 1,
-    backgroundColor: '#171717',
-  },
+const styles =
+  StyleSheet.create({
+    frame: {
+      flex: 1,
+      backgroundColor: '#171717',
+    },
 
-  container: {
-    flex: 1,
-    backgroundColor: '#efefef',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 32,
-  },
+    container: {
+      flex: 1,
+      backgroundColor: '#efefef',
+      padding: 24,
+    },
 
-  tableText: {
-    position: 'absolute',
-    top: 32,
-    right: 32,
-    color: '#333',
-    fontSize: 24,
-    fontWeight: '900',
-  },
+    loadingContainer: {
+      flex: 1,
+      backgroundColor: '#efefef',
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
 
-  statusCircle: {
-    width: 190,
-    height: 190,
-    borderRadius: 95,
-    backgroundColor: '#f68c45',
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOpacity: 0.12,
-    shadowRadius: 8,
-    elevation: 4,
-  },
+    topBar: {
+      height: 64,
+      flexDirection: 'row',
+      justifyContent:
+        'space-between',
+      alignItems: 'center',
+    },
 
-  statusIcon: {
-    color: '#fff',
-    fontSize: 94,
-    fontWeight: '900',
-  },
+    backText: {
+      fontSize: 24,
+      fontWeight: '800',
+      color: '#333',
+    },
 
-  header: {
-    marginTop: 36,
-    fontSize: 64,
-    fontWeight: '900',
-    color: '#333',
-    textAlign: 'center',
-  },
+    tableText: {
+      fontSize: 24,
+      fontWeight: '900',
+      color: '#f68c45',
+    },
 
-  orderNumber: {
-    marginTop: 10,
-    color: '#555',
-    fontSize: 24,
-    fontWeight: '800',
-    textAlign: 'center',
-  },
+    header: {
+      fontSize: 52,
+      fontWeight: '900',
+      color: '#333',
+      textAlign: 'center',
+      marginTop: 8,
+    },
 
-  statusBox: {
-    marginTop: 28,
-    backgroundColor: '#fff',
-    borderRadius: 22,
-    borderWidth: 1.5,
-    borderColor: '#f0b287',
-    paddingVertical: 24,
-    paddingHorizontal: 60,
-    alignItems: 'center',
-    shadowColor: '#000',
-    shadowOpacity: 0.08,
-    shadowRadius: 6,
-    elevation: 3,
-  },
+    subHeader: {
+      fontSize: 26,
+      fontWeight: '800',
+      color: '#666',
+      textAlign: 'center',
+      marginBottom: 20,
+    },
 
-  statusLabel: {
-    color: '#777',
-    fontSize: 22,
-    fontWeight: '800',
-  },
+    loadingText: {
+      marginTop: 16,
+      fontSize: 22,
+      fontWeight: '700',
+      color: '#555',
+    },
 
-  statusText: {
-    marginTop: 8,
-    color: '#f68c45',
-    fontSize: 46,
-    fontWeight: '900',
-  },
+    errorText: {
+      backgroundColor: '#ffe5e5',
+      color: '#b00020',
+      padding: 12,
+      borderRadius: 12,
+      fontSize: 16,
+      fontWeight: '700',
+      textAlign: 'center',
+      marginBottom: 12,
+    },
 
-  subText: {
-    marginTop: 24,
-    color: '#555',
-    fontSize: 26,
-    fontWeight: '700',
-    textAlign: 'center',
-  },
+    orderCard: {
+      backgroundColor: '#fff',
+      borderRadius: 22,
+      padding: 22,
+      marginBottom: 18,
+      borderWidth: 1.5,
+      borderColor: '#f0b287',
+      shadowColor: '#000',
+      shadowOpacity: 0.08,
+      shadowRadius: 7,
+      elevation: 3,
+    },
 
-  autoText: {
-    marginTop: 10,
-    color: '#999',
-    fontSize: 18,
-    textAlign: 'center',
-  },
+    orderHeader: {
+      flexDirection: 'row',
+      justifyContent:
+        'space-between',
+      alignItems: 'flex-start',
+    },
 
-  loadingText: {
-    marginTop: 18,
-    color: '#555',
-    fontSize: 22,
-    fontWeight: '700',
-  },
+    orderHeaderLeft: {
+      flex: 1,
+      paddingRight: 14,
+    },
 
-  refreshBtn: {
-    marginTop: 38,
-    backgroundColor: '#333',
-    paddingVertical: 18,
-    paddingHorizontal: 42,
-    borderRadius: 16,
-  },
+    orderTitle: {
+      fontSize: 26,
+      fontWeight: '900',
+      color: '#333',
+    },
 
-  refreshBtnText: {
-    color: '#fff',
-    fontSize: 22,
-    fontWeight: '800',
-  },
+    orderDate: {
+      marginTop: 4,
+      fontSize: 15,
+      fontWeight: '700',
+      color: '#888',
+    },
 
-  homeBtn: {
-    marginTop: 18,
-    backgroundColor: '#f68c45',
-    paddingVertical: 18,
-    paddingHorizontal: 42,
-    borderRadius: 16,
-  },
+    statusBadge: {
+      paddingVertical: 8,
+      paddingHorizontal: 18,
+      borderRadius: 999,
+    },
 
-  homeBtnText: {
-    color: '#fff',
-    fontSize: 22,
-    fontWeight: '800',
-  },
-});
+    statusPending: {
+      backgroundColor: '#fff3cd',
+    },
+
+    statusPreparing: {
+      backgroundColor: '#dbeafe',
+    },
+
+    statusReady: {
+      backgroundColor: '#dcfce7',
+    },
+
+    statusDefault: {
+      backgroundColor: '#eeeeee',
+    },
+
+    statusBadgeText: {
+      fontSize: 16,
+      fontWeight: '900',
+      color: '#333',
+    },
+
+    divider: {
+      height: 1,
+      backgroundColor: '#eee',
+      marginVertical: 16,
+    },
+
+    noItemsText: {
+      fontSize: 16,
+      color: '#888',
+      fontWeight: '700',
+    },
+
+    itemRow: {
+      flexDirection: 'row',
+      justifyContent:
+        'space-between',
+      alignItems: 'center',
+      paddingVertical: 10,
+      borderBottomWidth: 1,
+      borderBottomColor: '#f2f2f2',
+    },
+
+    itemLeft: {
+      flex: 1,
+      paddingRight: 12,
+    },
+
+    itemName: {
+      fontSize: 19,
+      fontWeight: '900',
+      color: '#333',
+    },
+
+    itemQty: {
+      fontSize: 15,
+      fontWeight: '700',
+      color: '#777',
+      marginTop: 3,
+    },
+
+    itemPrice: {
+      fontSize: 18,
+      fontWeight: '900',
+      color: '#f68c45',
+    },
+
+    totalRow: {
+      marginTop: 16,
+      flexDirection: 'row',
+      justifyContent:
+        'space-between',
+      alignItems: 'center',
+    },
+
+    totalLabel: {
+      fontSize: 22,
+      fontWeight: '900',
+      color: '#333',
+    },
+
+    totalValue: {
+      fontSize: 26,
+      fontWeight: '900',
+      color: '#f68c45',
+    },
+
+    emptyBox: {
+      flex: 1,
+      justifyContent: 'center',
+      alignItems: 'center',
+      paddingBottom: 100,
+    },
+
+    emptyIcon: {
+      fontSize: 80,
+      marginBottom: 16,
+    },
+
+    emptyTitle: {
+      fontSize: 36,
+      fontWeight: '900',
+      color: '#333',
+      marginBottom: 8,
+    },
+
+    emptyText: {
+      fontSize: 18,
+      color: '#777',
+      fontWeight: '700',
+      textAlign: 'center',
+    },
+
+    bottomBar: {
+      position: 'absolute',
+      left: 24,
+      right: 24,
+      bottom: 20,
+      backgroundColor: '#fff',
+      borderRadius: 18,
+      padding: 14,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent:
+        'space-between',
+      borderWidth: 1,
+      borderColor: '#ddd',
+    },
+
+    autoText: {
+      fontSize: 15,
+      fontWeight: '800',
+      color: '#777',
+    },
+
+    refreshBtn: {
+      backgroundColor: '#333',
+      paddingVertical: 12,
+      paddingHorizontal: 22,
+      borderRadius: 12,
+    },
+
+    refreshText: {
+      color: '#fff',
+      fontSize: 16,
+      fontWeight: '900',
+    },
+
+    menuBtn: {
+      backgroundColor: '#f68c45',
+      paddingVertical: 12,
+      paddingHorizontal: 22,
+      borderRadius: 12,
+    },
+
+    menuText: {
+      color: '#fff',
+      fontSize: 16,
+      fontWeight: '900',
+    },
+  });

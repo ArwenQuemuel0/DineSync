@@ -118,7 +118,11 @@ export default function ItemDetailScreen({
   const imageUri = getItemImage(item);
 
   const isAvailable =
-    item?.is_available === true &&
+    (
+      item?.is_available === true ||
+      item?.is_available === 1 ||
+      item?.is_available === 'true'
+    ) &&
     stock > 0;
 
   const handleAddToCart = () => {
@@ -263,9 +267,6 @@ export default function ItemDetailScreen({
   const renderCartItem = ({
     item: cartItem,
   }) => {
-    const cartItemId =
-      getItemId(cartItem);
-
     return (
       <View style={styles.cartItem}>
         <View style={styles.cartItemTop}>
@@ -432,7 +433,7 @@ export default function ItemDetailScreen({
                 }
               >
                 {isAvailable
-                  ? 'Available'
+                  ? `Available (${stock})`
                   : 'Sold Out'}
               </Text>
 

@@ -24,20 +24,31 @@ export const CartProvider = ({
 
   const getItemId = (item) => {
     return (
-      item.id ||
-      item.menu_item_id
+      item?.id ||
+      item?.menu_item_id
     );
   };
 
   const getStock = (item) => {
     return (
-      Number(item.available_quantity) ||
-      Number(item.stock) ||
-      Number(item.inventory) ||
-      Number(item.available_stock) ||
-      Number(item.current_stock) ||
+      Number(item?.available_quantity) ||
+      Number(item?.stock) ||
+      Number(item?.inventory) ||
+      Number(item?.available_stock) ||
+      Number(item?.current_stock) ||
       0
     );
+  };
+
+  const isItemAvailable = (item) => {
+    const stock = getStock(item);
+
+    const manuallyAvailable =
+      item?.is_available === true ||
+      item?.is_available === 1 ||
+      item?.is_available === 'true';
+
+    return manuallyAvailable && stock > 0;
   };
 
   const addToCart = (item) => {
@@ -53,7 +64,7 @@ export const CartProvider = ({
       return;
     }
 
-    if (stock <= 0) {
+    if (!isItemAvailable(item)) {
       Alert.alert(
         'Not Available',
         'This item is currently not available.'
@@ -168,13 +179,11 @@ export const CartProvider = ({
   const cartTotal =
     cartItems.reduce(
       (total, item) => {
-        const price = Number(
-          item.price
-        );
+        const price =
+          Number(item.price);
 
-        const qty = Number(
-          item.quantity
-        );
+        const qty =
+          Number(item.quantity);
 
         if (
           !Number.isFinite(price) ||

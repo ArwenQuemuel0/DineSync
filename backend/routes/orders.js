@@ -16,6 +16,41 @@ const {
 const DEFAULT_TABLE_NUMBER = 1;
 
 // =========================
+// GET TABLE NUMBER FROM TOKEN
+// Token format: Bearer table-token-1
+// =========================
+
+const getTableNumberFromToken = (req) => {
+  const authHeader =
+    req.headers.authorization || '';
+
+  const token =
+    authHeader.replace(
+      'Bearer ',
+      ''
+    );
+
+  if (
+    token &&
+    token.startsWith('table-token-')
+  ) {
+    const tableNumber =
+      Number(
+        token.replace(
+          'table-token-',
+          ''
+        )
+      );
+
+    if (tableNumber) {
+      return tableNumber;
+    }
+  }
+
+  return null;
+};
+
+// =========================
 // BEST SELLERS
 // IMPORTANT: This must be before router.get('/:id')
 // =========================
@@ -71,9 +106,8 @@ router.get(
           };
         }
 
-        salesMap[itemId].total_sales += Number(
-          row.quantity || 0
-        );
+        salesMap[itemId].total_sales +=
+          Number(row.quantity || 0);
       }
 
       const bestSellers =
@@ -90,7 +124,10 @@ router.get(
         data: bestSellers,
       });
     } catch (error) {
-      console.log(error);
+      console.log(
+        'BEST SELLERS ERROR:',
+        error
+      );
 
       return res.status(500).json({
         success: false,
@@ -101,7 +138,207 @@ router.get(
 );
 
 // =========================
+// GET ACTIVE ORDERS BY TABLE
+// GET /api/orders/table/:tableNumber/active
+// IMPORTANT: This must be before router.get('/:id')
+// =========================
+
+router.get(
+  '/table/:tableNumber/active',
+  async (req, res) => {
+    try {
+      const tableNumber =
+        Number(req.params.tableNumber);
+
+      if (!tableNumber) {
+        return res.status(400).json({
+          success: false,
+          message:
+            'Table number is required.',
+        });
+      }
+
+      if (!isConfigured) {
+        const activeOrders =
+          db.orders.filter((order) => {
+            const status =
+              String(order.status || '')
+                .toLowerCase();
+
+            return (
+              Number(order.table_number) ===
+                tableNumber &&
+              [
+                'pending',
+                'preparing',
+                'ready',
+              ].includes(status)
+            );
+          });
+
+        return res.json({
+          success: true,
+          data: activeOrders,
+        });
+      }
+
+      const {
+        data: orders,
+        error: ordersError,
+      } = await supabase
+        .from('orders')
+        .select(
+          'id, order_number, table_number, status, total_amount, created_at, updated_at'
+        )
+        .eq(
+          'table_number',
+          tableNumber
+        )
+        .in('status', [
+          'pending',
+          'preparing',
+          'ready',
+          'Pending',
+          'Preparing',
+          'Ready',
+        ])
+        .order('created_at', {
+          ascending: false,
+        });
+
+      if (ordersError) {
+        throw ordersError;
+      }
+
+      const orderIds =
+        (orders || []).map(
+          (order) => order.id
+        );
+
+      if (orderIds.length === 0) {
+        return res.json({
+          success: true,
+          data: [],
+        });
+      }
+
+      const {
+        data: orderItems,
+        error: itemsError,
+      } = await supabase
+        .from('order_items')
+        .select('*')
+        .in(
+          'order_id',
+          orderIds
+        );
+
+      if (itemsError) {
+        throw itemsError;
+      }
+
+      const menuItemIds = [
+        ...new Set(
+          (orderItems || [])
+            .map(
+              (item) =>
+                item.menu_item_id
+            )
+            .filter(Boolean)
+        ),
+      ];
+
+      let menuItems = [];
+
+      if (menuItemIds.length > 0) {
+        const {
+          data: menuData,
+          error: menuError,
+        } = await supabase
+          .from('menu_items')
+          .select(
+            'id, name, price, category, image'
+          )
+          .in(
+            'id',
+            menuItemIds
+          );
+
+        if (menuError) {
+          throw menuError;
+        }
+
+        menuItems =
+          menuData || [];
+      }
+
+      const enrichedOrders =
+        (orders || []).map(
+          (order) => {
+            const items =
+              (orderItems || [])
+                .filter(
+                  (item) =>
+                    Number(item.order_id) ===
+                    Number(order.id)
+                )
+                .map((item) => {
+                  const menuItem =
+                    menuItems.find(
+                      (menu) =>
+                        Number(menu.id) ===
+                        Number(
+                          item.menu_item_id
+                        )
+                    );
+
+                  return {
+                    ...item,
+                    name:
+                      item.name ||
+                      menuItem?.name ||
+                      'Menu Item',
+                    price:
+                      Number(
+                        item.price ||
+                          menuItem?.price ||
+                          0
+                      ),
+                    menu_item:
+                      menuItem || null,
+                  };
+                });
+
+            return {
+              ...order,
+              items,
+            };
+          }
+        );
+
+      return res.json({
+        success: true,
+        data: enrichedOrders,
+      });
+    } catch (error) {
+      console.log(
+        'GET ACTIVE TABLE ORDERS ERROR:',
+        error
+      );
+
+      return res.status(500).json({
+        success: false,
+        message:
+          error.message ||
+          'Failed to fetch active table orders.',
+      });
+    }
+  }
+);
+
+// =========================
 // CREATE ORDER
+// POST /api/orders
 // =========================
 
 router.post('/', async (req, res) => {
@@ -112,10 +349,14 @@ router.post('/', async (req, res) => {
       tableNumber,
     } = req.body;
 
+    const tokenTableNumber =
+      getTableNumberFromToken(req);
+
     const finalTableNumber =
       Number(
         table_number ||
           tableNumber ||
+          tokenTableNumber ||
           DEFAULT_TABLE_NUMBER
       );
 
@@ -125,33 +366,74 @@ router.post('/', async (req, res) => {
     );
 
     console.log(
-      'ITEMS:',
-      JSON.stringify(items, null, 2)
-    );
-
-    console.log(
       'TABLE NUMBER:',
       finalTableNumber
     );
 
+    console.log(
+      'ITEMS:',
+      JSON.stringify(items, null, 2)
+    );
+
+    if (!finalTableNumber) {
+      return res.status(400).json({
+        success: false,
+        message:
+          'Table number is required.',
+      });
+    }
+
     if (!items || items.length === 0) {
       return res.status(400).json({
         success: false,
-        message: 'Order must contain items',
+        message:
+          'Order must contain items.',
       });
     }
+
+    // =========================
+    // FORCE NEW ORDERS TO PENDING
+    // Do not trust req.body.status.
+    // Mobile creates order -> pending
+    // KDS Start Preparing -> preparing
+    // KDS Mark Ready -> ready
+    // KDS Complete -> served
+    // =========================
+
+    const newOrderStatus = 'pending';
 
     // =========================
     // MOCK DATABASE
     // =========================
 
     if (!isConfigured) {
+      const totalAmount =
+        items.reduce(
+          (sum, item) => {
+            const price =
+              Number(item.price || 0);
+
+            const quantity =
+              Number(item.quantity || 0);
+
+            return sum + price * quantity;
+          },
+          0
+        );
+
       const newOrder = {
         id: db.orders.length + 1,
-        table_number: finalTableNumber,
+        order_number:
+          `ORD-${Date.now()}`,
+        table_number:
+          finalTableNumber,
         items,
-        status: 'Pending',
-        createdAt: new Date().toISOString(),
+        status: newOrderStatus,
+        total_amount: totalAmount,
+        created_at:
+          new Date().toISOString(),
+        updated_at:
+          new Date().toISOString(),
       };
 
       db.orders.push(newOrder);
@@ -163,19 +445,27 @@ router.post('/', async (req, res) => {
     }
 
     // =========================
-    // GET TABLE
+    // FIND RESTAURANT TABLE
     // =========================
 
     const {
-      data: tableRow,
+      data: restaurantTable,
       error: tableError,
     } = await supabase
       .from('restaurant_tables')
       .select('*')
-      .eq('table_number', finalTableNumber)
+      .eq(
+        'table_number',
+        finalTableNumber
+      )
       .single();
 
-    if (tableError || !tableRow) {
+    if (tableError || !restaurantTable) {
+      console.log(
+        'RESTAURANT TABLE ERROR:',
+        tableError
+      );
+
       return res.status(404).json({
         success: false,
         message:
@@ -188,8 +478,12 @@ router.post('/', async (req, res) => {
     // =========================
 
     for (const item of items) {
-      const menuItemId = item.menu_item_id;
-      const orderedQty = Number(item.quantity);
+      const menuItemId =
+        item.menu_item_id ||
+        item.id;
+
+      const orderedQty =
+        Number(item.quantity);
 
       if (
         !menuItemId ||
@@ -198,7 +492,8 @@ router.post('/', async (req, res) => {
       ) {
         return res.status(400).json({
           success: false,
-          message: 'Invalid order item quantity',
+          message:
+            'Invalid order item quantity.',
         });
       }
 
@@ -214,7 +509,8 @@ router.post('/', async (req, res) => {
       if (menuItemError || !menuItem) {
         return res.status(404).json({
           success: false,
-          message: 'Menu item not found',
+          message:
+            'Menu item not found.',
         });
       }
 
@@ -239,11 +535,13 @@ router.post('/', async (req, res) => {
       }
 
       for (const recipe of recipeRows) {
-        const ingredientId = recipe.ingredient_id;
+        const ingredientId =
+          recipe.ingredient_id;
 
-        const quantityRequired = Number(
-          recipe.quantity_required
-        );
+        const quantityRequired =
+          Number(
+            recipe.quantity_required
+          );
 
         const totalNeeded =
           quantityRequired * orderedQty;
@@ -265,9 +563,10 @@ router.post('/', async (req, res) => {
           });
         }
 
-        const currentStock = Number(
-          ingredientRow.current_stock
-        );
+        const currentStock =
+          Number(
+            ingredientRow.current_stock
+          );
 
         if (currentStock < totalNeeded) {
           return res.status(400).json({
@@ -280,50 +579,98 @@ router.post('/', async (req, res) => {
     }
 
     // =========================
-    // CREATE ORDER
+    // COMPUTE TOTAL AMOUNT
     // =========================
 
-    const orderNumber = `ORD-${Date.now()}`;
+    const totalAmount =
+      items.reduce(
+        (sum, item) => {
+          const price =
+            Number(item.price || 0);
+
+          const quantity =
+            Number(item.quantity || 0);
+
+          return sum + price * quantity;
+        },
+        0
+      );
+
+    // =========================
+    // CREATE ORDER
+    // IMPORTANT:
+    // Always force new orders to pending.
+    // Never use req.body.status here.
+    // =========================
+
+    const orderNumber =
+      `ORD-${Date.now()}`;
+
+    const now =
+      new Date().toISOString();
+
+    const orderPayload = {
+      order_number: orderNumber,
+      table_number:
+        finalTableNumber,
+      status: 'pending',
+      total_amount:
+        totalAmount,
+      created_at: now,
+      updated_at: now,
+    };
 
     const {
-      data: orderRow,
+      data: createdOrder,
       error: orderError,
     } = await supabase
       .from('orders')
-      .insert({
-        order_number: orderNumber,
-        status: 'Pending',
-      })
-      .select('id, status, order_number')
+      .insert(orderPayload)
+      .select(
+        'id, order_number, table_number, status, total_amount, created_at, updated_at'
+      )
       .single();
 
-    if (orderError || !orderRow) {
-      console.log(orderError);
+    if (orderError || !createdOrder) {
+      console.log(
+        'ORDER INSERT ERROR:',
+        orderError
+      );
 
       return res.status(500).json({
         success: false,
         message:
           orderError?.message ||
-          'Failed to create order',
+          'Failed to create order.',
       });
     }
 
-    const orderId = orderRow.id;
+    const orderId =
+      createdOrder.id;
 
     // =========================
     // CREATE ORDER ITEMS
     // =========================
 
-    const orderItemsPayload = items.map((i) => ({
-      order_id: orderId,
-      menu_item_id: i.menu_item_id,
-      quantity: i.quantity,
-      price: i.price || 0,
-    }));
+    const orderItemsPayload =
+      items.map((item) => ({
+        order_id: orderId,
+        menu_item_id:
+          item.menu_item_id ||
+          item.id,
+        quantity:
+          Number(item.quantity),
+        price:
+          Number(item.price) || 0,
+      }));
 
     console.log(
       'ORDER ITEMS PAYLOAD:',
-      JSON.stringify(orderItemsPayload, null, 2)
+      JSON.stringify(
+        orderItemsPayload,
+        null,
+        2
+      )
     );
 
     const {
@@ -340,12 +687,13 @@ router.post('/', async (req, res) => {
 
       return res.status(500).json({
         success: false,
-        message: orderItemsError.message,
+        message:
+          orderItemsError.message,
       });
     }
 
     // =========================
-    // UPDATE TABLE STATUS
+    // UPDATE RESTAURANT TABLE
     // =========================
 
     const {
@@ -354,16 +702,30 @@ router.post('/', async (req, res) => {
       .from('restaurant_tables')
       .update({
         status: 'occupied',
-        current_order_id: orderId,
-        occupied_at: new Date().toISOString(),
+        current_order_id:
+          orderId,
+        occupied_at:
+          new Date().toISOString(),
+        notes:
+          'Tablet order',
       })
-      .eq('table_number', finalTableNumber);
+      .eq(
+        'table_number',
+        finalTableNumber
+      );
 
     if (tableUpdateError) {
       console.log(
         'TABLE UPDATE ERROR:',
         tableUpdateError
       );
+
+      return res.status(500).json({
+        success: false,
+        message:
+          tableUpdateError.message ||
+          'Order created but failed to update table assignment.',
+      });
     }
 
     // =========================
@@ -371,8 +733,12 @@ router.post('/', async (req, res) => {
     // =========================
 
     for (const item of items) {
-      const menuItemId = item.menu_item_id;
-      const orderedQty = Number(item.quantity);
+      const menuItemId =
+        item.menu_item_id ||
+        item.id;
+
+      const orderedQty =
+        Number(item.quantity);
 
       const {
         data: recipeRows,
@@ -391,17 +757,14 @@ router.post('/', async (req, res) => {
         continue;
       }
 
-      console.log(
-        'RECIPE ROWS:',
-        recipeRows
-      );
-
       for (const recipe of recipeRows || []) {
-        const ingredientId = recipe.ingredient_id;
+        const ingredientId =
+          recipe.ingredient_id;
 
         const totalNeeded =
-          Number(recipe.quantity_required) *
-          orderedQty;
+          Number(
+            recipe.quantity_required
+          ) * orderedQty;
 
         const {
           data: ingredientRow,
@@ -412,7 +775,10 @@ router.post('/', async (req, res) => {
           .eq('id', ingredientId)
           .single();
 
-        if (ingredientError || !ingredientRow) {
+        if (
+          ingredientError ||
+          !ingredientRow
+        ) {
           console.log(
             'INGREDIENT ERROR:',
             ingredientError
@@ -422,28 +788,23 @@ router.post('/', async (req, res) => {
         }
 
         const newStock =
-          Number(ingredientRow.current_stock) -
-          totalNeeded;
-
-        console.log(
-          `Ingredient ${ingredientId} stock:`,
-          ingredientRow.current_stock,
-          '→',
-          newStock
-        );
+          Number(
+            ingredientRow.current_stock
+          ) - totalNeeded;
 
         const {
           error: updateError,
         } = await supabase
           .from('ingredients')
           .update({
-            current_stock: newStock,
+            current_stock:
+              newStock,
           })
           .eq('id', ingredientId);
 
         if (updateError) {
           console.log(
-            'UPDATE ERROR:',
+            'INGREDIENT UPDATE ERROR:',
             updateError
           );
         }
@@ -452,7 +813,8 @@ router.post('/', async (req, res) => {
         // FIFO BATCH DEDUCTION
         // =========================
 
-        let remainingNeeded = totalNeeded;
+        let remainingNeeded =
+          totalNeeded;
 
         const {
           data: batchRows,
@@ -460,7 +822,10 @@ router.post('/', async (req, res) => {
         } = await supabase
           .from('inventory_batches')
           .select('*')
-          .eq('ingredient_id', ingredientId)
+          .eq(
+            'ingredient_id',
+            ingredientId
+          )
           .eq('status', 'active')
           .order('received_date', {
             ascending: true,
@@ -476,28 +841,27 @@ router.post('/', async (req, res) => {
         }
 
         for (const batch of batchRows || []) {
-          if (remainingNeeded <= 0) break;
+          if (remainingNeeded <= 0) {
+            break;
+          }
 
-          const available = Number(
-            batch.quantity_remaining
-          );
+          const available =
+            Number(
+              batch.quantity_remaining
+            );
 
-          if (available <= 0) continue;
+          if (available <= 0) {
+            continue;
+          }
 
-          const deductAmount = Math.min(
-            available,
-            remainingNeeded
-          );
+          const deductAmount =
+            Math.min(
+              available,
+              remainingNeeded
+            );
 
           const updatedRemaining =
             available - deductAmount;
-
-          console.log(
-            `Batch ${batch.id}:`,
-            available,
-            '→',
-            updatedRemaining
-          );
 
           await supabase
             .from('inventory_batches')
@@ -507,7 +871,8 @@ router.post('/', async (req, res) => {
             })
             .eq('id', batch.id);
 
-          remainingNeeded -= deductAmount;
+          remainingNeeded -=
+            deductAmount;
         }
 
         // =========================
@@ -519,9 +884,11 @@ router.post('/', async (req, res) => {
         } = await supabase
           .from('ingredient_usages')
           .insert({
-            ingredient_id: ingredientId,
+            ingredient_id:
+              ingredientId,
             order_id: orderId,
-            quantity_used: totalNeeded,
+            quantity_used:
+              totalNeeded,
           });
 
         if (usageError) {
@@ -540,16 +907,16 @@ router.post('/', async (req, res) => {
     return res.status(201).json({
       success: true,
       data: {
-        id: orderId,
-        table_number: finalTableNumber,
-        table_id: tableRow.id,
-        status: orderRow.status,
-        order_number: orderRow.order_number,
+        ...createdOrder,
+        items:
+          orderItemsPayload,
+        restaurant_table:
+          restaurantTable,
       },
     });
   } catch (error) {
     console.error(
-      'SERVER ERROR:',
+      'CREATE ORDER SERVER ERROR:',
       error
     );
 
@@ -567,46 +934,139 @@ router.post('/', async (req, res) => {
 // =========================
 
 router.get('/:id', async (req, res) => {
-  const orderId = parseInt(req.params.id);
+  try {
+    const orderId =
+      parseInt(req.params.id);
 
-  if (!isConfigured) {
-    const order = db.orders.find(
-      (o) => o.id === orderId
-    );
+    if (!isConfigured) {
+      const order = db.orders.find(
+        (o) => o.id === orderId
+      );
 
-    if (order) {
-      return res.json({
-        success: true,
-        data: order,
+      if (order) {
+        return res.json({
+          success: true,
+          data: order,
+        });
+      }
+
+      return res.status(404).json({
+        success: false,
+        message: 'Not found',
       });
     }
 
-    return res.status(404).json({
+    const {
+      data: orderRow,
+      error: orderError,
+    } = await supabase
+      .from('orders')
+      .select(
+        'id, order_number, table_number, status, total_amount, created_at, updated_at'
+      )
+      .eq('id', orderId)
+      .single();
+
+    if (orderError || !orderRow) {
+      return res.status(404).json({
+        success: false,
+        message: 'Not found',
+      });
+    }
+
+    const {
+      data: orderItems,
+      error: itemsError,
+    } = await supabase
+      .from('order_items')
+      .select('*')
+      .eq('order_id', orderId);
+
+    if (itemsError) {
+      throw itemsError;
+    }
+
+    const menuItemIds = [
+      ...new Set(
+        (orderItems || [])
+          .map(
+            (item) =>
+              item.menu_item_id
+          )
+          .filter(Boolean)
+      ),
+    ];
+
+    let menuItems = [];
+
+    if (menuItemIds.length > 0) {
+      const {
+        data: menuData,
+        error: menuError,
+      } = await supabase
+        .from('menu_items')
+        .select(
+          'id, name, price, category, image'
+        )
+        .in(
+          'id',
+          menuItemIds
+        );
+
+      if (menuError) {
+        throw menuError;
+      }
+
+      menuItems =
+        menuData || [];
+    }
+
+    const enrichedItems =
+      (orderItems || []).map((item) => {
+        const menuItem =
+          menuItems.find(
+            (menu) =>
+              Number(menu.id) ===
+              Number(item.menu_item_id)
+          );
+
+        return {
+          ...item,
+          name:
+            item.name ||
+            menuItem?.name ||
+            'Menu Item',
+          price:
+            Number(
+              item.price ||
+                menuItem?.price ||
+                0
+            ),
+          menu_item:
+            menuItem || null,
+        };
+      });
+
+    return res.json({
+      success: true,
+      data: {
+        ...orderRow,
+        items: enrichedItems,
+      },
+    });
+  } catch (error) {
+    console.log(
+      'GET ORDER BY ID ERROR:',
+      error
+    );
+
+    return res.status(500).json({
       success: false,
-      message: 'Not found',
+      message:
+        error.message ||
+        'Failed to fetch order.',
     });
   }
-
-  const {
-    data: orderRow,
-    error: orderError,
-  } = await supabase
-    .from('orders')
-    .select('id, status, order_number')
-    .eq('id', orderId)
-    .single();
-
-  if (orderError || !orderRow) {
-    return res.status(404).json({
-      success: false,
-      message: 'Not found',
-    });
-  }
-
-  return res.json({
-    success: true,
-    data: orderRow,
-  });
 });
 
 module.exports = router;
