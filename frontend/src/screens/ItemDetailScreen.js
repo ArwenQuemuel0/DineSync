@@ -14,27 +14,17 @@ import {
   ActivityIndicator,
 } from 'react-native';
 
-import axios from 'axios';
-import Constants from 'expo-constants';
-
+import api from '../api/dinesync';
 import { useCart } from '../context/CartContext';
-
-const debuggerHost =
-  Constants.expoConfig?.hostUri ||
-  Constants.manifest2?.extra?.expoGo
-    ?.debuggerHost;
-
-const host = debuggerHost
-  ?.split(':')
-  ?.shift();
-
-const BASE_URL = `http://${host}:3000/api`;
+import { useAuth } from '../context/AuthContext';
 
 export default function ItemDetailScreen({
   route,
   navigation,
 }) {
   const { item } = route.params || {};
+
+  const { tableNumber } = useAuth();
 
   const [
     pairings,
@@ -65,8 +55,8 @@ export default function ItemDetailScreen({
       setLoadingPairings(true);
 
       const response =
-        await axios.post(
-          `${BASE_URL}/ai/pairing`,
+        await api.post(
+          '/ai/pairing',
           {
             itemName: item.name,
           }
@@ -94,6 +84,13 @@ export default function ItemDetailScreen({
     return Number.isFinite(n)
       ? n.toFixed(2)
       : '0.00';
+  };
+
+  const getItemId = (data) => {
+    return (
+      data?.id ||
+      data?.menu_item_id
+    );
   };
 
   const getStock = (data) => {
@@ -127,10 +124,12 @@ export default function ItemDetailScreen({
   const handleAddToCart = () => {
     if (!item) return;
 
+    const itemId = getItemId(item);
+
     const existingItem =
       cartItems.find(
         (cartItem) =>
-          cartItem.id === item.id
+          getItemId(cartItem) === itemId
       );
 
     const currentQty =
@@ -165,6 +164,9 @@ export default function ItemDetailScreen({
     const cartStock =
       getStock(cartItem);
 
+    const cartItemId =
+      getItemId(cartItem);
+
     if (
       cartItem.quantity >= cartStock
     ) {
@@ -177,9 +179,30 @@ export default function ItemDetailScreen({
     }
 
     updateQuantity(
-      cartItem.id,
+      cartItemId,
       cartItem.quantity + 1
     );
+  };
+
+  const handleDecreaseQuantity = (
+    cartItem
+  ) => {
+    const cartItemId =
+      getItemId(cartItem);
+
+    updateQuantity(
+      cartItemId,
+      cartItem.quantity - 1
+    );
+  };
+
+  const handleRemoveItem = (
+    cartItem
+  ) => {
+    const cartItemId =
+      getItemId(cartItem);
+
+    removeFromCart(cartItemId);
   };
 
   const handleCheckout = () => {
@@ -192,9 +215,19 @@ export default function ItemDetailScreen({
       return;
     }
 
+    if (!tableNumber) {
+      Alert.alert(
+        'Table Error',
+        'No table number found. Please login again using the assigned table account.'
+      );
+
+      return;
+    }
+
     navigation.navigate('Payment', {
       cartItems,
       total: cartTotal,
+      tableNumber,
     });
   };
 
@@ -230,6 +263,9 @@ export default function ItemDetailScreen({
   const renderCartItem = ({
     item: cartItem,
   }) => {
+    const cartItemId =
+      getItemId(cartItem);
+
     return (
       <View style={styles.cartItem}>
         <View style={styles.cartItemTop}>
@@ -255,8 +291,8 @@ export default function ItemDetailScreen({
 
           <TouchableOpacity
             onPress={() =>
-              removeFromCart(
-                cartItem.id
+              handleRemoveItem(
+                cartItem
               )
             }
           >
@@ -270,9 +306,8 @@ export default function ItemDetailScreen({
           <TouchableOpacity
             style={styles.qtyButton}
             onPress={() =>
-              updateQuantity(
-                cartItem.id,
-                cartItem.quantity - 1
+              handleDecreaseQuantity(
+                cartItem
               )
             }
           >
@@ -346,6 +381,10 @@ export default function ItemDetailScreen({
           </TouchableOpacity>
 
           <View style={styles.topIcons}>
+            <Text style={styles.tableText}>
+              Table {tableNumber || '-'}
+            </Text>
+
             <Text style={styles.iconSpacing}>
               ◷
             </Text>
@@ -477,7 +516,9 @@ export default function ItemDetailScreen({
               <FlatList
                 data={cartItems}
                 keyExtractor={(cartItem) =>
-                  String(cartItem.id)
+                  String(
+                    getItemId(cartItem)
+                  )
                 }
                 renderItem={renderCartItem}
                 showsVerticalScrollIndicator={
@@ -558,6 +599,13 @@ const styles =
     topIcons: {
       flexDirection: 'row',
       alignItems: 'center',
+    },
+
+    tableText: {
+      color: '#fff',
+      fontWeight: '900',
+      fontSize: 22,
+      marginRight: 24,
     },
 
     iconSpacing: {

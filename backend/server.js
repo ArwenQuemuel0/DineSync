@@ -8,11 +8,20 @@ const app = express();
 const PORT =
   process.env.PORT || 3000;
 
-// Middleware
+// =========================
+// MIDDLEWARE
+// =========================
+
 app.use(cors());
 app.use(express.json());
 
-// Routes
+// =========================
+// ROUTES
+// =========================
+
+const authRoutes =
+  require('./routes/auth');
+
 const menuRoutes =
   require('./routes/menu');
 
@@ -25,7 +34,12 @@ const paymentRoutes =
 const tableRoutes =
   require('./routes/table');
 
-// API Routes
+// =========================
+// API ROUTES
+// =========================
+
+app.use('/api', authRoutes);
+
 app.use('/api/menu', menuRoutes);
 
 app.use('/api/orders', orderRoutes);
@@ -36,18 +50,24 @@ app.use(
 );
 
 app.use(
-  '/api/tables',
+  '/api/table',
   tableRoutes
 );
 
-// Default route
+// =========================
+// DEFAULT ROUTE
+// =========================
+
 app.get('/', (req, res) => {
   res.send(
     'DineSync+ API is running'
   );
 });
 
-// Test route
+// =========================
+// TEST ROUTE
+// =========================
+
 app.post('/test', (req, res) => {
   console.log('TEST ROUTE HIT');
 
@@ -66,7 +86,10 @@ app.post('/test', (req, res) => {
   });
 });
 
-// Start server
+// =========================
+// START SERVER
+// =========================
+
 app.listen(
   PORT,
   '0.0.0.0',

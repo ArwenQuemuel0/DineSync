@@ -1,28 +1,46 @@
 const { createClient } = require('@supabase/supabase-js');
-require('dotenv').config();
 
-const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseKey = process.env.SUPABASE_KEY;
+const supabaseUrl =
+  process.env.SUPABASE_URL;
 
-const isProbablyPlaceholder = (v) => {
-  if (!v) return true;
-  const s = String(v).trim().toLowerCase();
-  return (
-    s === '' ||
-    s.includes('placeholder') ||
-    s.includes('your_') ||
-    s.includes('_here') ||
-    s.endsWith('here')
+const supabaseKey =
+  process.env.SUPABASE_SERVICE_ROLE_KEY ||
+  process.env.SUPABASE_ANON_KEY ||
+  process.env.SUPABASE_KEY;
+
+const isConfigured =
+  !!supabaseUrl && !!supabaseKey;
+
+if (!isConfigured) {
+  console.log(
+    'SUPABASE NOT CONFIGURED'
   );
-};
 
-const isConfigured = !isProbablyPlaceholder(supabaseUrl) && !isProbablyPlaceholder(supabaseKey);
+  console.log(
+    'SUPABASE_URL:',
+    supabaseUrl
+  );
 
-// If Supabase isn't configured, backend routes fall back to `mockDb.js`.
-// This keeps the app runnable without needing secrets immediately.
-const supabase = isConfigured ? createClient(supabaseUrl, supabaseKey) : null;
+  console.log(
+    'SUPABASE KEY EXISTS:',
+    !!supabaseKey
+  );
+} else {
+  console.log(
+    'SUPABASE CONNECTED TO:',
+    supabaseUrl
+  );
+}
+
+const supabase =
+  isConfigured
+    ? createClient(
+        supabaseUrl,
+        supabaseKey
+      )
+    : null;
 
 module.exports = {
-  isConfigured,
   supabase,
+  isConfigured,
 };

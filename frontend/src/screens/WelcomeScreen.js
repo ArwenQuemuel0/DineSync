@@ -10,9 +10,13 @@ import {
   StatusBar,
 } from 'react-native';
 
+import { useAuth } from '../context/AuthContext';
+
 export default function WelcomeScreen({
   navigation,
 }) {
+  const { user, tableNumber } = useAuth();
+
   return (
     <ImageBackground
       source={require('../../assets/welcome-background.avif')}
@@ -54,7 +58,7 @@ export default function WelcomeScreen({
                 </Text>
 
                 <Text style={styles.tableNumber}>
-                  Table No. 1
+                  Table No. {tableNumber || user?.table_number || '-'}
                 </Text>
               </View>
 

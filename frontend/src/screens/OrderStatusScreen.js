@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 
 import { getOrderStatus } from '../api/dinesync';
+import { useAuth } from '../context/AuthContext';
 
 export default function OrderStatusScreen({
   route,
@@ -19,6 +20,8 @@ export default function OrderStatusScreen({
 }) {
   const { orderId } =
     route.params || {};
+
+  const { tableNumber } = useAuth();
 
   const [order, setOrder] =
     useState(null);
@@ -67,7 +70,9 @@ export default function OrderStatusScreen({
     } catch (err) {
       console.log(
         'ORDER STATUS ERROR:',
-        err
+        err?.response?.data ||
+          err.message ||
+          err
       );
 
       setError(
@@ -161,6 +166,10 @@ export default function OrderStatusScreen({
   return (
     <View style={styles.frame}>
       <View style={styles.container}>
+        <Text style={styles.tableText}>
+          Table {tableNumber || order?.table_number || '-'}
+        </Text>
+
         <View style={styles.statusCircle}>
           <Text style={styles.statusIcon}>
             {statusInfo.icon}
@@ -237,6 +246,15 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     padding: 32,
+  },
+
+  tableText: {
+    position: 'absolute',
+    top: 32,
+    right: 32,
+    color: '#333',
+    fontSize: 24,
+    fontWeight: '900',
   },
 
   statusCircle: {

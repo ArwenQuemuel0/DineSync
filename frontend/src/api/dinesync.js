@@ -1,5 +1,12 @@
 import axios from 'axios';
 import Constants from 'expo-constants';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+// =========================
+// NODE BACKEND PORT
+// =========================
+
+const BACKEND_PORT = 3000;
 
 // =========================
 // AUTO GET HOST IP
@@ -10,33 +17,116 @@ const debuggerHost =
   Constants.manifest2?.extra
     ?.expoGo?.debuggerHost;
 
-const host = debuggerHost
-  ?.split(':')
-  ?.shift();
+const host =
+  debuggerHost
+    ?.split(':')
+    ?.shift() || 'localhost';
 
 // =========================
 // AUTO BUILD API URL
 // =========================
 
 const BASE_URL =
-  `http://${host}:3000/api`;
+  `http://${host}:${BACKEND_PORT}/api`;
 
 console.log(
-  'Using API:',
+  '=============================='
+);
+
+console.log(
+  'DINESYNC NODE API:',
   BASE_URL
+);
+
+console.log(
+  '=============================='
 );
 
 const api = axios.create({
   baseURL: BASE_URL,
-  timeout: 10000,
+  timeout: 15000,
+  headers: {
+    Accept: 'application/json',
+    'Content-Type': 'application/json',
+  },
 });
 
 // =========================
-// DEFAULT TABLE NUMBER
-// iPad = Table No. 1
+// AUTO ATTACH TOKEN
 // =========================
 
-const TABLE_NUMBER = 1;
+api.interceptors.request.use(
+  async (config) => {
+    const token =
+      await AsyncStorage.getItem('token');
+
+    if (token) {
+      config.headers.Authorization =
+        `Bearer ${token}`;
+    }
+
+    console.log(
+      'API REQUEST:',
+      config.method?.toUpperCase(),
+      `${BASE_URL}${config.url}`
+    );
+
+    return config;
+  },
+  (error) => {
+    return Promise.reject(error);
+  }
+);
+
+// =========================
+// LOGIN
+// =========================
+
+export const loginUser = async (
+  email,
+  password
+) => {
+  const response =
+    await api.post('/login', {
+      email,
+      password,
+    });
+
+  return response.data;
+};
+
+// =========================
+// TABLE ONLINE
+// =========================
+
+export const tableOnline = async () => {
+  const response =
+    await api.post('/table/online');
+
+  return response.data;
+};
+
+// =========================
+// TABLE HEARTBEAT
+// =========================
+
+export const tableHeartbeat = async () => {
+  const response =
+    await api.post('/table/heartbeat');
+
+  return response.data;
+};
+
+// =========================
+// TABLE OFFLINE
+// =========================
+
+export const tableOffline = async () => {
+  const response =
+    await api.post('/table/offline');
+
+  return response.data;
+};
 
 // =========================
 // GET MENU
@@ -46,6 +136,11 @@ export const getMenu = async () => {
   const response =
     await api.get('/menu');
 
+  console.log(
+    'MENU RESPONSE:',
+    response.data
+  );
+
   return response.data;
 };
 
@@ -54,7 +149,7 @@ export const getMenu = async () => {
 // =========================
 
 export const getTable = async (
-  tableNumber = TABLE_NUMBER
+  tableNumber
 ) => {
   const response =
     await api.get(
@@ -69,10 +164,17 @@ export const getTable = async (
 // =========================
 
 export const placeOrder = async (
-  cartItems
+  cartItems,
+  tableNumber
 ) => {
+  if (!tableNumber) {
+    throw new Error(
+      'Table number is missing. Please login using a table account.'
+    );
+  }
+
   const payload = {
-    table_number: TABLE_NUMBER,
+    table_number: tableNumber,
 
     items: cartItems.map(
       (item) => ({
@@ -90,6 +192,11 @@ export const placeOrder = async (
 
     status: 'pending',
   };
+
+  console.log(
+    'ORDER PAYLOAD:',
+    payload
+  );
 
   const response =
     await api.post(

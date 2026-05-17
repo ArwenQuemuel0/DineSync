@@ -13,11 +13,13 @@ import {
   TextInput,
   Alert,
   Image,
+  Modal,
 } from 'react-native';
 
 import { getMenu } from '../api/dinesync';
 
 import { useCart } from '../context/CartContext';
+import { useAuth } from '../context/AuthContext';
 
 export default function MenuScreen({
   navigation,
@@ -35,6 +37,22 @@ export default function MenuScreen({
     selectedCategory,
     setSelectedCategory,
   ] = useState('All');
+
+  const [
+    logoutModalVisible,
+    setLogoutModalVisible,
+  ] = useState(false);
+
+  const [
+    logoutPassword,
+    setLogoutPassword,
+  ] = useState('');
+
+  const {
+    user,
+    tableNumber,
+    logout,
+  } = useAuth();
 
   const {
     addToCart,
@@ -63,11 +81,18 @@ export default function MenuScreen({
         setMenuItems(
           response.data
         );
+      } else {
+        Alert.alert(
+          'Error',
+          response.message ||
+            'Failed to fetch menu.'
+        );
       }
     } catch (error) {
       console.error(
         'Failed to fetch menu:',
-        error
+        error?.response?.data ||
+          error.message
       );
 
       Alert.alert(
@@ -79,12 +104,48 @@ export default function MenuScreen({
     }
   };
 
+  const openLogoutModal = () => {
+    setLogoutPassword('');
+    setLogoutModalVisible(true);
+  };
+
+  const closeLogoutModal = () => {
+    setLogoutPassword('');
+    setLogoutModalVisible(false);
+  };
+
+  const handleConfirmLogout = async () => {
+    const result =
+      await logout(logoutPassword);
+
+    if (!result.success) {
+      Alert.alert(
+        'Logout Failed',
+        result.message ||
+          'Unable to logout.'
+      );
+
+      return;
+    }
+
+    closeLogoutModal();
+
+    navigation.replace('Login');
+  };
+
   const formatMoney = (value) => {
     const n = Number(value);
 
     return Number.isFinite(n)
       ? n.toFixed(2)
       : '0.00';
+  };
+
+  const getItemId = (item) => {
+    return (
+      item?.id ||
+      item?.menu_item_id
+    );
   };
 
   const getStock = (item) => {
@@ -116,11 +177,12 @@ export default function MenuScreen({
 
   const handleAddToCart = (item) => {
     const stock = getStock(item);
+    const itemId = getItemId(item);
 
     const existingItem =
       cartItems.find(
         (cartItem) =>
-          cartItem.id === item.id
+          getItemId(cartItem) === itemId
       );
 
     const currentQty =
@@ -155,6 +217,9 @@ export default function MenuScreen({
     const stock =
       getStock(item);
 
+    const itemId =
+      getItemId(item);
+
     if (item.quantity >= stock) {
       Alert.alert(
         'Insufficient Stock',
@@ -165,9 +230,30 @@ export default function MenuScreen({
     }
 
     updateQuantity(
-      item.id,
+      itemId,
       item.quantity + 1
     );
+  };
+
+  const handleDecreaseQuantity = (
+    item
+  ) => {
+    const itemId =
+      getItemId(item);
+
+    updateQuantity(
+      itemId,
+      item.quantity - 1
+    );
+  };
+
+  const handleRemoveFromCart = (
+    item
+  ) => {
+    const itemId =
+      getItemId(item);
+
+    removeFromCart(itemId);
   };
 
   const handleCheckout = () => {
@@ -180,11 +266,23 @@ export default function MenuScreen({
       return;
     }
 
+    if (!tableNumber && !user?.table_number) {
+      Alert.alert(
+        'Table Error',
+        'No table number found. Please login again using the assigned table account.'
+      );
+
+      return;
+    }
+
     navigation.navigate(
       'Payment',
       {
         cartItems,
         total: cartTotal,
+        tableNumber:
+          tableNumber ||
+          user?.table_number,
       }
     );
   };
@@ -365,7 +463,9 @@ export default function MenuScreen({
 
           <TouchableOpacity
             onPress={() =>
-              removeFromCart(item.id)
+              handleRemoveFromCart(
+                item
+              )
             }
           >
             <Text style={styles.removeText}>
@@ -378,9 +478,8 @@ export default function MenuScreen({
           <TouchableOpacity
             style={styles.qtyButton}
             onPress={() =>
-              updateQuantity(
-                item.id,
-                item.quantity - 1
+              handleDecreaseQuantity(
+                item
               )
             }
           >
@@ -436,6 +535,10 @@ export default function MenuScreen({
           </TouchableOpacity>
 
           <View style={styles.topIcons}>
+            <Text style={styles.tableText}>
+              Table {tableNumber || user?.table_number || '-'}
+            </Text>
+
             {activeOrderId ? (
               <TouchableOpacity
                 style={styles.statusButton}
@@ -458,6 +561,15 @@ export default function MenuScreen({
                 </Text>
               </TouchableOpacity>
             ) : null}
+
+            <TouchableOpacity
+              style={styles.logoutButton}
+              onPress={openLogoutModal}
+            >
+              <Text style={styles.logoutButtonText}>
+                Staff Logout
+              </Text>
+            </TouchableOpacity>
 
             <Text style={styles.iconSpacing}>
               ◷
@@ -528,7 +640,8 @@ export default function MenuScreen({
                 index
               ) =>
                 String(
-                  item?.id || index
+                  getItemId(item) ||
+                    index
                 )
               }
               columnWrapperStyle={{
@@ -564,7 +677,9 @@ export default function MenuScreen({
               <FlatList
                 data={cartItems}
                 keyExtractor={(item) =>
-                  String(item.id)
+                  String(
+                    getItemId(item)
+                  )
                 }
                 renderItem={
                   renderCartItem
@@ -622,6 +737,7 @@ export default function MenuScreen({
 
           <TouchableOpacity
             style={styles.searchButton}
+            onPress={() => {}}
           >
             <Text
               style={
@@ -633,6 +749,54 @@ export default function MenuScreen({
           </TouchableOpacity>
         </View>
       </View>
+
+      <Modal
+        transparent
+        visible={logoutModalVisible}
+        animationType="fade"
+        onRequestClose={closeLogoutModal}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.logoutModal}>
+            <Text style={styles.modalTitle}>
+              Staff Logout
+            </Text>
+
+            <Text style={styles.modalText}>
+              Enter staff password to logout this tablet.
+            </Text>
+
+            <TextInput
+              style={styles.passwordInput}
+              value={logoutPassword}
+              onChangeText={setLogoutPassword}
+              placeholder="Enter password"
+              secureTextEntry
+              autoCapitalize="none"
+            />
+
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                style={styles.cancelButton}
+                onPress={closeLogoutModal}
+              >
+                <Text style={styles.cancelButtonText}>
+                  Cancel
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.confirmButton}
+                onPress={handleConfirmLogout}
+              >
+                <Text style={styles.confirmButtonText}>
+                  Logout
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -670,6 +834,13 @@ const styles =
       alignItems: 'center',
     },
 
+    tableText: {
+      color: '#fff',
+      fontSize: 20,
+      fontWeight: '900',
+      marginRight: 14,
+    },
+
     statusButton: {
       backgroundColor: '#f68c45',
       paddingVertical: 8,
@@ -679,6 +850,20 @@ const styles =
     },
 
     statusButtonText: {
+      color: '#fff',
+      fontSize: 15,
+      fontWeight: '800',
+    },
+
+    logoutButton: {
+      backgroundColor: '#333',
+      paddingVertical: 8,
+      paddingHorizontal: 14,
+      borderRadius: 12,
+      marginRight: 14,
+    },
+
+    logoutButtonText: {
       color: '#fff',
       fontSize: 15,
       fontWeight: '800',
@@ -1005,5 +1190,84 @@ const styles =
       color: '#fff',
       fontWeight: '700',
       fontSize: 18,
+    },
+
+    modalOverlay: {
+      flex: 1,
+      backgroundColor:
+        'rgba(0, 0, 0, 0.55)',
+      justifyContent: 'center',
+      alignItems: 'center',
+      padding: 24,
+    },
+
+    logoutModal: {
+      width: '100%',
+      maxWidth: 420,
+      backgroundColor: '#fff',
+      borderRadius: 20,
+      padding: 24,
+    },
+
+    modalTitle: {
+      fontSize: 28,
+      fontWeight: '900',
+      color: '#333',
+      textAlign: 'center',
+      marginBottom: 8,
+    },
+
+    modalText: {
+      fontSize: 16,
+      color: '#666',
+      textAlign: 'center',
+      marginBottom: 18,
+      lineHeight: 22,
+    },
+
+    passwordInput: {
+      backgroundColor: '#f7f7f7',
+      borderWidth: 1,
+      borderColor: '#ddd',
+      borderRadius: 12,
+      paddingHorizontal: 14,
+      paddingVertical: 12,
+      fontSize: 17,
+      marginBottom: 20,
+    },
+
+    modalActions: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+    },
+
+    cancelButton: {
+      flex: 1,
+      backgroundColor: '#ddd',
+      paddingVertical: 13,
+      borderRadius: 12,
+      alignItems: 'center',
+      marginRight: 8,
+    },
+
+    cancelButtonText: {
+      color: '#333',
+      fontSize: 16,
+      fontWeight: '800',
+    },
+
+    confirmButton: {
+      flex: 1,
+      backgroundColor: '#f68c45',
+      paddingVertical: 13,
+      borderRadius: 12,
+      alignItems: 'center',
+      marginLeft: 8,
+    },
+
+    confirmButtonText: {
+      color: '#fff',
+      fontSize: 16,
+      fontWeight: '800',
     },
   });

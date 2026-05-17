@@ -22,6 +22,13 @@ export const CartProvider = ({
     setActiveOrderId,
   ] = useState(null);
 
+  const getItemId = (item) => {
+    return (
+      item.id ||
+      item.menu_item_id
+    );
+  };
+
   const getStock = (item) => {
     return (
       Number(item.available_quantity) ||
@@ -35,6 +42,16 @@ export const CartProvider = ({
 
   const addToCart = (item) => {
     const stock = getStock(item);
+    const itemId = getItemId(item);
+
+    if (!itemId) {
+      Alert.alert(
+        'Item Error',
+        'This item has no valid menu item ID.'
+      );
+
+      return;
+    }
 
     if (stock <= 0) {
       Alert.alert(
@@ -48,7 +65,8 @@ export const CartProvider = ({
     setCartItems((prevItems) => {
       const existingItem =
         prevItems.find(
-          (i) => i.id === item.id
+          (i) =>
+            getItemId(i) === itemId
         );
 
       if (existingItem) {
@@ -65,7 +83,7 @@ export const CartProvider = ({
         }
 
         return prevItems.map((i) =>
-          i.id === item.id
+          getItemId(i) === itemId
             ? {
                 ...i,
                 quantity:
@@ -79,6 +97,8 @@ export const CartProvider = ({
         ...prevItems,
         {
           ...item,
+          id: itemId,
+          menu_item_id: itemId,
           quantity: 1,
         },
       ];
@@ -88,7 +108,8 @@ export const CartProvider = ({
   const removeFromCart = (id) => {
     setCartItems((prevItems) =>
       prevItems.filter(
-        (item) => item.id !== id
+        (item) =>
+          getItemId(item) !== id
       )
     );
   };
@@ -100,7 +121,8 @@ export const CartProvider = ({
     setCartItems((prevItems) => {
       const existingItem =
         prevItems.find(
-          (item) => item.id === id
+          (item) =>
+            getItemId(item) === id
         );
 
       if (!existingItem) {
@@ -109,7 +131,8 @@ export const CartProvider = ({
 
       if (quantity <= 0) {
         return prevItems.filter(
-          (item) => item.id !== id
+          (item) =>
+            getItemId(item) !== id
         );
       }
 
@@ -126,7 +149,7 @@ export const CartProvider = ({
       }
 
       return prevItems.map((item) =>
-        item.id === id
+        getItemId(item) === id
           ? {
               ...item,
               quantity,

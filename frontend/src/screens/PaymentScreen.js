@@ -18,6 +18,7 @@ import {
 } from '../api/dinesync';
 
 import { useCart } from '../context/CartContext';
+import { useAuth } from '../context/AuthContext';
 
 export default function PaymentScreen({
   route,
@@ -26,7 +27,18 @@ export default function PaymentScreen({
   const {
     cartItems = [],
     total = 0,
+    tableNumber: routeTableNumber,
   } = route.params || {};
+
+  const {
+    tableNumber,
+    user,
+  } = useAuth();
+
+  const finalTableNumber =
+    routeTableNumber ||
+    tableNumber ||
+    user?.table_number;
 
   const {
     clearCart,
@@ -58,6 +70,15 @@ export default function PaymentScreen({
       return;
     }
 
+    if (!finalTableNumber) {
+      Alert.alert(
+        'Table Error',
+        'No table number found. Please login again using the assigned table account.'
+      );
+
+      return;
+    }
+
     setLoading(true);
 
     try {
@@ -67,7 +88,8 @@ export default function PaymentScreen({
 
       const orderResponse =
         await placeOrder(
-          cartItems
+          cartItems,
+          finalTableNumber
         );
 
       if (
@@ -104,18 +126,18 @@ export default function PaymentScreen({
           paymentData
         );
 
-        if (
-          paymentResponse.success
-        ) {
-          clearCart();
-        
-          setActiveOrderId(orderId);
-        
-          navigation.navigate(
-            'OrderStatus',
-            { orderId }
-          );
-        } else {
+      if (
+        paymentResponse.success
+      ) {
+        clearCart();
+
+        setActiveOrderId(orderId);
+
+        navigation.navigate(
+          'OrderStatus',
+          { orderId }
+        );
+      } else {
         Alert.alert(
           'Payment Failed',
           paymentResponse.message ||
@@ -171,6 +193,10 @@ export default function PaymentScreen({
               {'<'} Go Back
             </Text>
           </TouchableOpacity>
+
+          <Text style={styles.tableText}>
+            Table {finalTableNumber || '-'}
+          </Text>
 
           <Image
             source={require('../../assets/chefoppa_logo.png')}
@@ -293,6 +319,12 @@ const styles =
       fontSize: 28,
       color: '#3b3b3b',
       fontWeight: '700',
+    },
+
+    tableText: {
+      fontSize: 24,
+      color: '#3b3b3b',
+      fontWeight: '900',
     },
 
     logo: {
