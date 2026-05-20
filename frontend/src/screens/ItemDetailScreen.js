@@ -14,34 +14,12 @@ import {
   ActivityIndicator,
 } from 'react-native';
 
-import Constants from 'expo-constants';
-
 import {
   getDishRecommendations,
 } from '../api/dinesync';
 
 import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
-
-// =========================
-// LARAVEL STORAGE URL
-// For physical iPad/phone, this uses laptop IP from Expo host.
-// Example:
-// http://192.168.x.x:8000/storage
-// =========================
-
-const debuggerHost =
-  Constants.expoConfig?.hostUri ||
-  Constants.manifest2?.extra
-    ?.expoGo?.debuggerHost;
-
-const host =
-  debuggerHost
-    ?.split(':')
-    ?.shift() || 'localhost';
-
-const LARAVEL_STORAGE_URL =
-  `http://${host}:8000/storage`;
 
 export default function ItemDetailScreen({
   route,
@@ -181,27 +159,12 @@ export default function ItemDetailScreen({
   };
 
   const getItemImage = (data) => {
-    if (data?.image_url) {
-      return String(
-        data.image_url
-      ).trim();
-    }
-
-    if (!data?.image) {
-      return '';
-    }
-
     const image =
-      String(data.image).trim();
+      data?.image
+        ? String(data.image).trim()
+        : '';
 
-    if (
-      image.startsWith('http://') ||
-      image.startsWith('https://')
-    ) {
-      return image;
-    }
-
-    return `${LARAVEL_STORAGE_URL}/${image}`;
+    return image;
   };
 
   const getItemDescription = (data) => {
@@ -384,10 +347,20 @@ export default function ItemDetailScreen({
     const recommendedDescription =
       getItemDescription(recommendedItem);
 
+    const recommendedAvailable =
+      isItemAvailable(recommendedItem);
+
     return (
-      <View style={styles.recommendationCard}>
+      <View
+        style={[
+          styles.recommendationCard,
+          !recommendedAvailable &&
+            styles.recommendationCardDisabled,
+        ]}
+      >
         <TouchableOpacity
           style={styles.recommendationMain}
+          disabled={!recommendedAvailable}
           onPress={() =>
             handleOpenRecommendedItem(
               recommendedItem
@@ -422,6 +395,18 @@ export default function ItemDetailScreen({
           </Text>
 
           <Text
+            style={
+              recommendedAvailable
+                ? styles.recommendationAvailable
+                : styles.recommendationSoldOut
+            }
+          >
+            {recommendedAvailable
+              ? 'Available'
+              : 'Sold Out'}
+          </Text>
+
+          <Text
             style={styles.recommendationReason}
             numberOfLines={3}
           >
@@ -431,7 +416,12 @@ export default function ItemDetailScreen({
         </TouchableOpacity>
 
         <TouchableOpacity
-          style={styles.recommendationAddButton}
+          style={[
+            styles.recommendationAddButton,
+            !recommendedAvailable &&
+              styles.recommendationAddButtonDisabled,
+          ]}
+          disabled={!recommendedAvailable}
           onPress={() =>
             handleAddRecommendedItem(
               recommendedItem
@@ -605,6 +595,10 @@ export default function ItemDetailScreen({
 
               <Text style={styles.itemPrice}>
                 ₱{formatMoney(item.price)}
+              </Text>
+
+              <Text style={styles.itemCategory}>
+                {item.category || 'Uncategorized'}
               </Text>
 
               <Text
@@ -864,6 +858,13 @@ const styles =
       fontWeight: '800',
     },
 
+    itemCategory: {
+      marginTop: 6,
+      fontSize: 17,
+      fontWeight: '800',
+      color: '#777',
+    },
+
     availableText: {
       color: '#4CAF50',
       fontSize: 19,
@@ -928,6 +929,10 @@ const styles =
       alignItems: 'center',
     },
 
+    recommendationCardDisabled: {
+      opacity: 0.45,
+    },
+
     recommendationMain: {
       alignItems: 'center',
       width: '100%',
@@ -968,6 +973,20 @@ const styles =
       color: '#f68c45',
     },
 
+    recommendationAvailable: {
+      marginTop: 4,
+      fontSize: 12,
+      fontWeight: '900',
+      color: '#4CAF50',
+    },
+
+    recommendationSoldOut: {
+      marginTop: 4,
+      fontSize: 12,
+      fontWeight: '900',
+      color: 'red',
+    },
+
     recommendationReason: {
       marginTop: 6,
       fontSize: 12,
@@ -983,6 +1002,10 @@ const styles =
       paddingVertical: 8,
       paddingHorizontal: 20,
       borderRadius: 10,
+    },
+
+    recommendationAddButtonDisabled: {
+      backgroundColor: '#c9c9c9',
     },
 
     recommendationAddText: {

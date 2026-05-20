@@ -16,32 +16,10 @@ import {
   Modal,
 } from 'react-native';
 
-import Constants from 'expo-constants';
-
 import { getMenu } from '../api/dinesync';
 
 import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
-
-// =========================
-// LARAVEL STORAGE URL
-// For physical iPad/phone, this uses laptop IP from Expo host.
-// Example:
-// http://192.168.x.x:8000/storage
-// =========================
-
-const debuggerHost =
-  Constants.expoConfig?.hostUri ||
-  Constants.manifest2?.extra
-    ?.expoGo?.debuggerHost;
-
-const host =
-  debuggerHost
-    ?.split(':')
-    ?.shift() || 'localhost';
-
-const LARAVEL_STORAGE_URL =
-  `http://${host}:8000/storage`;
 
 export default function MenuScreen({
   navigation,
@@ -197,27 +175,12 @@ export default function MenuScreen({
   };
 
   const getItemImage = (item) => {
-    if (item?.image_url) {
-      return String(
-        item.image_url
-      ).trim();
-    }
-
-    if (!item?.image) {
-      return '';
-    }
-
     const image =
-      String(item.image).trim();
+      item?.image
+        ? String(item.image).trim()
+        : '';
 
-    if (
-      image.startsWith('http://') ||
-      image.startsWith('https://')
-    ) {
-      return image;
-    }
-
-    return `${LARAVEL_STORAGE_URL}/${image}`;
+    return image;
   };
 
   const isBestSeller = (item) => {
@@ -472,23 +435,17 @@ export default function MenuScreen({
             styles.itemImageCircle
           }
         >
-          {imageUri ? (
-            <Image
-              source={{
-                uri: imageUri,
-              }}
-              style={
-                styles.itemImage
-              }
-              resizeMode="cover"
-            />
-          ) : (
-            <Text
-              style={styles.itemEmoji}
-            >
-              🍲
-            </Text>
-          )}
+          <Image
+            source={
+              imageUri
+                ? { uri: imageUri }
+                : require('../../assets/placeholder-food.png')
+            }
+            style={
+              styles.itemImage
+            }
+            resizeMode="cover"
+          />
         </View>
 
         <View style={styles.itemInfo}>
