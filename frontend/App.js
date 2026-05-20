@@ -13,6 +13,7 @@ import MenuScreen from './src/screens/MenuScreen';
 import ItemDetailScreen from './src/screens/ItemDetailScreen';
 import PaymentScreen from './src/screens/PaymentScreen';
 import OrderStatusScreen from './src/screens/OrderStatusScreen';
+import OrderHistoryScreen from './src/screens/OrderHistoryScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -55,6 +56,11 @@ export default function App() {
             <Stack.Screen
               name="OrderStatus"
               component={OrderStatusScreen}
+            />
+
+            <Stack.Screen
+              name="OrderHistory"
+              component={OrderHistoryScreen}
             />
           </Stack.Navigator>
         </NavigationContainer>

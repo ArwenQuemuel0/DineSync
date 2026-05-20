@@ -16,10 +16,32 @@ import {
   Modal,
 } from 'react-native';
 
+import Constants from 'expo-constants';
+
 import { getMenu } from '../api/dinesync';
 
 import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
+
+// =========================
+// LARAVEL STORAGE URL
+// For physical iPad/phone, this uses laptop IP from Expo host.
+// Example:
+// http://192.168.x.x:8000/storage
+// =========================
+
+const debuggerHost =
+  Constants.expoConfig?.hostUri ||
+  Constants.manifest2?.extra
+    ?.expoGo?.debuggerHost;
+
+const host =
+  debuggerHost
+    ?.split(':')
+    ?.shift() || 'localhost';
+
+const LARAVEL_STORAGE_URL =
+  `http://${host}:8000/storage`;
 
 export default function MenuScreen({
   navigation,
@@ -149,30 +171,92 @@ export default function MenuScreen({
   };
 
   const getStock = (item) => {
-    return (
-      Number(item.available_quantity) ||
-      Number(item.stock) ||
-      Number(item.inventory) ||
-      Number(item.available_stock) ||
-      Number(item.current_stock) ||
-      0
-    );
+    const stockValue =
+      item?.available_quantity ??
+      item?.stock ??
+      item?.inventory ??
+      item?.available_stock ??
+      item?.current_stock;
+
+    if (
+      stockValue === undefined ||
+      stockValue === null ||
+      stockValue === ''
+    ) {
+      return null;
+    }
+
+    const numericStock =
+      Number(stockValue);
+
+    if (!Number.isFinite(numericStock)) {
+      return null;
+    }
+
+    return numericStock;
   };
 
   const getItemImage = (item) => {
-    const image =
-      item?.image ||
-      item?.image_url ||
-      '';
+    if (item?.image_url) {
+      return String(
+        item.image_url
+      ).trim();
+    }
 
-    return String(image).trim();
+    if (!item?.image) {
+      return '';
+    }
+
+    const image =
+      String(item.image).trim();
+
+    if (
+      image.startsWith('http://') ||
+      image.startsWith('https://')
+    ) {
+      return image;
+    }
+
+    return `${LARAVEL_STORAGE_URL}/${image}`;
   };
 
   const isBestSeller = (item) => {
     return (
       item.is_best_seller === true ||
-      item.is_best_seller === 'true'
+      item.is_best_seller === 1 ||
+      item.is_best_seller === 'true' ||
+      item.is_best_seller === '1'
     );
+  };
+
+  const isItemAvailable = (item) => {
+    const stock =
+      getStock(item);
+
+    const availability =
+      item?.is_available;
+
+    const markedAvailable =
+      availability === true ||
+      availability === 1 ||
+      availability === 'true' ||
+      availability === '1';
+
+    const markedUnavailable =
+      availability === false ||
+      availability === 0 ||
+      availability === 'false' ||
+      availability === '0';
+
+    if (markedUnavailable) {
+      return false;
+    }
+
+    if (stock === null) {
+      return markedAvailable;
+    }
+
+    return markedAvailable && stock > 0;
   };
 
   const handleAddToCart = (item) => {
@@ -190,25 +274,19 @@ export default function MenuScreen({
         ? existingItem.quantity
         : 0;
 
-        if (stock <= 0) {
-          Alert.alert(
-            'Not Available',
-            'This item is currently not available.'
-          );
-        
-          return;
-        }
-        
-        if (currentQty >= stock) {
-          Alert.alert(
-            'Insufficient Stock',
-            'You cannot add more of this item because it has limited availability.'
-          );
-        
-          return;
-        }
+    if (!isItemAvailable(item)) {
+      Alert.alert(
+        'Not Available',
+        'This item is currently not available.'
+      );
 
-    if (currentQty >= stock) {
+      return;
+    }
+
+    if (
+      stock !== null &&
+      currentQty >= stock
+    ) {
       Alert.alert(
         'Insufficient Stock',
         'You cannot add more of this item because it has limited availability.'
@@ -229,14 +307,17 @@ export default function MenuScreen({
     const itemId =
       getItemId(item);
 
-      if (item.quantity >= stock) {
-        Alert.alert(
-          'Insufficient Stock',
-          'You cannot add more of this item because it has limited availability.'
-        );
-      
-        return;
-      }
+    if (
+      stock !== null &&
+      item.quantity >= stock
+    ) {
+      Alert.alert(
+        'Insufficient Stock',
+        'You cannot add more of this item because it has limited availability.'
+      );
+
+      return;
+    }
 
     updateQuantity(
       itemId,
@@ -305,35 +386,35 @@ export default function MenuScreen({
     ),
   ];
 
-  const filteredItems = menuItems.filter((item) => {
-    const byCategory =
-      selectedCategory === 'All' ||
-      item.category === selectedCategory;
-  
-    const bySearch =
-      !search ||
-      (item.name || '')
-        .toLowerCase()
-        .includes(
-          search.toLowerCase()
+  const filteredItems =
+    menuItems
+      .filter((item) => {
+        const byCategory =
+          selectedCategory === 'All' ||
+          item.category === selectedCategory;
+
+        const bySearch =
+          !search ||
+          (item.name || '')
+            .toLowerCase()
+            .includes(
+              search.toLowerCase()
+            );
+
+        return byCategory && bySearch;
+      })
+      .sort((a, b) => {
+        const aAvailable =
+          isItemAvailable(a);
+
+        const bAvailable =
+          isItemAvailable(b);
+
+        return (
+          Number(bAvailable) -
+          Number(aAvailable)
         );
-  
-    return byCategory && bySearch;
-  })
-    .sort((a, b) => {
-      const aAvailable =
-        a.is_available === true &&
-        getStock(a) > 0;
-
-      const bAvailable =
-        b.is_available === true &&
-        getStock(b) > 0;
-
-      return (
-        Number(bAvailable) -
-        Number(aAvailable)
-      );
-    });
+      });
 
   const totalQuantity =
     cartItems.reduce(
@@ -346,18 +427,11 @@ export default function MenuScreen({
   const renderMenuItem = ({
     item,
   }) => {
-    const stock = getStock(item);
-
     const imageUri =
       getItemImage(item);
 
-      const isAvailable =
-      (
-        item.is_available === true ||
-        item.is_available === 1 ||
-        item.is_available === 'true'
-      ) &&
-      stock > 0;
+    const isAvailable =
+      isItemAvailable(item);
 
     const bestSeller =
       isBestSeller(item);
@@ -550,6 +624,19 @@ export default function MenuScreen({
               Table {tableNumber || user?.table_number || '-'}
             </Text>
 
+            <TouchableOpacity
+              style={styles.historyButton}
+              onPress={() =>
+                navigation.navigate(
+                  'OrderHistory'
+                )
+              }
+            >
+              <Text style={styles.historyButtonText}>
+                Order History
+              </Text>
+            </TouchableOpacity>
+
             {activeOrderId ? (
               <TouchableOpacity
                 style={styles.statusButton}
@@ -581,14 +668,6 @@ export default function MenuScreen({
                 Staff Logout
               </Text>
             </TouchableOpacity>
-
-            <Text style={styles.iconSpacing}>
-              ◷
-            </Text>
-
-            <Text style={styles.iconSpacing}>
-              🔔
-            </Text>
           </View>
         </View>
 
@@ -850,6 +929,20 @@ const styles =
       fontSize: 20,
       fontWeight: '900',
       marginRight: 14,
+    },
+
+    historyButton: {
+      backgroundColor: '#fff',
+      paddingVertical: 8,
+      paddingHorizontal: 14,
+      borderRadius: 12,
+      marginRight: 14,
+    },
+
+    historyButtonText: {
+      color: '#f68c45',
+      fontSize: 15,
+      fontWeight: '900',
     },
 
     statusButton: {

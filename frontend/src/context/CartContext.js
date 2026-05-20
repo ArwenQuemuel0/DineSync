@@ -30,25 +30,58 @@ export const CartProvider = ({
   };
 
   const getStock = (item) => {
-    return (
-      Number(item?.available_quantity) ||
-      Number(item?.stock) ||
-      Number(item?.inventory) ||
-      Number(item?.available_stock) ||
-      Number(item?.current_stock) ||
-      0
-    );
+    const stockValue =
+      item?.available_quantity ??
+      item?.stock ??
+      item?.inventory ??
+      item?.available_stock ??
+      item?.current_stock;
+
+    if (
+      stockValue === undefined ||
+      stockValue === null ||
+      stockValue === ''
+    ) {
+      return null;
+    }
+
+    const numericStock =
+      Number(stockValue);
+
+    if (!Number.isFinite(numericStock)) {
+      return null;
+    }
+
+    return numericStock;
   };
 
   const isItemAvailable = (item) => {
     const stock = getStock(item);
 
-    const manuallyAvailable =
-      item?.is_available === true ||
-      item?.is_available === 1 ||
-      item?.is_available === 'true';
+    const availability =
+      item?.is_available;
 
-    return manuallyAvailable && stock > 0;
+    const markedAvailable =
+      availability === true ||
+      availability === 1 ||
+      availability === 'true' ||
+      availability === '1';
+
+    const markedUnavailable =
+      availability === false ||
+      availability === 0 ||
+      availability === 'false' ||
+      availability === '0';
+
+    if (markedUnavailable) {
+      return false;
+    }
+
+    if (stock === null) {
+      return markedAvailable;
+    }
+
+    return markedAvailable && stock > 0;
   };
 
   const addToCart = (item) => {
@@ -82,8 +115,8 @@ export const CartProvider = ({
 
       if (existingItem) {
         if (
-          existingItem.quantity >=
-          stock
+          stock !== null &&
+          existingItem.quantity >= stock
         ) {
           Alert.alert(
             'Insufficient Stock',
@@ -150,7 +183,10 @@ export const CartProvider = ({
       const stock =
         getStock(existingItem);
 
-      if (quantity > stock) {
+      if (
+        stock !== null &&
+        quantity > stock
+      ) {
         Alert.alert(
           'Insufficient Stock',
           'You cannot add more of this item because it has limited availability.'

@@ -140,6 +140,38 @@ const getLoggedInTableUser = async (req) => {
 };
 
 // =========================
+// GET RESTAURANT TABLE BY TABLE NUMBER
+// =========================
+
+const getRestaurantTableByNumber = async (
+  tableNumber
+) => {
+  const {
+    data: restaurantTable,
+    error,
+  } = await supabase
+    .from('restaurant_tables')
+    .select('*')
+    .eq(
+      'table_number',
+      tableNumber
+    )
+    .single();
+
+  if (error || !restaurantTable) {
+    return {
+      error,
+      restaurantTable: null,
+    };
+  }
+
+  return {
+    error: null,
+    restaurantTable,
+  };
+};
+
+// =========================
 // TABLE ONLINE
 // POST /api/table/online
 // =========================
@@ -390,6 +422,261 @@ router.post('/offline', async (req, res) => {
       error:
         error.message ||
         String(error),
+    });
+  }
+});
+
+// =========================
+// TABLE ORDER HISTORY
+// GET /api/table/order-history
+// Uses active table session.
+// Does NOT fetch old orders by table number.
+// =========================
+
+router.get('/order-history', async (req, res) => {
+  try {
+    console.log(
+      'GET /api/table/order-history HIT'
+    );
+
+    const {
+      error: authError,
+      user,
+    } = await getLoggedInTableUser(
+      req
+    );
+
+    if (authError) {
+      return res.status(401).json({
+        success: false,
+        message: authError,
+      });
+    }
+
+    const {
+      error: tableError,
+      restaurantTable,
+    } =
+      await getRestaurantTableByNumber(
+        user.table_number
+      );
+
+    if (
+      tableError ||
+      !restaurantTable
+    ) {
+      console.log(
+        'ORDER HISTORY TABLE ERROR:',
+        tableError
+      );
+
+      return res.status(404).json({
+        success: false,
+        message:
+          `Table No. ${user.table_number} was not found.`,
+      });
+    }
+
+    // =========================
+    // FIND ACTIVE TABLE SESSION
+    // =========================
+
+    const {
+      data: activeSession,
+      error: sessionError,
+    } = await supabase
+      .from('table_sessions')
+      .select('*')
+      .eq(
+        'restaurant_table_id',
+        restaurantTable.id
+      )
+      .eq('status', 'active')
+      .single();
+
+    if (
+      sessionError ||
+      !activeSession
+    ) {
+      console.log(
+        'ORDER HISTORY ACTIVE SESSION:',
+        sessionError
+      );
+
+      return res.json({
+        success: true,
+        data: [],
+        message:
+          'No active table session found.',
+      });
+    }
+
+    // =========================
+    // GET ORDERS BY ACTIVE SESSION
+    // =========================
+
+    const {
+      data: orders,
+      error: ordersError,
+    } = await supabase
+      .from('orders')
+      .select(
+        'id, order_number, table_number, table_session_id, status, total_amount, created_at, updated_at'
+      )
+      .eq(
+        'table_session_id',
+        activeSession.id
+      )
+      .order('created_at', {
+        ascending: true,
+      });
+
+    if (ordersError) {
+      throw ordersError;
+    }
+
+    const orderIds =
+      (orders || []).map(
+        (order) => order.id
+      );
+
+    if (orderIds.length === 0) {
+      return res.json({
+        success: true,
+        data: [],
+        session:
+          activeSession,
+      });
+    }
+
+    // =========================
+    // GET ORDER ITEMS
+    // =========================
+
+    const {
+      data: orderItems,
+      error: itemsError,
+    } = await supabase
+      .from('order_items')
+      .select('*')
+      .in(
+        'order_id',
+        orderIds
+      );
+
+    if (itemsError) {
+      throw itemsError;
+    }
+
+    const menuItemIds = [
+      ...new Set(
+        (orderItems || [])
+          .map(
+            (item) =>
+              item.menu_item_id
+          )
+          .filter(Boolean)
+      ),
+    ];
+
+    let menuItems = [];
+
+    if (menuItemIds.length > 0) {
+      const {
+        data: menuData,
+        error: menuError,
+      } = await supabase
+        .from('menu_items')
+        .select(
+          'id, name, price, category, image'
+        )
+        .in(
+          'id',
+          menuItemIds
+        );
+
+      if (menuError) {
+        throw menuError;
+      }
+
+      menuItems =
+        menuData || [];
+    }
+
+    // =========================
+    // ENRICH ORDERS WITH ITEMS
+    // =========================
+
+    const enrichedOrders =
+      (orders || []).map((order) => {
+        const items =
+          (orderItems || [])
+            .filter(
+              (item) =>
+                Number(item.order_id) ===
+                Number(order.id)
+            )
+            .map((item) => {
+              const menuItem =
+                menuItems.find(
+                  (menu) =>
+                    Number(menu.id) ===
+                    Number(
+                      item.menu_item_id
+                    )
+                );
+
+              const price =
+                Number(
+                  item.price ||
+                    menuItem?.price ||
+                    0
+                );
+
+              const quantity =
+                Number(
+                  item.quantity || 0
+                );
+
+              return {
+                ...item,
+                name:
+                  item.name ||
+                  menuItem?.name ||
+                  'Menu Item',
+                price,
+                quantity,
+                subtotal:
+                  price * quantity,
+                menu_item:
+                  menuItem || null,
+              };
+            });
+
+        return {
+          ...order,
+          items,
+        };
+      });
+
+    return res.json({
+      success: true,
+      data:
+        enrichedOrders,
+      session:
+        activeSession,
+    });
+  } catch (error) {
+    console.error(
+      'TABLE ORDER HISTORY ERROR:',
+      error
+    );
+
+    return res.status(500).json({
+      success: false,
+      message:
+        error.message ||
+        'Failed to fetch table order history.',
     });
   }
 });

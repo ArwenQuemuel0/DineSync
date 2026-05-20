@@ -129,6 +129,19 @@ export const tableOffline = async () => {
 };
 
 // =========================
+// TABLE ORDER HISTORY
+// Uses logged-in table token/session
+// Backend detects table number
+// =========================
+
+export const getTableOrderHistory = async () => {
+  const response =
+    await api.get('/table/order-history');
+
+  return response.data;
+};
+
+// =========================
 // GET MENU
 // =========================
 
@@ -190,6 +203,8 @@ export const placeOrder = async (
       })
     ),
 
+    // Mobile can send this,
+    // but backend should still force pending.
     status: 'pending',
   };
 
@@ -246,6 +261,27 @@ export const getActiveTableOrders =
     const response =
       await api.get(
         `/orders/table/${tableNumber}/active`
+      );
+
+    return response.data;
+  };
+
+// =========================
+// AI DISH RECOMMENDATIONS
+// =========================
+
+export const getDishRecommendations =
+  async ({
+    selectedItem,
+    cartItems = [],
+  }) => {
+    const response =
+      await api.post(
+        '/ai/recommend-dishes',
+        {
+          selected_item: selectedItem,
+          cart_items: cartItems,
+        }
       );
 
     return response.data;

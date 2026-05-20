@@ -34,6 +34,9 @@ const paymentRoutes =
 const tableRoutes =
   require('./routes/table');
 
+const aiRoutes =
+  require('./routes/ai');
+
 // =========================
 // API ROUTES
 // =========================
@@ -52,6 +55,11 @@ app.use(
 app.use(
   '/api/table',
   tableRoutes
+);
+
+app.use(
+  '/api/ai',
+  aiRoutes
 );
 
 // =========================

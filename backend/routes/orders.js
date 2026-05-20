@@ -188,7 +188,7 @@ router.get(
       } = await supabase
         .from('orders')
         .select(
-          'id, order_number, table_number, status, total_amount, created_at, updated_at'
+          'id, order_number, table_number, table_session_id, status, total_amount, created_at, updated_at'
         )
         .eq(
           'table_number',
@@ -304,6 +304,13 @@ router.get(
                           menuItem?.price ||
                           0
                       ),
+                    subtotal:
+                      Number(item.quantity || 0) *
+                      Number(
+                        item.price ||
+                          menuItem?.price ||
+                          0
+                      ),
                     menu_item:
                       menuItem || null,
                   };
@@ -391,15 +398,6 @@ router.post('/', async (req, res) => {
       });
     }
 
-    // =========================
-    // FORCE NEW ORDERS TO PENDING
-    // Do not trust req.body.status.
-    // Mobile creates order -> pending
-    // KDS Start Preparing -> preparing
-    // KDS Mark Ready -> ready
-    // KDS Complete -> served
-    // =========================
-
     const newOrderStatus = 'pending';
 
     // =========================
@@ -427,6 +425,7 @@ router.post('/', async (req, res) => {
           `ORD-${Date.now()}`,
         table_number:
           finalTableNumber,
+        table_session_id: null,
         items,
         status: newOrderStatus,
         total_amount: totalAmount,
@@ -470,6 +469,36 @@ router.post('/', async (req, res) => {
         success: false,
         message:
           `Table No. ${finalTableNumber} was not found in restaurant_tables.`,
+      });
+    }
+
+    // =========================
+    // FIND ACTIVE TABLE SESSION
+    // =========================
+
+    const {
+      data: activeSession,
+      error: sessionError,
+    } = await supabase
+      .from('table_sessions')
+      .select('*')
+      .eq(
+        'restaurant_table_id',
+        restaurantTable.id
+      )
+      .eq('status', 'active')
+      .single();
+
+    if (sessionError || !activeSession) {
+      console.log(
+        'ACTIVE SESSION ERROR:',
+        sessionError
+      );
+
+      return res.status(400).json({
+        success: false,
+        message:
+          'No active table session found for this table.',
       });
     }
 
@@ -600,7 +629,7 @@ router.post('/', async (req, res) => {
     // CREATE ORDER
     // IMPORTANT:
     // Always force new orders to pending.
-    // Never use req.body.status here.
+    // Always save active table_session_id.
     // =========================
 
     const orderNumber =
@@ -613,7 +642,9 @@ router.post('/', async (req, res) => {
       order_number: orderNumber,
       table_number:
         finalTableNumber,
-      status: 'pending',
+      table_session_id:
+        activeSession.id,
+      status: newOrderStatus,
       total_amount:
         totalAmount,
       created_at: now,
@@ -627,7 +658,7 @@ router.post('/', async (req, res) => {
       .from('orders')
       .insert(orderPayload)
       .select(
-        'id, order_number, table_number, status, total_amount, created_at, updated_at'
+        'id, order_number, table_number, table_session_id, status, total_amount, created_at, updated_at'
       )
       .single();
 
@@ -912,6 +943,8 @@ router.post('/', async (req, res) => {
           orderItemsPayload,
         restaurant_table:
           restaurantTable,
+        table_session:
+          activeSession,
       },
     });
   } catch (error) {
@@ -962,7 +995,7 @@ router.get('/:id', async (req, res) => {
     } = await supabase
       .from('orders')
       .select(
-        'id, order_number, table_number, status, total_amount, created_at, updated_at'
+        'id, order_number, table_number, table_session_id, status, total_amount, created_at, updated_at'
       )
       .eq('id', orderId)
       .single();
@@ -1037,6 +1070,13 @@ router.get('/:id', async (req, res) => {
             menuItem?.name ||
             'Menu Item',
           price:
+            Number(
+              item.price ||
+                menuItem?.price ||
+                0
+            ),
+          subtotal:
+            Number(item.quantity || 0) *
             Number(
               item.price ||
                 menuItem?.price ||

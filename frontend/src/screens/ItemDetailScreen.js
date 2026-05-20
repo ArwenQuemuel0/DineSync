@@ -14,9 +14,34 @@ import {
   ActivityIndicator,
 } from 'react-native';
 
-import api from '../api/dinesync';
+import Constants from 'expo-constants';
+
+import {
+  getDishRecommendations,
+} from '../api/dinesync';
+
 import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
+
+// =========================
+// LARAVEL STORAGE URL
+// For physical iPad/phone, this uses laptop IP from Expo host.
+// Example:
+// http://192.168.x.x:8000/storage
+// =========================
+
+const debuggerHost =
+  Constants.expoConfig?.hostUri ||
+  Constants.manifest2?.extra
+    ?.expoGo?.debuggerHost;
+
+const host =
+  debuggerHost
+    ?.split(':')
+    ?.shift() || 'localhost';
+
+const LARAVEL_STORAGE_URL =
+  `http://${host}:8000/storage`;
 
 export default function ItemDetailScreen({
   route,
@@ -27,13 +52,13 @@ export default function ItemDetailScreen({
   const { tableNumber } = useAuth();
 
   const [
-    pairings,
-    setPairings,
+    recommendations,
+    setRecommendations,
   ] = useState([]);
 
   const [
-    loadingPairings,
-    setLoadingPairings,
+    loadingRecommendations,
+    setLoadingRecommendations,
   ] = useState(false);
 
   const {
@@ -46,35 +71,42 @@ export default function ItemDetailScreen({
 
   useEffect(() => {
     if (item?.name) {
-      fetchPairings();
+      fetchRecommendations();
     }
-  }, [item?.name]);
+  }, [item?.id, item?.name]);
 
-  const fetchPairings = async () => {
+  const fetchRecommendations = async () => {
     try {
-      setLoadingPairings(true);
+      setLoadingRecommendations(true);
 
       const response =
-        await api.post(
-          '/ai/pairing',
-          {
-            itemName: item.name,
-          }
-        );
+        await getDishRecommendations({
+          selectedItem: item,
+          cartItems,
+        });
 
-      if (response.data.success) {
-        setPairings(
-          response.data.recommendations || []
+      console.log(
+        'AI RECOMMENDATIONS RESPONSE:',
+        response
+      );
+
+      if (response.success) {
+        setRecommendations(
+          response.data || []
         );
+      } else {
+        setRecommendations([]);
       }
     } catch (error) {
       console.log(
-        'PAIRING ERROR:',
-        error.response?.data ||
+        'AI RECOMMENDATIONS ERROR:',
+        error?.response?.data ||
           error.message
       );
+
+      setRecommendations([]);
     } finally {
-      setLoadingPairings(false);
+      setLoadingRecommendations(false);
     }
   };
 
@@ -94,23 +126,93 @@ export default function ItemDetailScreen({
   };
 
   const getStock = (data) => {
-    return (
-      Number(data?.available_quantity) ||
-      Number(data?.stock) ||
-      Number(data?.inventory) ||
-      Number(data?.available_stock) ||
-      Number(data?.current_stock) ||
-      0
-    );
+    const stockValue =
+      data?.available_quantity ??
+      data?.stock ??
+      data?.inventory ??
+      data?.available_stock ??
+      data?.current_stock;
+
+    if (
+      stockValue === undefined ||
+      stockValue === null ||
+      stockValue === ''
+    ) {
+      return null;
+    }
+
+    const numericStock =
+      Number(stockValue);
+
+    if (!Number.isFinite(numericStock)) {
+      return null;
+    }
+
+    return numericStock;
+  };
+
+  const isItemAvailable = (data) => {
+    const stock = getStock(data);
+
+    const availability =
+      data?.is_available;
+
+    const markedAvailable =
+      availability === true ||
+      availability === 1 ||
+      availability === 'true' ||
+      availability === '1';
+
+    const markedUnavailable =
+      availability === false ||
+      availability === 0 ||
+      availability === 'false' ||
+      availability === '0';
+
+    if (markedUnavailable) {
+      return false;
+    }
+
+    if (stock === null) {
+      return markedAvailable;
+    }
+
+    return markedAvailable && stock > 0;
   };
 
   const getItemImage = (data) => {
+    if (data?.image_url) {
+      return String(
+        data.image_url
+      ).trim();
+    }
+
+    if (!data?.image) {
+      return '';
+    }
+
     const image =
-      data?.image ||
-      data?.image_url ||
+      String(data.image).trim();
+
+    if (
+      image.startsWith('http://') ||
+      image.startsWith('https://')
+    ) {
+      return image;
+    }
+
+    return `${LARAVEL_STORAGE_URL}/${image}`;
+  };
+
+  const getItemDescription = (data) => {
+    const description =
+      data?.description ||
+      data?.item_description ||
+      data?.details ||
+      data?.desc ||
       '';
 
-    return String(image).trim();
+    return String(description).trim();
   };
 
   const stock = getStock(item);
@@ -118,12 +220,10 @@ export default function ItemDetailScreen({
   const imageUri = getItemImage(item);
 
   const isAvailable =
-    (
-      item?.is_available === true ||
-      item?.is_available === 1 ||
-      item?.is_available === 'true'
-    ) &&
-    stock > 0;
+    isItemAvailable(item);
+
+  const itemDescription =
+    getItemDescription(item);
 
   const handleAddToCart = () => {
     if (!item) return;
@@ -150,7 +250,10 @@ export default function ItemDetailScreen({
       return;
     }
 
-    if (currentQty >= stock) {
+    if (
+      stock !== null &&
+      currentQty >= stock
+    ) {
       Alert.alert(
         'Insufficient Stock',
         'You cannot add more of this item because it has limited availability.'
@@ -160,6 +263,34 @@ export default function ItemDetailScreen({
     }
 
     addToCart(item);
+  };
+
+  const handleAddRecommendedItem = (
+    recommendedItem
+  ) => {
+    if (!recommendedItem) return;
+
+    if (!isItemAvailable(recommendedItem)) {
+      Alert.alert(
+        'Not Available',
+        'This recommended item is currently not available.'
+      );
+
+      return;
+    }
+
+    addToCart(recommendedItem);
+  };
+
+  const handleOpenRecommendedItem = (
+    recommendedItem
+  ) => {
+    navigation.replace(
+      'ItemDetail',
+      {
+        item: recommendedItem,
+      }
+    );
   };
 
   const handleIncreaseQuantity = (
@@ -172,6 +303,7 @@ export default function ItemDetailScreen({
       getItemId(cartItem);
 
     if (
+      cartStock !== null &&
       cartItem.quantity >= cartStock
     ) {
       Alert.alert(
@@ -243,23 +375,73 @@ export default function ItemDetailScreen({
       0
     );
 
-  const renderPairing = ({
-    item: pairing,
+  const renderRecommendation = ({
+    item: recommendedItem,
   }) => {
-    return (
-      <View style={styles.pairingCard}>
-        <View style={styles.pairingCircle}>
-          <Text style={styles.pairingEmoji}>
-            🍽️
-          </Text>
-        </View>
+    const recommendedImage =
+      getItemImage(recommendedItem);
 
-        <Text
-          style={styles.pairingText}
-          numberOfLines={2}
+    const recommendedDescription =
+      getItemDescription(recommendedItem);
+
+    return (
+      <View style={styles.recommendationCard}>
+        <TouchableOpacity
+          style={styles.recommendationMain}
+          onPress={() =>
+            handleOpenRecommendedItem(
+              recommendedItem
+            )
+          }
         >
-          {pairing}
-        </Text>
+          <View style={styles.recommendationCircle}>
+            {recommendedImage ? (
+              <Image
+                source={{
+                  uri: recommendedImage,
+                }}
+                style={styles.recommendationImage}
+                resizeMode="cover"
+              />
+            ) : (
+              <Text style={styles.recommendationEmoji}>
+                🍽️
+              </Text>
+            )}
+          </View>
+
+          <Text
+            style={styles.recommendationName}
+            numberOfLines={2}
+          >
+            {recommendedItem.name}
+          </Text>
+
+          <Text style={styles.recommendationPrice}>
+            ₱{formatMoney(recommendedItem.price)}
+          </Text>
+
+          <Text
+            style={styles.recommendationReason}
+            numberOfLines={3}
+          >
+            {recommendedDescription ||
+              'No description available.'}
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={styles.recommendationAddButton}
+          onPress={() =>
+            handleAddRecommendedItem(
+              recommendedItem
+            )
+          }
+        >
+          <Text style={styles.recommendationAddText}>
+            Add
+          </Text>
+        </TouchableOpacity>
       </View>
     );
   };
@@ -433,13 +615,15 @@ export default function ItemDetailScreen({
                 }
               >
                 {isAvailable
-                  ? `Available (${stock})`
+                  ? stock !== null
+                    ? `Available (${stock})`
+                    : 'Available'
                   : 'Sold Out'}
               </Text>
 
               <Text style={styles.description}>
-                {item.description ||
-                  'A selected menu item from Chef Oppa.'}
+                {itemDescription ||
+                  'No description available for this item.'}
               </Text>
 
               <TouchableOpacity
@@ -460,36 +644,39 @@ export default function ItemDetailScreen({
                 </Text>
               </TouchableOpacity>
 
-              <View style={styles.pairingSection}>
-                <Text style={styles.pairingTitle}>
-                  Recommended Pairings
+              <View style={styles.recommendationSection}>
+                <Text style={styles.recommendationTitle}>
+                  Must try pairings!
                 </Text>
 
-                {loadingPairings ? (
+                {loadingRecommendations ? (
                   <ActivityIndicator
                     size="small"
                     color="#f68c45"
                   />
-                ) : pairings.length > 0 ? (
+                ) : recommendations.length > 0 ? (
                   <FlatList
                     horizontal
-                    data={pairings}
+                    data={recommendations}
                     keyExtractor={(
-                      pairing,
+                      recommendedItem,
                       index
                     ) =>
-                      `${pairing}-${index}`
+                      String(
+                        recommendedItem.id ||
+                          index
+                      )
                     }
                     renderItem={
-                      renderPairing
+                      renderRecommendation
                     }
                     showsHorizontalScrollIndicator={
                       false
                     }
                   />
                 ) : (
-                  <Text style={styles.noPairingText}>
-                    No recommendations yet.
+                  <Text style={styles.noRecommendationText}>
+                    No recommendations available yet.
                   </Text>
                 )}
               </View>
@@ -629,7 +816,7 @@ const styles =
 
     detailCard: {
       width: '86%',
-      minHeight: 610,
+      minHeight: 650,
       backgroundColor: '#fff',
       borderRadius: 24,
       borderWidth: 1.5,
@@ -644,14 +831,14 @@ const styles =
     },
 
     imageCircle: {
-      width: 160,
-      height: 160,
-      borderRadius: 80,
+      width: 150,
+      height: 150,
+      borderRadius: 75,
       backgroundColor: '#ececec',
       justifyContent: 'center',
       alignItems: 'center',
       overflow: 'hidden',
-      marginBottom: 18,
+      marginBottom: 14,
     },
 
     itemImage: {
@@ -664,7 +851,7 @@ const styles =
     },
 
     itemName: {
-      fontSize: 42,
+      fontSize: 38,
       fontWeight: '900',
       color: '#333',
       textAlign: 'center',
@@ -672,38 +859,38 @@ const styles =
 
     itemPrice: {
       color: '#f68c45',
-      marginTop: 10,
-      fontSize: 32,
+      marginTop: 8,
+      fontSize: 30,
       fontWeight: '800',
     },
 
     availableText: {
       color: '#4CAF50',
-      fontSize: 20,
+      fontSize: 19,
       fontWeight: '800',
       marginTop: 8,
     },
 
     notAvailableText: {
       color: 'red',
-      fontSize: 20,
+      fontSize: 19,
       fontWeight: '800',
       marginTop: 8,
     },
 
     description: {
-      marginTop: 18,
-      fontSize: 20,
+      marginTop: 14,
+      fontSize: 18,
       color: '#666',
       textAlign: 'center',
-      lineHeight: 30,
+      lineHeight: 26,
     },
 
     addToOrderButton: {
-      marginTop: 26,
+      marginTop: 20,
       backgroundColor: '#f68c45',
-      paddingVertical: 16,
-      paddingHorizontal: 48,
+      paddingVertical: 14,
+      paddingHorizontal: 44,
       borderRadius: 18,
     },
 
@@ -713,16 +900,16 @@ const styles =
 
     addToOrderText: {
       color: '#fff',
-      fontSize: 24,
+      fontSize: 22,
       fontWeight: '900',
     },
 
-    pairingSection: {
+    recommendationSection: {
       width: '100%',
-      marginTop: 26,
+      marginTop: 22,
     },
 
-    pairingTitle: {
+    recommendationTitle: {
       fontSize: 22,
       fontWeight: '900',
       color: '#333',
@@ -730,8 +917,8 @@ const styles =
       textAlign: 'center',
     },
 
-    pairingCard: {
-      width: 150,
+    recommendationCard: {
+      width: 185,
       backgroundColor: '#fff7ef',
       borderWidth: 1,
       borderColor: '#f0b287',
@@ -741,28 +928,70 @@ const styles =
       alignItems: 'center',
     },
 
-    pairingCircle: {
-      width: 54,
-      height: 54,
-      borderRadius: 27,
+    recommendationMain: {
+      alignItems: 'center',
+      width: '100%',
+    },
+
+    recommendationCircle: {
+      width: 64,
+      height: 64,
+      borderRadius: 32,
       backgroundColor: '#ffe1ca',
       justifyContent: 'center',
       alignItems: 'center',
+      overflow: 'hidden',
       marginBottom: 8,
     },
 
-    pairingEmoji: {
-      fontSize: 26,
+    recommendationImage: {
+      width: '100%',
+      height: '100%',
     },
 
-    pairingText: {
+    recommendationEmoji: {
+      fontSize: 28,
+    },
+
+    recommendationName: {
       fontSize: 15,
-      fontWeight: '800',
+      fontWeight: '900',
       textAlign: 'center',
       color: '#333',
+      minHeight: 36,
     },
 
-    noPairingText: {
+    recommendationPrice: {
+      marginTop: 4,
+      fontSize: 15,
+      fontWeight: '900',
+      color: '#f68c45',
+    },
+
+    recommendationReason: {
+      marginTop: 6,
+      fontSize: 12,
+      fontWeight: '700',
+      textAlign: 'center',
+      color: '#666',
+      minHeight: 44,
+    },
+
+    recommendationAddButton: {
+      marginTop: 8,
+      backgroundColor: '#f68c45',
+      paddingVertical: 8,
+      paddingHorizontal: 20,
+      borderRadius: 10,
+    },
+
+    recommendationAddText: {
+      color: '#fff',
+      fontWeight: '900',
+      fontSize: 14,
+    },
+
+    noRecommendationText: {
       textAlign: 'center',
       color: '#999',
       fontSize: 16,
