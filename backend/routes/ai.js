@@ -17,6 +17,57 @@ const MODEL =
   'gpt-4o-mini';
 
 // =========================
+// HELPER: NORMALIZE FLAVOR TAGS
+// =========================
+
+const normalizeFlavorTags = (value) => {
+  if (Array.isArray(value)) {
+    return value
+      .map((tag) => String(tag).trim())
+      .filter(Boolean);
+  }
+
+  if (!value) {
+    return [];
+  }
+
+  return String(value)
+    .split(',')
+    .map((tag) => tag.trim())
+    .filter(Boolean);
+};
+
+// =========================
+// HELPER: NORMALIZE MEAL TYPE
+// =========================
+
+const normalizeMealType = (value) => {
+  if (!value) {
+    return null;
+  }
+
+  return String(value).trim();
+};
+
+// =========================
+// HELPER: NORMALIZE MENU ITEM
+// =========================
+
+const normalizeMenuItem = (item) => {
+  return {
+    ...item,
+
+    flavor_tags: normalizeFlavorTags(
+      item?.flavor_tags
+    ),
+
+    meal_type: normalizeMealType(
+      item?.meal_type
+    ),
+  };
+};
+
+// =========================
 // HELPER: COMPUTE AVAILABLE QUANTITY
 // Same idea as menu.js
 // =========================
@@ -39,12 +90,12 @@ const computeAvailableQuantity =
       !recipeRows ||
       recipeRows.length === 0
     ) {
-      return {
+      return normalizeMenuItem({
         ...menuItem,
         available_quantity: null,
         is_available:
           menuItem.is_available !== false,
-      };
+      });
     }
 
     let maxServings = Infinity;
@@ -129,14 +180,14 @@ const computeAvailableQuantity =
       menuItem.is_available !== 'false' &&
       menuItem.is_available !== '0';
 
-    return {
+    return normalizeMenuItem({
       ...menuItem,
       available_quantity:
         maxServings,
       is_available:
         manuallyAvailable &&
         maxServings > 0,
-    };
+    });
   };
 
 // =========================
@@ -220,17 +271,25 @@ router.post(
         });
       }
 
+      const normalizedSelectedItem =
+        selected_item
+          ? normalizeMenuItem(selected_item)
+          : null;
+
+      const normalizedCartItems =
+        cart_items.map(normalizeMenuItem);
+
       const availableMenuItems =
         await getAvailableMenuItems();
 
       const selectedId =
         Number(
-          selected_item?.id ||
-            selected_item?.menu_item_id
+          normalizedSelectedItem?.id ||
+            normalizedSelectedItem?.menu_item_id
         );
 
       const cartIds =
-        cart_items.map((item) =>
+        normalizedCartItems.map((item) =>
           Number(
             item.id ||
               item.menu_item_id
@@ -269,32 +328,53 @@ router.post(
           description:
             item.description || '',
           price: item.price,
+          image: item.image || null,
+          image_url: item.image_url || item.image || null,
+          is_available: item.is_available,
+          available_quantity:
+            item.available_quantity,
+          flavor_tags:
+            normalizeFlavorTags(
+              item.flavor_tags
+            ),
+          meal_type:
+            normalizeMealType(
+              item.meal_type
+            ),
         }));
 
       const simplifiedCart =
-        cart_items.map((item) => ({
+        normalizedCartItems.map((item) => ({
           id:
             item.id ||
             item.menu_item_id,
           name: item.name,
           category: item.category,
           quantity: item.quantity,
+          flavor_tags:
+            normalizeFlavorTags(
+              item.flavor_tags
+            ),
+          meal_type:
+            normalizeMealType(
+              item.meal_type
+            ),
         }));
 
       const prompt = `
 You are an AI food pairing assistant for Chef Oppa Korean Restaurant.
 
-The restaurant uses custom menu categories such as:
-- Authentic Ala Carte Meals
-- Jeon Series
-- Tteokbokki Series
-- Dishes
+Use flavor_tags and meal_type as the main basis for pairing dishes.
+Also consider dish name, category, description, and Korean food pairing logic.
 
-Do not rely only on category names.
-Infer good pairings based on dish name, category, description, and Korean food pairing logic.
+Allowed flavor tags:
+spicy, sweet, savory, mild, sour, creamy, refreshing, salty, crispy, cheesy, rich, smoky, umami, tangy, fried, grilled, seafood, meaty, broth, fermented
+
+Allowed meal types:
+set, main, side, drink, dessert, snack, soup, hotpot, noodle, sushi, salad, extra, alcohol
 
 Selected item:
-${JSON.stringify(selected_item, null, 2)}
+${JSON.stringify(normalizedSelectedItem, null, 2)}
 
 Current cart:
 ${JSON.stringify(simplifiedCart, null, 2)}
@@ -302,13 +382,30 @@ ${JSON.stringify(simplifiedCart, null, 2)}
 Available menu items:
 ${JSON.stringify(simplifiedCandidates, null, 2)}
 
+Pairing guide:
+- main pairs well with drink, side, soup, salad, or dessert.
+- noodle pairs well with drink, side, or snack.
+- hotpot pairs well with side, drink, or noodle.
+- sushi pairs well with soup, drink, salad, or side.
+- snack pairs well with drink, main, or noodle.
+- soup pairs well with main, side, or sushi.
+- spicy food pairs well with refreshing, sweet, mild, or creamy items.
+- savory or meaty food pairs well with refreshing drinks, side dishes, salad, or soup.
+- fried or crispy food pairs well with refreshing drinks, mild sides, or tangy items.
+- cheesy or creamy food pairs well with spicy, refreshing, or savory items.
+- seafood items pair well with mild, refreshing, tangy, soup, salad, or sushi items.
+- Avoid recommending too many items with the same meal_type as the selected item unless it makes sense.
+- Do not recommend alcohol unless the selected item or cart already includes alcohol.
+
 Rules:
 1. Recommend exactly 3 items if possible.
 2. Only recommend items from the available menu items list.
 3. Do not recommend the selected item.
 4. Do not recommend items already in the cart.
-5. Reasons must be short, simple, and customer-friendly.
-6. Return valid JSON only. No markdown.
+5. Do not recommend unavailable items.
+6. Use flavor_tags and meal_type in your pairing decision.
+7. Reasons must be short, simple, and customer-friendly.
+8. Return valid JSON only. No markdown.
 
 Return format:
 {
@@ -336,7 +433,7 @@ Return format:
               content: prompt,
             },
           ],
-          temperature: 0.7,
+          temperature: 0.6,
         });
 
       const rawReply =
@@ -380,6 +477,18 @@ Return format:
 
             return {
               ...matchedItem,
+              flavor_tags:
+                normalizeFlavorTags(
+                  matchedItem.flavor_tags
+                ),
+              meal_type:
+                normalizeMealType(
+                  matchedItem.meal_type
+                ),
+              image_url:
+                matchedItem.image_url ||
+                matchedItem.image ||
+                null,
               reason:
                 rec.reason ||
                 'Pairs well with your selected dish.',

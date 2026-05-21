@@ -162,7 +162,9 @@ export default function ItemDetailScreen({
     const image =
       data?.image
         ? String(data.image).trim()
-        : '';
+        : data?.image_url
+          ? String(data.image_url).trim()
+          : '';
 
     return image;
   };
@@ -178,6 +180,31 @@ export default function ItemDetailScreen({
     return String(description).trim();
   };
 
+  const getFlavorTags = (data) => {
+    if (Array.isArray(data?.flavor_tags)) {
+      return data.flavor_tags
+        .map((tag) =>
+          String(tag).trim()
+        )
+        .filter(Boolean);
+    }
+
+    if (!data?.flavor_tags) {
+      return [];
+    }
+
+    return String(data.flavor_tags)
+      .split(',')
+      .map((tag) => tag.trim())
+      .filter(Boolean);
+  };
+
+  const getMealType = (data) => {
+    return data?.meal_type
+      ? String(data.meal_type).trim()
+      : null;
+  };
+
   const stock = getStock(item);
 
   const imageUri = getItemImage(item);
@@ -187,6 +214,12 @@ export default function ItemDetailScreen({
 
   const itemDescription =
     getItemDescription(item);
+
+  const flavorTags =
+    getFlavorTags(item);
+
+  const mealType =
+    getMealType(item);
 
   const handleAddToCart = () => {
     if (!item) return;
@@ -344,9 +377,6 @@ export default function ItemDetailScreen({
     const recommendedImage =
       getItemImage(recommendedItem);
 
-    const recommendedDescription =
-      getItemDescription(recommendedItem);
-
     const recommendedAvailable =
       isItemAvailable(recommendedItem);
 
@@ -359,7 +389,7 @@ export default function ItemDetailScreen({
         ]}
       >
         <TouchableOpacity
-          style={styles.recommendationMain}
+          style={styles.recommendationLeft}
           disabled={!recommendedAvailable}
           onPress={() =>
             handleOpenRecommendedItem(
@@ -389,49 +419,31 @@ export default function ItemDetailScreen({
           >
             {recommendedItem.name}
           </Text>
+        </TouchableOpacity>
 
+        <View style={styles.recommendationRight}>
           <Text style={styles.recommendationPrice}>
             ₱{formatMoney(recommendedItem.price)}
           </Text>
 
-          <Text
-            style={
-              recommendedAvailable
-                ? styles.recommendationAvailable
-                : styles.recommendationSoldOut
+          <TouchableOpacity
+            style={[
+              styles.recommendationAddButton,
+              !recommendedAvailable &&
+                styles.recommendationAddButtonDisabled,
+            ]}
+            disabled={!recommendedAvailable}
+            onPress={() =>
+              handleAddRecommendedItem(
+                recommendedItem
+              )
             }
           >
-            {recommendedAvailable
-              ? 'Available'
-              : 'Sold Out'}
-          </Text>
-
-          <Text
-            style={styles.recommendationReason}
-            numberOfLines={3}
-          >
-            {recommendedDescription ||
-              'No description available.'}
-          </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[
-            styles.recommendationAddButton,
-            !recommendedAvailable &&
-              styles.recommendationAddButtonDisabled,
-          ]}
-          disabled={!recommendedAvailable}
-          onPress={() =>
-            handleAddRecommendedItem(
-              recommendedItem
-            )
-          }
-        >
-          <Text style={styles.recommendationAddText}>
-            Add
-          </Text>
-        </TouchableOpacity>
+            <Text style={styles.recommendationAddText}>
+              Add
+            </Text>
+          </TouchableOpacity>
+        </View>
       </View>
     );
   };
@@ -601,6 +613,21 @@ export default function ItemDetailScreen({
                 {item.category || 'Uncategorized'}
               </Text>
 
+              {flavorTags.length > 0 ? (
+                <View style={styles.flavorTagContainer}>
+                  {flavorTags.map((tag, index) => (
+                    <View
+                      key={`${tag}-${index}`}
+                      style={styles.flavorTag}
+                    >
+                      <Text style={styles.flavorTagText}>
+                        {tag}
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+              ) : null}
+
               <Text
                 style={
                   isAvailable
@@ -667,6 +694,9 @@ export default function ItemDetailScreen({
                     showsHorizontalScrollIndicator={
                       false
                     }
+                    contentContainerStyle={{
+                      paddingHorizontal: 4,
+                    }}
                   />
                 ) : (
                   <Text style={styles.noRecommendationText}>
@@ -865,6 +895,30 @@ const styles =
       color: '#777',
     },
 
+    flavorTagContainer: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      justifyContent: 'center',
+      marginTop: 8,
+      gap: 6,
+    },
+
+    flavorTag: {
+      backgroundColor: '#fff4eb',
+      borderWidth: 1,
+      borderColor: '#f68c45',
+      borderRadius: 999,
+      paddingVertical: 4,
+      paddingHorizontal: 10,
+    },
+
+    flavorTagText: {
+      color: '#f68c45',
+      fontSize: 12,
+      fontWeight: '900',
+      textTransform: 'capitalize',
+    },
+
     availableText: {
       color: '#4CAF50',
       fontSize: 19,
@@ -919,23 +973,30 @@ const styles =
     },
 
     recommendationCard: {
-      width: 185,
+      width: 285,
+      height: 105,
       backgroundColor: '#fff7ef',
       borderWidth: 1,
       borderColor: '#f0b287',
       borderRadius: 18,
-      padding: 12,
+      paddingHorizontal: 14,
+      paddingVertical: 12,
       marginHorizontal: 8,
+      flexDirection: 'row',
       alignItems: 'center',
+      justifyContent:
+        'space-between',
     },
 
     recommendationCardDisabled: {
       opacity: 0.45,
     },
 
-    recommendationMain: {
+    recommendationLeft: {
+      flexDirection: 'row',
       alignItems: 'center',
-      width: '100%',
+      flex: 1,
+      paddingRight: 10,
     },
 
     recommendationCircle: {
@@ -946,7 +1007,7 @@ const styles =
       justifyContent: 'center',
       alignItems: 'center',
       overflow: 'hidden',
-      marginBottom: 8,
+      marginRight: 12,
     },
 
     recommendationImage: {
@@ -959,48 +1020,28 @@ const styles =
     },
 
     recommendationName: {
-      fontSize: 15,
+      flex: 1,
+      fontSize: 16,
       fontWeight: '900',
-      textAlign: 'center',
       color: '#333',
-      minHeight: 36,
+    },
+
+    recommendationRight: {
+      alignItems: 'center',
+      justifyContent: 'center',
     },
 
     recommendationPrice: {
-      marginTop: 4,
-      fontSize: 15,
+      fontSize: 17,
       fontWeight: '900',
       color: '#f68c45',
-    },
-
-    recommendationAvailable: {
-      marginTop: 4,
-      fontSize: 12,
-      fontWeight: '900',
-      color: '#4CAF50',
-    },
-
-    recommendationSoldOut: {
-      marginTop: 4,
-      fontSize: 12,
-      fontWeight: '900',
-      color: 'red',
-    },
-
-    recommendationReason: {
-      marginTop: 6,
-      fontSize: 12,
-      fontWeight: '700',
-      textAlign: 'center',
-      color: '#666',
-      minHeight: 44,
+      marginBottom: 8,
     },
 
     recommendationAddButton: {
-      marginTop: 8,
       backgroundColor: '#f68c45',
-      paddingVertical: 8,
-      paddingHorizontal: 20,
+      paddingVertical: 7,
+      paddingHorizontal: 24,
       borderRadius: 10,
     },
 

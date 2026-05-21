@@ -24,6 +24,77 @@ const requireSupabase = (res) => {
 };
 
 // =========================
+// NORMALIZE FLAVOR TAGS
+// =========================
+
+const normalizeFlavorTags = (value) => {
+  if (Array.isArray(value)) {
+    return value
+      .map((tag) => String(tag).trim())
+      .filter(Boolean);
+  }
+
+  if (!value) {
+    return [];
+  }
+
+  try {
+    const parsed = JSON.parse(value);
+
+    if (Array.isArray(parsed)) {
+      return parsed
+        .map((tag) => String(tag).trim())
+        .filter(Boolean);
+    }
+  } catch (error) {
+    // Continue to comma split
+  }
+
+  return String(value)
+    .split(',')
+    .map((tag) => tag.trim())
+    .filter(Boolean);
+};
+
+// =========================
+// NORMALIZE MEAL TYPE
+// =========================
+
+const normalizeMealType = (value) => {
+  if (!value) {
+    return null;
+  }
+
+  return String(value).trim();
+};
+
+// =========================
+// NORMALIZE MENU ITEM
+// For mobile menu + AI recommendations
+// =========================
+
+const normalizeMenuItem = (item) => {
+  return {
+    ...item,
+
+    image_url:
+      item.image_url ||
+      item.image ||
+      null,
+
+    flavor_tags:
+      normalizeFlavorTags(
+        item.flavor_tags
+      ),
+
+    meal_type:
+      normalizeMealType(
+        item.meal_type
+      ),
+  };
+};
+
+// =========================
 // GET TOP BEST SELLER IDS
 // =========================
 
@@ -96,11 +167,11 @@ const computeAvailableQuantity =
       !recipeRows ||
       recipeRows.length === 0
     ) {
-      return {
+      return normalizeMenuItem({
         ...menuItem,
         available_quantity: 0,
         is_available: false,
-      };
+      });
     }
 
     let maxServings = Infinity;
@@ -180,16 +251,19 @@ const computeAvailableQuantity =
     }
 
     const manuallyAvailable =
-      menuItem.is_available !== false;
+      menuItem.is_available !== false &&
+      menuItem.is_available !== 0 &&
+      menuItem.is_available !== 'false' &&
+      menuItem.is_available !== '0';
 
-    return {
+    return normalizeMenuItem({
       ...menuItem,
       available_quantity:
         maxServings,
       is_available:
         manuallyAvailable &&
         maxServings > 0,
-    };
+    });
   };
 
 // =========================
@@ -234,13 +308,13 @@ router.get('/', async (req, res) => {
                 item
               );
 
-            return {
+            return normalizeMenuItem({
               ...enrichedItem,
               is_best_seller:
                 bestSellerIds.includes(
                   Number(item.id)
                 ),
-            };
+            });
           }
         )
       );
@@ -329,10 +403,10 @@ router.get(
                   item
                 );
 
-              return {
+              return normalizeMenuItem({
                 ...enrichedItem,
                 is_best_seller: true,
-              };
+              });
             }
           )
         );
@@ -407,13 +481,13 @@ router.get(
                   item
                 );
 
-              return {
+              return normalizeMenuItem({
                 ...enrichedItem,
                 is_best_seller:
                   bestSellerIds.includes(
                     Number(item.id)
                   ),
-              };
+              });
             }
           )
         );

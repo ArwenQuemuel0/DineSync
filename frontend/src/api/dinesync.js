@@ -79,6 +79,30 @@ api.interceptors.request.use(
 );
 
 // =========================
+// NORMALIZE MENU ITEM
+// For AI dish recommendations
+// =========================
+
+const normalizeMenuItem = (item) => {
+  return {
+    ...item,
+
+    flavor_tags: Array.isArray(item?.flavor_tags)
+      ? item.flavor_tags
+      : item?.flavor_tags
+        ? String(item.flavor_tags)
+            .split(',')
+            .map((tag) => tag.trim())
+            .filter(Boolean)
+        : [],
+
+    meal_type: item?.meal_type
+      ? String(item.meal_type).trim()
+      : null,
+  };
+};
+
+// =========================
 // LOGIN
 // =========================
 
@@ -143,6 +167,8 @@ export const getTableOrderHistory = async () => {
 
 // =========================
 // GET MENU
+// Includes flavor_tags and meal_type
+// for AI dish recommendations
 // =========================
 
 export const getMenu = async () => {
@@ -153,6 +179,16 @@ export const getMenu = async () => {
     'MENU RESPONSE:',
     response.data
   );
+
+  if (
+    response.data?.success &&
+    Array.isArray(response.data.data)
+  ) {
+    response.data.data =
+      response.data.data.map(
+        normalizeMenuItem
+      );
+  }
 
   return response.data;
 };
@@ -268,6 +304,8 @@ export const getActiveTableOrders =
 
 // =========================
 // AI DISH RECOMMENDATIONS
+// Sends selected item and cart items
+// with flavor_tags and meal_type included
 // =========================
 
 export const getDishRecommendations =
@@ -279,8 +317,13 @@ export const getDishRecommendations =
       await api.post(
         '/ai/recommend-dishes',
         {
-          selected_item: selectedItem,
-          cart_items: cartItems,
+          selected_item:
+            normalizeMenuItem(selectedItem),
+
+          cart_items:
+            cartItems.map(
+              normalizeMenuItem
+            ),
         }
       );
 

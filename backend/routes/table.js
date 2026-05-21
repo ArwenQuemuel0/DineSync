@@ -25,10 +25,6 @@ const supabase =
 // GET LOGGED-IN TABLE USER
 // Token format:
 // Bearer table-token-1
-//
-// In this project,
-// table-token-1 means Table Number 1,
-// NOT user id 1.
 // =========================
 
 const getLoggedInTableUser = async (req) => {
@@ -110,11 +106,6 @@ const getLoggedInTableUser = async (req) => {
     };
   }
 
-  console.log(
-    'TABLE USER FOUND:',
-    user
-  );
-
   if (
     user.role !== 'table_customer'
   ) {
@@ -172,6 +163,166 @@ const getRestaurantTableByNumber = async (
 };
 
 // =========================
+// FIND ACTIVE TABLE SESSION
+// =========================
+
+const getActiveTableSession = async (
+  restaurantTableId
+) => {
+  const {
+    data,
+    error,
+  } = await supabase
+    .from('table_sessions')
+    .select('*')
+    .eq(
+      'restaurant_table_id',
+      restaurantTableId
+    )
+    .eq('status', 'active')
+    .order('created_at', {
+      ascending: false,
+    })
+    .limit(1);
+
+  if (error) {
+    return {
+      error,
+      session: null,
+    };
+  }
+
+  return {
+    error: null,
+    session:
+      data && data.length > 0
+        ? data[0]
+        : null,
+  };
+};
+
+// =========================
+// CREATE ACTIVE TABLE SESSION
+// =========================
+
+const createTableSession = async (
+  restaurantTable
+) => {
+  const now =
+    new Date().toISOString();
+
+  const sessionPayload = {
+    restaurant_table_id:
+      restaurantTable.id,
+
+    session_code:
+      `TABLE-${restaurantTable.table_number}-${Date.now()}`,
+
+    status: 'active',
+    created_at: now,
+    updated_at: now,
+  };
+
+  const {
+    data,
+    error,
+  } = await supabase
+    .from('table_sessions')
+    .insert(sessionPayload)
+    .select('*')
+    .single();
+
+  if (error) {
+    return {
+      error,
+      session: null,
+    };
+  }
+
+  return {
+    error: null,
+    session: data,
+  };
+};
+
+// =========================
+// ENSURE ACTIVE TABLE SESSION
+// =========================
+
+const ensureActiveTableSession = async (
+  tableNumber
+) => {
+  const {
+    error: tableError,
+    restaurantTable,
+  } =
+    await getRestaurantTableByNumber(
+      tableNumber
+    );
+
+  if (
+    tableError ||
+    !restaurantTable
+  ) {
+    return {
+      error:
+        tableError ||
+        new Error(
+          `Table No. ${tableNumber} was not found.`
+        ),
+      restaurantTable: null,
+      session: null,
+    };
+  }
+
+  const {
+    error: sessionLookupError,
+    session: existingSession,
+  } =
+    await getActiveTableSession(
+      restaurantTable.id
+    );
+
+  if (sessionLookupError) {
+    return {
+      error: sessionLookupError,
+      restaurantTable,
+      session: null,
+    };
+  }
+
+  if (existingSession) {
+    return {
+      error: null,
+      restaurantTable,
+      session: existingSession,
+    };
+  }
+
+  const {
+    error: createError,
+    session: newSession,
+  } =
+    await createTableSession(
+      restaurantTable
+    );
+
+  if (createError) {
+    return {
+      error: createError,
+      restaurantTable,
+      session: null,
+    };
+  }
+
+  return {
+    error: null,
+    restaurantTable,
+    session: newSession,
+  };
+};
+
+// =========================
 // TABLE ONLINE
 // POST /api/table/online
 // =========================
@@ -190,11 +341,6 @@ router.post('/online', async (req, res) => {
     );
 
     if (authError) {
-      console.log(
-        'TABLE ONLINE AUTH ERROR:',
-        authError
-      );
-
       return res.status(401).json({
         success: false,
         message: authError,
@@ -205,8 +351,31 @@ router.post('/online', async (req, res) => {
       new Date().toISOString();
 
     const {
-      data,
-      error,
+      error: sessionError,
+      restaurantTable,
+      session,
+    } =
+      await ensureActiveTableSession(
+        user.table_number
+      );
+
+    if (sessionError) {
+      console.log(
+        'TABLE ONLINE SESSION ERROR:',
+        sessionError
+      );
+
+      return res.status(500).json({
+        success: false,
+        message:
+          sessionError.message ||
+          'Failed to create active table session.',
+      });
+    }
+
+    const {
+      data: updatedUser,
+      error: userUpdateError,
     } = await supabase
       .from('users')
       .update({
@@ -219,25 +388,33 @@ router.post('/online', async (req, res) => {
       )
       .single();
 
-    if (error) {
-      console.log(
-        'TABLE ONLINE SUPABASE ERROR:',
-        error
-      );
-
-      throw error;
+    if (userUpdateError) {
+      throw userUpdateError;
     }
 
+    await supabase
+      .from('restaurant_tables')
+      .update({
+        status: 'occupied',
+        updated_at: now,
+      })
+      .eq('id', restaurantTable.id);
+
     console.log(
-      `TABLE ${data.table_number} IS NOW ONLINE:`,
-      data
+      `TABLE ${updatedUser.table_number} IS NOW ONLINE`
+    );
+
+    console.log(
+      'ACTIVE TABLE SESSION:',
+      session
     );
 
     return res.json({
       success: true,
       message:
         'Table marked as online.',
-      data,
+      data: updatedUser,
+      session,
     });
   } catch (error) {
     console.error(
@@ -275,11 +452,6 @@ router.post('/heartbeat', async (req, res) => {
     );
 
     if (authError) {
-      console.log(
-        'TABLE HEARTBEAT AUTH ERROR:',
-        authError
-      );
-
       return res.status(401).json({
         success: false,
         message: authError,
@@ -288,6 +460,29 @@ router.post('/heartbeat', async (req, res) => {
 
     const now =
       new Date().toISOString();
+
+    const {
+      error: sessionError,
+      restaurantTable,
+      session,
+    } =
+      await ensureActiveTableSession(
+        user.table_number
+      );
+
+    if (sessionError) {
+      console.log(
+        'TABLE HEARTBEAT SESSION ERROR:',
+        sessionError
+      );
+
+      return res.status(500).json({
+        success: false,
+        message:
+          sessionError.message ||
+          'Failed to keep active table session.',
+      });
+    }
 
     const {
       data,
@@ -305,24 +500,23 @@ router.post('/heartbeat', async (req, res) => {
       .single();
 
     if (error) {
-      console.log(
-        'TABLE HEARTBEAT SUPABASE ERROR:',
-        error
-      );
-
       throw error;
     }
 
-    console.log(
-      `TABLE ${data.table_number} HEARTBEAT UPDATED:`,
-      data
-    );
+    await supabase
+      .from('restaurant_tables')
+      .update({
+        status: 'occupied',
+        updated_at: now,
+      })
+      .eq('id', restaurantTable.id);
 
     return res.json({
       success: true,
       message:
         'Table heartbeat received.',
       data,
+      session,
     });
   } catch (error) {
     console.error(
@@ -360,11 +554,6 @@ router.post('/offline', async (req, res) => {
     );
 
     if (authError) {
-      console.log(
-        'TABLE OFFLINE AUTH ERROR:',
-        authError
-      );
-
       return res.status(401).json({
         success: false,
         message: authError,
@@ -373,6 +562,25 @@ router.post('/offline', async (req, res) => {
 
     const now =
       new Date().toISOString();
+
+    const {
+      error: tableError,
+      restaurantTable,
+    } =
+      await getRestaurantTableByNumber(
+        user.table_number
+      );
+
+    if (
+      tableError ||
+      !restaurantTable
+    ) {
+      return res.status(404).json({
+        success: false,
+        message:
+          `Table No. ${user.table_number} was not found.`,
+      });
+    }
 
     const {
       data,
@@ -390,18 +598,28 @@ router.post('/offline', async (req, res) => {
       .single();
 
     if (error) {
-      console.log(
-        'TABLE OFFLINE SUPABASE ERROR:',
-        error
-      );
-
       throw error;
     }
 
-    console.log(
-      `TABLE ${data.table_number} IS NOW OFFLINE:`,
-      data
-    );
+    await supabase
+      .from('table_sessions')
+      .update({
+        status: 'closed',
+        updated_at: now,
+      })
+      .eq(
+        'restaurant_table_id',
+        restaurantTable.id
+      )
+      .eq('status', 'active');
+
+    await supabase
+      .from('restaurant_tables')
+      .update({
+        status: 'available',
+        updated_at: now,
+      })
+      .eq('id', restaurantTable.id);
 
     return res.json({
       success: true,
@@ -429,8 +647,6 @@ router.post('/offline', async (req, res) => {
 // =========================
 // TABLE ORDER HISTORY
 // GET /api/table/order-history
-// Uses active table session.
-// Does NOT fetch old orders by table number.
 // =========================
 
 router.get('/order-history', async (req, res) => {
@@ -465,11 +681,6 @@ router.get('/order-history', async (req, res) => {
       tableError ||
       !restaurantTable
     ) {
-      console.log(
-        'ORDER HISTORY TABLE ERROR:',
-        tableError
-      );
-
       return res.status(404).json({
         success: false,
         message:
@@ -477,32 +688,18 @@ router.get('/order-history', async (req, res) => {
       });
     }
 
-    // =========================
-    // FIND ACTIVE TABLE SESSION
-    // =========================
-
     const {
-      data: activeSession,
-      error: sessionError,
-    } = await supabase
-      .from('table_sessions')
-      .select('*')
-      .eq(
-        'restaurant_table_id',
+      error: sessionLookupError,
+      session: activeSession,
+    } =
+      await getActiveTableSession(
         restaurantTable.id
-      )
-      .eq('status', 'active')
-      .single();
-
-    if (
-      sessionError ||
-      !activeSession
-    ) {
-      console.log(
-        'ORDER HISTORY ACTIVE SESSION:',
-        sessionError
       );
 
+    if (
+      sessionLookupError ||
+      !activeSession
+    ) {
       return res.json({
         success: true,
         data: [],
@@ -510,10 +707,6 @@ router.get('/order-history', async (req, res) => {
           'No active table session found.',
       });
     }
-
-    // =========================
-    // GET ORDERS BY ACTIVE SESSION
-    // =========================
 
     const {
       data: orders,
@@ -548,10 +741,6 @@ router.get('/order-history', async (req, res) => {
           activeSession,
       });
     }
-
-    // =========================
-    // GET ORDER ITEMS
-    // =========================
 
     const {
       data: orderItems,
@@ -602,10 +791,6 @@ router.get('/order-history', async (req, res) => {
       menuItems =
         menuData || [];
     }
-
-    // =========================
-    // ENRICH ORDERS WITH ITEMS
-    // =========================
 
     const enrichedOrders =
       (orders || []).map((order) => {
