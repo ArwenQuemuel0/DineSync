@@ -10,6 +10,7 @@ import {
   ActivityIndicator,
   Image,
   Alert,
+  Linking,
 } from 'react-native';
 
 import {
@@ -138,7 +139,8 @@ export default function PaymentScreen({
       const orderResponse =
         await placeOrder(
           cartItems,
-          finalTableNumber
+          finalTableNumber,
+          method
         );
 
       if (
@@ -157,44 +159,37 @@ export default function PaymentScreen({
       const orderId =
         orderResponse.data.id;
 
-      const totalAmount =
-        Number(liveCartTotal) ||
-        Number(total) ||
-        0;
+      const invoiceUrl =
+        orderResponse.data.xendit_invoice_url;
 
       // =========================
-      // PROCESS PAYMENT
+      // PROCESS PAYMENT / REDIRECT
       // =========================
 
-      const paymentData = {
-        orderId,
-        amount: totalAmount,
-        paymentMethod: method,
-      };
+      if (method === 'QR PH' && invoiceUrl) {
+        try {
+          await Linking.openURL(invoiceUrl);
+        } catch (linkError) {
+          console.error(
+            'Failed to open invoice URL:',
+            linkError
+          );
 
-      const paymentResponse =
-        await processPayment(
-          paymentData
-        );
-
-      if (
-        paymentResponse.success
-      ) {
-        clearCart();
-
-        setActiveOrderId(orderId);
-
-        navigation.navigate(
-          'OrderStatus',
-          { orderId }
-        );
-      } else {
-        Alert.alert(
-          'Payment Failed',
-          paymentResponse.message ||
-            'Payment failed. Please try again.'
-        );
+          Alert.alert(
+            'Redirect Failed',
+            'Could not open the payment page. Please contact restaurant staff.'
+          );
+        }
       }
+
+      clearCart();
+
+      setActiveOrderId(orderId);
+
+      navigation.navigate(
+        'OrderStatus',
+        { orderId }
+      );
     } catch (error) {
       console.error(
         'Payment failed:',

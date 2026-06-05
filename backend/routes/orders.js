@@ -18,6 +18,8 @@ const {
   normalizeTableStatus,
 } = require('../utils/tableStatus');
 
+const { createInvoice } = require('../utils/xendit');
+
 // =========================
 // DEFAULT IPAD TABLE
 // =========================
@@ -249,7 +251,7 @@ router.get(
       } = await supabase
         .from('orders')
         .select(
-          'id, order_number, table_number, table_session_id, status, total_amount, created_at, updated_at'
+          'id, order_number, table_number, table_session_id, status, payment_status, total_amount, created_at, updated_at, xendit_invoice_id, xendit_external_id, xendit_invoice_url, xendit_expiry_date'
         )
         .eq(
           'table_session_id',
@@ -480,6 +482,21 @@ router.post('/', async (req, res) => {
           0
         );
 
+      const paymentMethod = req.body.payment_method || req.body.paymentMethod;
+      const needInvoice = paymentMethod !== 'Cash';
+      
+      const invoiceData = needInvoice ? {
+        xendit_invoice_id: `mock_inv_${Math.random().toString(36).substring(2, 11).toUpperCase()}`,
+        xendit_external_id: `ORDER-${db.orders.length + 1}`,
+        xendit_invoice_url: `https://checkout-staging.xendit.co/web/mock_inv_${Date.now()}`,
+        xendit_expiry_date: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
+      } : {
+        xendit_invoice_id: null,
+        xendit_external_id: null,
+        xendit_invoice_url: null,
+        xendit_expiry_date: null
+      };
+
       const newOrder = {
         id: db.orders.length + 1,
         order_number:
@@ -489,11 +506,13 @@ router.post('/', async (req, res) => {
         table_session_id: null,
         items,
         status: newOrderStatus,
+        payment_status: 'pending',
         total_amount: totalAmount,
         created_at:
           new Date().toISOString(),
         updated_at:
           new Date().toISOString(),
+        ...invoiceData
       };
 
       db.orders.push(newOrder);
@@ -737,6 +756,7 @@ router.post('/', async (req, res) => {
       table_session_id:
         activeSession.id,
       status: newOrderStatus,
+      payment_status: 'pending',
       total_amount:
         totalAmount,
       created_at: now,
@@ -750,7 +770,7 @@ router.post('/', async (req, res) => {
       .from('orders')
       .insert(orderPayload)
       .select(
-        'id, order_number, table_number, table_session_id, status, total_amount, created_at, updated_at'
+        'id, order_number, table_number, table_session_id, status, payment_status, total_amount, created_at, updated_at, xendit_invoice_id, xendit_external_id, xendit_invoice_url, xendit_expiry_date'
       )
       .single();
 
@@ -770,6 +790,41 @@ router.post('/', async (req, res) => {
 
     const orderId =
       createdOrder.id;
+
+    // =========================
+    // CREATE XENDIT INVOICE
+    // =========================
+    const paymentMethod = req.body.payment_method || req.body.paymentMethod;
+    if (paymentMethod !== 'Cash') {
+      try {
+        const invoice = await createInvoice(orderId, totalAmount, finalTableNumber);
+        
+        const { error: updateOrderError } = await supabase
+          .from('orders')
+          .update({
+            xendit_invoice_id: invoice.id,
+            xendit_external_id: invoice.external_id,
+            xendit_invoice_url: invoice.invoice_url,
+            xendit_expiry_date: invoice.expiry_date
+          })
+          .eq('id', orderId);
+          
+        if (updateOrderError) {
+          console.log('XENDIT ORDER UPDATE ERROR:', updateOrderError);
+        } else {
+          createdOrder.xendit_invoice_id = invoice.id;
+          createdOrder.xendit_external_id = invoice.external_id;
+          createdOrder.xendit_invoice_url = invoice.invoice_url;
+          createdOrder.xendit_expiry_date = invoice.expiry_date;
+        }
+      } catch (invoiceError) {
+        console.log('XENDIT INVOICE CREATION ERROR:', invoiceError);
+        return res.status(500).json({
+          success: false,
+          message: 'Failed to initiate electronic payment: ' + (invoiceError.message || String(invoiceError))
+        });
+      }
+    }
 
     // =========================
     // CREATE ORDER ITEMS
@@ -1086,7 +1141,7 @@ router.get('/:id', async (req, res) => {
     } = await supabase
       .from('orders')
       .select(
-        'id, order_number, table_number, table_session_id, status, total_amount, created_at, updated_at'
+        'id, order_number, table_number, table_session_id, status, payment_status, total_amount, created_at, updated_at, xendit_invoice_id, xendit_external_id, xendit_invoice_url, xendit_expiry_date'
       )
       .eq('id', orderId)
       .single();

@@ -22,6 +22,8 @@ import {
   normalizeOrderStatus,
   getOrderStatusLabel,
   isActiveOrderStatus,
+  normalizePaymentStatus,
+  getPaymentStatusLabel,
 } from '../utils/orderStatus';
 
 export default function OrderStatusScreen({
@@ -161,6 +163,33 @@ export default function OrderStatusScreen({
     return styles.statusDefault;
   };
 
+  const getPaymentStatusStyle = (
+    paymentStatus
+  ) => {
+    const normalized =
+      normalizePaymentStatus(paymentStatus);
+
+    if (
+      normalized === 'paid'
+    ) {
+      return styles.paymentPaid;
+    }
+
+    if (
+      normalized === 'expired'
+    ) {
+      return styles.paymentExpired;
+    }
+
+    if (
+      normalized === 'failed'
+    ) {
+      return styles.paymentFailed;
+    }
+
+    return styles.paymentPending;
+  };
+
   const getOrderTotal = (
     order
   ) => {
@@ -226,23 +255,44 @@ export default function OrderStatusScreen({
             </Text>
           </View>
 
-          <View
-            style={[
-              styles.statusBadge,
-              getStatusStyle(
-                item.status
-              ),
-            ]}
-          >
-            <Text
-              style={
-                styles.statusBadgeText
-              }
+          <View style={styles.orderHeaderRight}>
+            <View
+              style={[
+                styles.statusBadge,
+                getStatusStyle(
+                  item.status
+                ),
+              ]}
             >
-              {getOrderStatusLabel(
-                item.status
-              )}
-            </Text>
+              <Text
+                style={
+                  styles.statusBadgeText
+                }
+              >
+                {getOrderStatusLabel(
+                  item.status
+                )}
+              </Text>
+            </View>
+
+            <View
+              style={[
+                styles.paymentBadge,
+                getPaymentStatusStyle(
+                  item.payment_status
+                ),
+              ]}
+            >
+              <Text
+                style={
+                  styles.paymentBadgeText
+                }
+              >
+                {getPaymentStatusLabel(
+                  item.payment_status
+                )}
+              </Text>
+            </View>
           </View>
         </View>
 
@@ -568,6 +618,39 @@ const styles =
       paddingVertical: 8,
       paddingHorizontal: 18,
       borderRadius: 999,
+    },
+
+    orderHeaderRight: {
+      alignItems: 'flex-end',
+    },
+
+    paymentBadge: {
+      paddingVertical: 6,
+      paddingHorizontal: 14,
+      borderRadius: 999,
+      marginTop: 8,
+    },
+
+    paymentBadgeText: {
+      fontSize: 14,
+      fontWeight: '800',
+      color: '#333',
+    },
+
+    paymentPending: {
+      backgroundColor: '#ffeeba',
+    },
+
+    paymentPaid: {
+      backgroundColor: '#c3e6cb',
+    },
+
+    paymentExpired: {
+      backgroundColor: '#e2e3e5',
+    },
+
+    paymentFailed: {
+      backgroundColor: '#f5c6cb',
     },
 
     statusPending: {

@@ -1,25 +1,8 @@
 const express = require('express');
-const { createClient } = require('@supabase/supabase-js');
 
 const router = express.Router();
 
-// =========================
-// SUPABASE CONNECTION
-// =========================
-
-const supabaseUrl =
-  process.env.SUPABASE_URL;
-
-const supabaseKey =
-  process.env.SUPABASE_SERVICE_ROLE_KEY ||
-  process.env.SUPABASE_ANON_KEY ||
-  process.env.SUPABASE_KEY;
-
-const supabase =
-  createClient(
-    supabaseUrl,
-    supabaseKey
-  );
+const { supabase, isConfigured } = require('../supabaseClient');
 
 const {
   buildTableStatusPayload,
@@ -732,7 +715,7 @@ router.get('/order-history', async (req, res) => {
     } = await supabase
       .from('orders')
       .select(
-        'id, order_number, table_number, table_session_id, status, total_amount, created_at, updated_at'
+        'id, order_number, table_number, table_session_id, status, payment_status, total_amount, created_at, updated_at, xendit_invoice_id, xendit_external_id, xendit_invoice_url, xendit_expiry_date'
       )
       .eq(
         'table_session_id',

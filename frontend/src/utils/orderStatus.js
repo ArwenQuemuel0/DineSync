@@ -82,3 +82,35 @@ export const getOrderStatusLabel = (
 
   return toSentenceCase(status);
 };
+
+export const normalizePaymentStatus = (
+  status
+) =>
+  String(status || 'pending')
+    .trim()
+    .toLowerCase();
+
+export const getPaymentStatusLabel = (
+  status
+) => {
+  const normalized =
+    normalizePaymentStatus(status);
+
+  if (normalized === 'pending') {
+    return 'Payment Pending';
+  }
+
+  if (normalized === 'paid') {
+    return 'Paid';
+  }
+
+  if (normalized === 'expired') {
+    return 'Payment Expired';
+  }
+
+  if (normalized === 'failed') {
+    return 'Payment Failed';
+  }
+
+  return toSentenceCase(status);
+};

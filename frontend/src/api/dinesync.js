@@ -316,7 +316,8 @@ export const getTable = async (
 
 export const placeOrder = async (
   cartItems,
-  tableNumber
+  tableNumber,
+  paymentMethod
 ) => {
   if (!tableNumber) {
     throw new Error(
@@ -326,7 +327,7 @@ export const placeOrder = async (
 
   const payload = {
     table_number: tableNumber,
-
+    payment_method: paymentMethod,
     items: cartItems.map(
       (item) => ({
         menu_item_id:
