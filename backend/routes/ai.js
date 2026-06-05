@@ -8,6 +8,11 @@ const {
   isConfigured,
 } = require('../supabaseClient');
 
+const {
+  computeMaxServingsFromRecipes,
+  enrichMenuItemInventory,
+} = require('../utils/inventoryServings');
+
 const client = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
@@ -74,119 +79,30 @@ const normalizeMenuItem = (item) => {
 
 const computeAvailableQuantity =
   async (menuItem) => {
-    const {
-      data: recipeRows,
-      error: recipeError,
-    } = await supabase
-      .from('menu_item_ingredients')
-      .select('*')
-      .eq(
-        'menu_item_id',
+    const maxOrderQuantity =
+      await computeMaxServingsFromRecipes(
+        supabase,
         menuItem.id
       );
 
-    if (
-      recipeError ||
-      !recipeRows ||
-      recipeRows.length === 0
-    ) {
+    if (maxOrderQuantity <= 0) {
       return normalizeMenuItem({
         ...menuItem,
-        available_quantity: null,
-        is_available:
-          menuItem.is_available !== false,
+        available_quantity: 0,
+        max_order_quantity: 0,
+        stock_label:
+          menuItem.stock_label ||
+          'Out of stock',
+        is_available: false,
       });
     }
 
-    let maxServings = Infinity;
-
-    for (const recipe of recipeRows) {
-      const ingredientId =
-        recipe.ingredient_id;
-
-      const quantityRequired =
-        Number(
-          recipe.quantity_required
-        );
-
-      if (
-        !Number.isFinite(
-          quantityRequired
-        ) ||
-        quantityRequired <= 0
-      ) {
-        maxServings = 0;
-        break;
-      }
-
-      const {
-        data: ingredientRow,
-        error: ingredientError,
-      } = await supabase
-        .from('ingredients')
-        .select('id, name, current_stock')
-        .eq('id', ingredientId)
-        .single();
-
-      if (
-        ingredientError ||
-        !ingredientRow
-      ) {
-        maxServings = 0;
-        break;
-      }
-
-      const currentStock =
-        Number(
-          ingredientRow.current_stock
-        );
-
-      if (
-        !Number.isFinite(
-          currentStock
-        ) ||
-        currentStock <= 0
-      ) {
-        maxServings = 0;
-        break;
-      }
-
-      const possibleServings =
-        Math.floor(
-          currentStock /
-            quantityRequired
-        );
-
-      if (
-        possibleServings <
-        maxServings
-      ) {
-        maxServings =
-          possibleServings;
-      }
-    }
-
-    if (
-      !Number.isFinite(
-        maxServings
-      )
-    ) {
-      maxServings = 0;
-    }
-
-    const manuallyAvailable =
-      menuItem.is_available !== false &&
-      menuItem.is_available !== 0 &&
-      menuItem.is_available !== 'false' &&
-      menuItem.is_available !== '0';
-
     return normalizeMenuItem({
       ...menuItem,
-      available_quantity:
-        maxServings,
-      is_available:
-        manuallyAvailable &&
-        maxServings > 0,
+      ...enrichMenuItemInventory(
+        menuItem,
+        maxOrderQuantity
+      ),
     });
   };
 

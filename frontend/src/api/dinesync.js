@@ -83,9 +83,48 @@ api.interceptors.request.use(
 // For AI dish recommendations
 // =========================
 
+const parseNumeric = (value) => {
+  if (
+    value === undefined ||
+    value === null ||
+    value === ''
+  ) {
+    return null;
+  }
+
+  const numeric = Number(value);
+
+  return Number.isFinite(numeric)
+    ? numeric
+    : null;
+};
+
 const normalizeMenuItem = (item) => {
+  // Trust API/web-provided inventory fields only.
+  const maxOrderQuantity =
+    parseNumeric(
+      item?.max_order_quantity
+    ) ??
+    parseNumeric(
+      item?.available_quantity
+    );
+
   return {
     ...item,
+
+    max_order_quantity:
+      maxOrderQuantity,
+
+    available_quantity:
+      parseNumeric(
+        item?.available_quantity
+      ) ?? maxOrderQuantity,
+
+    is_available: item?.is_available,
+
+    stock_label: item?.stock_label
+      ? String(item.stock_label).trim()
+      : null,
 
     flavor_tags: Array.isArray(item?.flavor_tags)
       ? item.flavor_tags
@@ -100,6 +139,57 @@ const normalizeMenuItem = (item) => {
       ? String(item.meal_type).trim()
       : null,
   };
+};
+
+export const extractApiErrorMessage = (
+  error,
+  fallback = 'Something went wrong. Please try again.'
+) => {
+  const data = error?.response?.data;
+
+  if (!data) {
+    return error?.message || fallback;
+  }
+
+  if (typeof data === 'string') {
+    return data;
+  }
+
+  if (data.message) {
+    return data.message;
+  }
+
+  if (data.error) {
+    return typeof data.error === 'string'
+      ? data.error
+      : String(data.error);
+  }
+
+  if (
+    data.errors &&
+    typeof data.errors === 'object'
+  ) {
+    const firstKey =
+      Object.keys(data.errors)[0];
+
+    if (firstKey) {
+      const firstError =
+        data.errors[firstKey];
+
+      if (
+        Array.isArray(firstError) &&
+        firstError[0]
+      ) {
+        return firstError[0];
+      }
+
+      if (typeof firstError === 'string') {
+        return firstError;
+      }
+    }
+  }
+
+  return fallback;
 };
 
 // =========================
@@ -148,6 +238,18 @@ export const tableHeartbeat = async () => {
 export const tableOffline = async () => {
   const response =
     await api.post('/table/offline');
+
+  return response.data;
+};
+
+// =========================
+// TABLE STATUS
+// GET /api/table/status
+// =========================
+
+export const getTableStatus = async () => {
+  const response =
+    await api.get('/table/status');
 
   return response.data;
 };
@@ -326,6 +428,18 @@ export const getDishRecommendations =
             ),
         }
       );
+
+    if (
+      response.data?.success &&
+      Array.isArray(
+        response.data.data
+      )
+    ) {
+      response.data.data =
+        response.data.data.map(
+          normalizeMenuItem
+        );
+    }
 
     return response.data;
   };

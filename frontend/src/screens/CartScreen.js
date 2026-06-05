@@ -10,8 +10,21 @@ import {
   Alert,
 } from 'react-native';
 
+import { useFocusEffect } from '@react-navigation/native';
+
 import { useCart } from '../context/CartContext';
-import { placeOrder } from '../api/dinesync';
+import { useTableStatus } from '../context/TableStatusContext';
+import { TABLE_ASSIGNMENT_MESSAGE } from '../constants/tableStatus';
+import {
+  placeOrder,
+  extractApiErrorMessage,
+} from '../api/dinesync';
+
+import {
+  getItemId,
+  canIncreaseQuantity,
+  isOutOfStock,
+} from '../utils/inventory';
 
 export default function CartScreen({
   navigation,
@@ -19,9 +32,19 @@ export default function CartScreen({
   const {
     cartItems,
     updateQuantity,
+    incrementQuantity,
     cartTotal,
     clearCart,
+    getEnrichedItem,
+    refreshCartInventory,
+    validateCurrentCart,
   } = useCart();
+
+  const {
+    canOrder,
+    ensureCanOrder,
+    assignmentMessage,
+  } = useTableStatus();
 
   const formatMoney = (value) => {
     const n = Number(value);
@@ -31,7 +54,38 @@ export default function CartScreen({
       : '0.00';
   };
 
+  const handleIncreaseQuantity = (item) => {
+    incrementQuantity(
+      getItemId(item)
+    );
+  };
+
   const handleCheckout = async () => {
+    const tableCheck =
+      await ensureCanOrder();
+
+    if (!tableCheck.allowed) {
+      Alert.alert(
+        'Table Not Assigned',
+        tableCheck.message ||
+          assignmentMessage
+      );
+
+      return;
+    }
+
+    const inventoryCheck =
+      await refreshCartInventory();
+
+    if (!inventoryCheck.valid) {
+      Alert.alert(
+        'Limited Stock',
+        inventoryCheck.message
+      );
+
+      return;
+    }
+
     try {
       const response =
         await placeOrder(cartItems);
@@ -56,14 +110,38 @@ export default function CartScreen({
           error.message
       );
   
+      const errorMessage =
+        extractApiErrorMessage(
+          error,
+          'Failed to place order. Please try again.'
+        );
+
+      const isAssignmentError =
+        error?.response?.status === 403 ||
+        errorMessage ===
+          TABLE_ASSIGNMENT_MESSAGE;
+
       Alert.alert(
-        'Error',
-        'Failed to place order. Please try again.'
+        isAssignmentError
+          ? 'Table Not Assigned'
+          : 'Order Failed',
+        errorMessage
       );
     }
   };
 
-  const renderItem = ({ item }) => (
+  const renderItem = ({ item }) => {
+    const enrichedItem =
+      getEnrichedItem(item);
+
+    const atMaxQuantity =
+      !canIncreaseQuantity(
+        enrichedItem,
+        item.quantity,
+        1
+      );
+
+    return (
     <View style={styles.cartItem}>
       <View style={styles.itemVisual}>
         <Text
@@ -111,12 +189,18 @@ export default function CartScreen({
 
         <TouchableOpacity
           onPress={() =>
-            updateQuantity(
-              item.id,
-              item.quantity + 1
-            )
+            handleIncreaseQuantity(item)
           }
-          style={styles.qtyBtn}
+          disabled={
+            atMaxQuantity ||
+            isOutOfStock(enrichedItem)
+          }
+          style={[
+            styles.qtyBtn,
+            (atMaxQuantity ||
+              isOutOfStock(enrichedItem)) &&
+              styles.qtyBtnDisabled,
+          ]}
         >
           <Text style={styles.qtyText}>
             +
@@ -124,7 +208,8 @@ export default function CartScreen({
         </TouchableOpacity>
       </View>
     </View>
-  );
+    );
+  };
 
   return (
     <View style={styles.frame}>
@@ -185,10 +270,16 @@ export default function CartScreen({
           </Text>
 
           <TouchableOpacity
-            style={styles.checkoutBtn}
+            style={[
+              styles.checkoutBtn,
+              (cartItems.length === 0 ||
+                !canOrder) &&
+                styles.qtyBtnDisabled,
+            ]}
             onPress={handleCheckout}
             disabled={
-              cartItems.length === 0
+              cartItems.length === 0 ||
+              !canOrder
             }
           >
             <Text
@@ -309,6 +400,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     borderRadius: 31,
+  },
+
+  qtyBtnDisabled: {
+    opacity: 0.45,
   },
 
   qtyText: {

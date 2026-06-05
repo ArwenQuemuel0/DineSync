@@ -15,17 +15,36 @@ import {
 } from 'react-native';
 
 import {
+  useFocusEffect,
+} from '@react-navigation/native';
+
+import {
+  getMenu,
   getDishRecommendations,
 } from '../api/dinesync';
 
 import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
+import { useTableStatus } from '../context/TableStatusContext';
+
+import {
+  getItemId,
+  isItemOrderable,
+  isOutOfStock,
+  canIncreaseQuantity,
+  getAvailabilityDisplayText,
+  shouldShowLowStockWarning,
+} from '../utils/inventory';
 
 export default function ItemDetailScreen({
   route,
   navigation,
 }) {
-  const { item } = route.params || {};
+  const { item: routeItem } =
+    route.params || {};
+
+  const [liveItem, setLiveItem] =
+    useState(routeItem);
 
   const { tableNumber } = useAuth();
 
@@ -43,9 +62,72 @@ export default function ItemDetailScreen({
     addToCart,
     cartItems,
     updateQuantity,
+    incrementQuantity,
     removeFromCart,
     cartTotal,
+    getEnrichedItem,
+    syncMenuInventory,
+    mergeInventoryItems,
+    refreshCartInventory,
+    validateCurrentCart,
   } = useCart();
+
+  const {
+    canOrder,
+    ensureCanOrder,
+    assignmentMessage,
+  } = useTableStatus();
+
+  const item = liveItem || routeItem;
+
+  const refreshLiveItem =
+    async () => {
+      if (!routeItem?.id) {
+        return;
+      }
+
+      try {
+        const response =
+          await getMenu();
+
+        if (
+          !response?.success ||
+          !Array.isArray(
+            response.data
+          )
+        ) {
+          return;
+        }
+
+        syncMenuInventory(
+          response.data
+        );
+
+        const freshItem =
+          response.data.find(
+            (menuItem) =>
+              String(
+                menuItem.id
+              ) ===
+              String(routeItem.id)
+          );
+
+        if (freshItem) {
+          setLiveItem(freshItem);
+        }
+      } catch (error) {
+        console.log(
+          'ITEM INVENTORY REFRESH ERROR:',
+          error?.message
+        );
+      }
+    };
+
+  useFocusEffect(
+    React.useCallback(() => {
+      refreshLiveItem();
+    }, [routeItem?.id])
+  );
 
   useEffect(() => {
     if (item?.name) {
@@ -69,8 +151,15 @@ export default function ItemDetailScreen({
       );
 
       if (response.success) {
+        const recommendedItems =
+          response.data || [];
+
         setRecommendations(
-          response.data || []
+          recommendedItems
+        );
+
+        mergeInventoryItems(
+          recommendedItems
         );
       } else {
         setRecommendations([]);
@@ -94,68 +183,6 @@ export default function ItemDetailScreen({
     return Number.isFinite(n)
       ? n.toFixed(2)
       : '0.00';
-  };
-
-  const getItemId = (data) => {
-    return (
-      data?.id ||
-      data?.menu_item_id
-    );
-  };
-
-  const getStock = (data) => {
-    const stockValue =
-      data?.available_quantity ??
-      data?.stock ??
-      data?.inventory ??
-      data?.available_stock ??
-      data?.current_stock;
-
-    if (
-      stockValue === undefined ||
-      stockValue === null ||
-      stockValue === ''
-    ) {
-      return null;
-    }
-
-    const numericStock =
-      Number(stockValue);
-
-    if (!Number.isFinite(numericStock)) {
-      return null;
-    }
-
-    return numericStock;
-  };
-
-  const isItemAvailable = (data) => {
-    const stock = getStock(data);
-
-    const availability =
-      data?.is_available;
-
-    const markedAvailable =
-      availability === true ||
-      availability === 1 ||
-      availability === 'true' ||
-      availability === '1';
-
-    const markedUnavailable =
-      availability === false ||
-      availability === 0 ||
-      availability === 'false' ||
-      availability === '0';
-
-    if (markedUnavailable) {
-      return false;
-    }
-
-    if (stock === null) {
-      return markedAvailable;
-    }
-
-    return markedAvailable && stock > 0;
   };
 
   const getItemImage = (data) => {
@@ -205,12 +232,16 @@ export default function ItemDetailScreen({
       : null;
   };
 
-  const stock = getStock(item);
-
   const imageUri = getItemImage(item);
 
   const isAvailable =
-    isItemAvailable(item);
+    isItemOrderable(item);
+
+  const isLowStock =
+    shouldShowLowStockWarning(item);
+
+  const availabilityText =
+    getAvailabilityDisplayText(item);
 
   const itemDescription =
     getItemDescription(item);
@@ -224,35 +255,10 @@ export default function ItemDetailScreen({
   const handleAddToCart = () => {
     if (!item) return;
 
-    const itemId = getItemId(item);
-
-    const existingItem =
-      cartItems.find(
-        (cartItem) =>
-          getItemId(cartItem) === itemId
-      );
-
-    const currentQty =
-      existingItem
-        ? existingItem.quantity
-        : 0;
-
     if (!isAvailable) {
       Alert.alert(
-        'Not Available',
-        'This item is currently not available.'
-      );
-
-      return;
-    }
-
-    if (
-      stock !== null &&
-      currentQty >= stock
-    ) {
-      Alert.alert(
-        'Insufficient Stock',
-        'You cannot add more of this item because it has limited availability.'
+        'Out of Stock',
+        'This item is currently out of stock.'
       );
 
       return;
@@ -266,10 +272,10 @@ export default function ItemDetailScreen({
   ) => {
     if (!recommendedItem) return;
 
-    if (!isItemAvailable(recommendedItem)) {
+    if (!isItemOrderable(recommendedItem)) {
       Alert.alert(
-        'Not Available',
-        'This recommended item is currently not available.'
+        'Out of Stock',
+        'This recommended item is currently out of stock.'
       );
 
       return;
@@ -292,27 +298,8 @@ export default function ItemDetailScreen({
   const handleIncreaseQuantity = (
     cartItem
   ) => {
-    const cartStock =
-      getStock(cartItem);
-
-    const cartItemId =
-      getItemId(cartItem);
-
-    if (
-      cartStock !== null &&
-      cartItem.quantity >= cartStock
-    ) {
-      Alert.alert(
-        'Insufficient Stock',
-        'You cannot add more of this item because it has limited availability.'
-      );
-
-      return;
-    }
-
-    updateQuantity(
-      cartItemId,
-      cartItem.quantity + 1
+    incrementQuantity(
+      getItemId(cartItem)
     );
   };
 
@@ -337,11 +324,36 @@ export default function ItemDetailScreen({
     removeFromCart(cartItemId);
   };
 
-  const handleCheckout = () => {
+  const handleCheckout = async () => {
     if (cartItems.length === 0) {
       Alert.alert(
         'Empty Order',
         'Please add at least one item before proceeding.'
+      );
+
+      return;
+    }
+
+    const tableCheck =
+      await ensureCanOrder();
+
+    if (!tableCheck.allowed) {
+      Alert.alert(
+        'Table Not Assigned',
+        tableCheck.message ||
+          assignmentMessage
+      );
+
+      return;
+    }
+
+    const inventoryCheck =
+      await refreshCartInventory();
+
+    if (!inventoryCheck.valid) {
+      Alert.alert(
+        'Limited Stock',
+        inventoryCheck.message
       );
 
       return;
@@ -378,7 +390,7 @@ export default function ItemDetailScreen({
       getItemImage(recommendedItem);
 
     const recommendedAvailable =
-      isItemAvailable(recommendedItem);
+      isItemOrderable(recommendedItem);
 
     return (
       <View
@@ -451,6 +463,16 @@ export default function ItemDetailScreen({
   const renderCartItem = ({
     item: cartItem,
   }) => {
+    const enrichedItem =
+      getEnrichedItem(cartItem);
+
+    const atMaxQuantity =
+      !canIncreaseQuantity(
+        enrichedItem,
+        cartItem.quantity,
+        1
+      );
+
     return (
       <View style={styles.cartItem}>
         <View style={styles.cartItemTop}>
@@ -508,12 +530,28 @@ export default function ItemDetailScreen({
           </Text>
 
           <TouchableOpacity
-            style={styles.qtyButton}
-            onPress={() =>
-              handleIncreaseQuantity(
-                cartItem
-              )
+            style={[
+              styles.qtyButton,
+              (atMaxQuantity ||
+                isOutOfStock(enrichedItem)) &&
+                styles.qtyButtonDisabled,
+            ]}
+            disabled={
+              atMaxQuantity ||
+              isOutOfStock(enrichedItem)
             }
+            onPress={() => {
+              if (
+                !atMaxQuantity &&
+                !isOutOfStock(
+                  enrichedItem
+                )
+              ) {
+                handleIncreaseQuantity(
+                  cartItem
+                );
+              }
+            }}
           >
             <Text
               style={styles.qtyButtonText}
@@ -630,16 +668,14 @@ export default function ItemDetailScreen({
 
               <Text
                 style={
-                  isAvailable
-                    ? styles.availableText
-                    : styles.notAvailableText
+                  !isAvailable
+                    ? styles.notAvailableText
+                    : isLowStock
+                      ? styles.lowStockText
+                      : styles.availableText
                 }
               >
-                {isAvailable
-                  ? stock !== null
-                    ? `Available (${stock})`
-                    : 'Available'
-                  : 'Sold Out'}
+                {availabilityText}
               </Text>
 
               <Text style={styles.description}>
@@ -756,11 +792,13 @@ export default function ItemDetailScreen({
               <TouchableOpacity
                 style={[
                   styles.checkoutButton,
-                  cartItems.length === 0 &&
+                  (cartItems.length === 0 ||
+                    !canOrder) &&
                     styles.checkoutButtonDisabled,
                 ]}
                 disabled={
-                  cartItems.length === 0
+                  cartItems.length === 0 ||
+                  !canOrder
                 }
                 onPress={handleCheckout}
               >
@@ -928,6 +966,13 @@ const styles =
 
     notAvailableText: {
       color: 'red',
+      fontSize: 19,
+      fontWeight: '800',
+      marginTop: 8,
+    },
+
+    lowStockText: {
+      color: '#e67e22',
       fontSize: 19,
       fontWeight: '800',
       marginTop: 8,
@@ -1143,6 +1188,10 @@ const styles =
       backgroundColor: '#f68c45',
       justifyContent: 'center',
       alignItems: 'center',
+    },
+
+    qtyButtonDisabled: {
+      backgroundColor: '#c9c9c9',
     },
 
     qtyButtonText: {

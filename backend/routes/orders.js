@@ -9,6 +9,15 @@ const {
   isConfigured,
 } = require('../supabaseClient');
 
+const {
+  computeMaxServingsFromRecipes,
+} = require('../utils/inventoryServings');
+
+const {
+  TABLE_ASSIGNMENT_MESSAGE,
+  normalizeTableStatus,
+} = require('../utils/tableStatus');
+
 // =========================
 // DEFAULT IPAD TABLE
 // =========================
@@ -183,6 +192,58 @@ router.get(
       }
 
       const {
+        data: restaurantTable,
+        error: tableError,
+      } = await supabase
+        .from('restaurant_tables')
+        .select('id')
+        .eq(
+          'table_number',
+          tableNumber
+        )
+        .single();
+
+      if (
+        tableError ||
+        !restaurantTable
+      ) {
+        return res.json({
+          success: true,
+          data: [],
+        });
+      }
+
+      const {
+        data: activeSessions,
+        error: sessionError,
+      } = await supabase
+        .from('table_sessions')
+        .select('id')
+        .eq(
+          'restaurant_table_id',
+          restaurantTable.id
+        )
+        .eq('status', 'active')
+        .order('created_at', {
+          ascending: false,
+        })
+        .limit(1);
+
+      if (
+        sessionError ||
+        !activeSessions ||
+        activeSessions.length === 0
+      ) {
+        return res.json({
+          success: true,
+          data: [],
+        });
+      }
+
+      const activeSessionId =
+        activeSessions[0].id;
+
+      const {
         data: orders,
         error: ordersError,
       } = await supabase
@@ -191,8 +252,8 @@ router.get(
           'id, order_number, table_number, table_session_id, status, total_amount, created_at, updated_at'
         )
         .eq(
-          'table_number',
-          tableNumber
+          'table_session_id',
+          activeSessionId
         )
         .in('status', [
           'pending',
@@ -472,6 +533,11 @@ router.post('/', async (req, res) => {
       });
     }
 
+    const tableStatus =
+      normalizeTableStatus(
+        restaurantTable.status
+      );
+
     // =========================
     // FIND ACTIVE TABLE SESSION
     // =========================
@@ -489,16 +555,20 @@ router.post('/', async (req, res) => {
       .eq('status', 'active')
       .single();
 
-    if (sessionError || !activeSession) {
+    if (
+      tableStatus !== 'occupied' ||
+      sessionError ||
+      !activeSession
+    ) {
       console.log(
-        'ACTIVE SESSION ERROR:',
+        'TABLE ASSIGNMENT ERROR:',
         sessionError
       );
 
-      return res.status(400).json({
+      return res.status(403).json({
         success: false,
         message:
-          'No active table session found for this table.',
+          TABLE_ASSIGNMENT_MESSAGE,
       });
     }
 
@@ -543,6 +613,28 @@ router.post('/', async (req, res) => {
         });
       }
 
+      const maxServings =
+        await computeMaxServingsFromRecipes(
+          supabase,
+          menuItemId
+        );
+
+      if (maxServings <= 0) {
+        return res.status(422).json({
+          success: false,
+          message:
+            `${menuItem.name} is out of stock.`,
+        });
+      }
+
+      if (orderedQty > maxServings) {
+        return res.status(422).json({
+          success: false,
+          message:
+            `${menuItem.name} only has ${maxServings} orders left.`,
+        });
+      }
+
       const {
         data: recipeRows,
         error: recipeError,
@@ -556,10 +648,10 @@ router.post('/', async (req, res) => {
         !recipeRows ||
         recipeRows.length === 0
       ) {
-        return res.status(400).json({
+        return res.status(422).json({
           success: false,
           message:
-            `${menuItem.name} has no recipe/inventory setup.`,
+            `${menuItem.name} is out of stock.`,
         });
       }
 
@@ -598,10 +690,10 @@ router.post('/', async (req, res) => {
           );
 
         if (currentStock < totalNeeded) {
-          return res.status(400).json({
+          return res.status(422).json({
             success: false,
             message:
-              `${menuItem.name} is no longer available in the requested quantity.`,
+              `Cannot place order. Not enough stock for ${ingredientRow.name}.`,
           });
         }
       }
@@ -732,13 +824,12 @@ router.post('/', async (req, res) => {
     } = await supabase
       .from('restaurant_tables')
       .update({
-        status: 'occupied',
         current_order_id:
           orderId,
-        occupied_at:
-          new Date().toISOString(),
         notes:
           'Tablet order',
+        updated_at:
+          new Date().toISOString(),
       })
       .eq(
         'table_number',

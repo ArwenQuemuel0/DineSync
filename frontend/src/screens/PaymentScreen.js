@@ -15,18 +15,22 @@ import {
 import {
   placeOrder,
   processPayment,
+  extractApiErrorMessage,
 } from '../api/dinesync';
 
 import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
+import { useTableStatus } from '../context/TableStatusContext';
+import { TABLE_ASSIGNMENT_MESSAGE } from '../constants/tableStatus';
+
 
 export default function PaymentScreen({
   route,
   navigation,
 }) {
   const {
-    cartItems = [],
-    total = 0,
+    cartItems: routeCartItems = [],
+    total: routeTotal = 0,
     tableNumber: routeTableNumber,
   } = route.params || {};
 
@@ -41,9 +45,29 @@ export default function PaymentScreen({
     user?.table_number;
 
   const {
+    cartItems: contextCartItems,
+    cartTotal,
     clearCart,
     setActiveOrderId,
+    refreshCartInventory,
+    getCartItems,
+    cartTotal: liveCartTotal,
   } = useCart();
+
+  const cartItems =
+    contextCartItems.length > 0
+      ? contextCartItems
+      : routeCartItems;
+
+  const total =
+    contextCartItems.length > 0
+      ? cartTotal
+      : routeTotal;
+
+  const {
+    ensureCanOrder,
+    assignmentMessage,
+  } = useTableStatus();
 
   const [loading, setLoading] =
     useState(false);
@@ -82,6 +106,31 @@ export default function PaymentScreen({
     setLoading(true);
 
     try {
+      const tableCheck =
+        await ensureCanOrder();
+
+      if (!tableCheck.allowed) {
+        Alert.alert(
+          'Table Not Assigned',
+          tableCheck.message ||
+            assignmentMessage
+        );
+
+        return;
+      }
+
+      const inventoryCheck =
+        await refreshCartInventory();
+
+      if (!inventoryCheck.valid) {
+        Alert.alert(
+          'Limited Stock',
+          inventoryCheck.message
+        );
+
+        return;
+      }
+
       // =========================
       // CREATE ORDER FIRST
       // =========================
@@ -109,7 +158,9 @@ export default function PaymentScreen({
         orderResponse.data.id;
 
       const totalAmount =
-        Number(total) || 0;
+        Number(liveCartTotal) ||
+        Number(total) ||
+        0;
 
       // =========================
       // PROCESS PAYMENT
@@ -150,11 +201,31 @@ export default function PaymentScreen({
         error
       );
 
-      Alert.alert(
-        'Payment Failed',
-        error.response?.data?.message ||
-          error.message ||
+      const errorMessage =
+        extractApiErrorMessage(
+          error,
           'Payment failed. Please try again.'
+        );
+
+      const statusCode =
+        error?.response?.status;
+
+      const isAssignmentError =
+        statusCode === 403 ||
+        errorMessage ===
+          TABLE_ASSIGNMENT_MESSAGE;
+
+      const isInventoryError =
+        statusCode === 422 ||
+        statusCode === 400;
+
+      Alert.alert(
+        isAssignmentError
+          ? 'Table Not Assigned'
+          : isInventoryError
+            ? 'Limited Stock'
+            : 'Payment Failed',
+        errorMessage
       );
     } finally {
       setLoading(false);

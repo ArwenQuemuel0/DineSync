@@ -5,6 +5,7 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 
 import { AuthProvider } from './src/context/AuthContext';
+import { TableStatusProvider } from './src/context/TableStatusContext';
 import { CartProvider } from './src/context/CartContext';
 
 import LoginScreen from './src/screens/LoginScreen';
@@ -20,6 +21,7 @@ const Stack = createNativeStackNavigator();
 export default function App() {
   return (
     <AuthProvider>
+      <TableStatusProvider>
       <CartProvider>
         <NavigationContainer>
           <Stack.Navigator
@@ -65,6 +67,7 @@ export default function App() {
           </Stack.Navigator>
         </NavigationContainer>
       </CartProvider>
+      </TableStatusProvider>
     </AuthProvider>
   );
 }

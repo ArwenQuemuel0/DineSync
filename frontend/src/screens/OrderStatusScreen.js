@@ -13,10 +13,16 @@ import {
 } from 'react-native';
 
 import {
-  getActiveTableOrders,
+  getTableOrderHistory,
 } from '../api/dinesync';
 
 import { useAuth } from '../context/AuthContext';
+
+import {
+  normalizeOrderStatus,
+  getOrderStatusLabel,
+  isActiveOrderStatus,
+} from '../utils/orderStatus';
 
 export default function OrderStatusScreen({
   navigation,
@@ -68,14 +74,18 @@ export default function OrderStatusScreen({
       }
 
       const response =
-        await getActiveTableOrders(
-          finalTableNumber
-        );
+        await getTableOrderHistory();
 
       if (response.success) {
-        setOrders(
+        const activeOrders = (
           response.data || []
+        ).filter((order) =>
+          isActiveOrderStatus(
+            order.status
+          )
         );
+
+        setOrders(activeOrders);
 
         setError('');
       } else {
@@ -124,46 +134,11 @@ export default function OrderStatusScreen({
     return date.toLocaleString();
   };
 
-  const normalizeStatus = (
-    status
-  ) => {
-    return String(
-      status || 'pending'
-    ).toLowerCase();
-  };
-
-  const getStatusLabel = (
-    status
-  ) => {
-    const normalized =
-      normalizeStatus(status);
-
-    if (
-      normalized === 'pending'
-    ) {
-      return 'Pending';
-    }
-
-    if (
-      normalized === 'preparing'
-    ) {
-      return 'Preparing';
-    }
-
-    if (
-      normalized === 'ready'
-    ) {
-      return 'Ready';
-    }
-
-    return status || 'Pending';
-  };
-
   const getStatusStyle = (
     status
   ) => {
     const normalized =
-      normalizeStatus(status);
+      normalizeOrderStatus(status);
 
     if (
       normalized === 'pending'
@@ -264,7 +239,7 @@ export default function OrderStatusScreen({
                 styles.statusBadgeText
               }
             >
-              {getStatusLabel(
+              {getOrderStatusLabel(
                 item.status
               )}
             </Text>
@@ -424,7 +399,7 @@ export default function OrderStatusScreen({
             </Text>
 
             <Text style={styles.emptyText}>
-              Pending, preparing, and ready orders will appear here.
+              Pending, preparing, and ready orders will appear here. Served orders move to order history.
             </Text>
           </View>
         ) : (

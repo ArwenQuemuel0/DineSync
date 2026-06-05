@@ -26,9 +26,11 @@ import React, {
   
   // =========================
   // AUTO RESTORE SESSION
-  // false = always require manual login
+  // false = always show login screen on app open.
+  // Order history still persists because staff
+  // logout no longer closes the table session.
   // =========================
-  
+
   const AUTO_RESTORE_SESSION = false;
   
   export const AuthProvider = ({ children }) => {
@@ -59,47 +61,6 @@ import React, {
   
         const savedUser =
           await AsyncStorage.getItem('user');
-  
-        // =========================
-        // FORCE CLEAR OLD SESSION
-        // =========================
-  
-        if (
-          !AUTO_RESTORE_SESSION &&
-          savedToken
-        ) {
-          console.log(
-            'Old saved login found. Marking offline and clearing session.'
-          );
-  
-          try {
-            await tableOffline();
-          } catch (error) {
-            console.log(
-              'Offline on startup error:',
-              error?.response?.data ||
-                error.message
-            );
-          }
-  
-          await AsyncStorage.removeItem(
-            'token'
-          );
-  
-          await AsyncStorage.removeItem(
-            'user'
-          );
-  
-          setToken(null);
-          setUser(null);
-          stopHeartbeat();
-  
-          return;
-        }
-  
-        // =========================
-        // ONLY RESTORE IF ENABLED
-        // =========================
   
         if (
           AUTO_RESTORE_SESSION &&

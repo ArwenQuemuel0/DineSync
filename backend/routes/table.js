@@ -21,6 +21,11 @@ const supabase =
     supabaseKey
   );
 
+const {
+  buildTableStatusPayload,
+  fetchTableStatusForUser,
+} = require('../utils/tableStatus');
+
 // =========================
 // GET LOGGED-IN TABLE USER
 // Token format:
@@ -351,29 +356,6 @@ router.post('/online', async (req, res) => {
       new Date().toISOString();
 
     const {
-      error: sessionError,
-      restaurantTable,
-      session,
-    } =
-      await ensureActiveTableSession(
-        user.table_number
-      );
-
-    if (sessionError) {
-      console.log(
-        'TABLE ONLINE SESSION ERROR:',
-        sessionError
-      );
-
-      return res.status(500).json({
-        success: false,
-        message:
-          sessionError.message ||
-          'Failed to create active table session.',
-      });
-    }
-
-    const {
       data: updatedUser,
       error: userUpdateError,
     } = await supabase
@@ -392,29 +374,34 @@ router.post('/online', async (req, res) => {
       throw userUpdateError;
     }
 
-    await supabase
-      .from('restaurant_tables')
-      .update({
-        status: 'occupied',
-        updated_at: now,
-      })
-      .eq('id', restaurantTable.id);
+    const {
+      error: statusError,
+      payload: tableStatus,
+    } =
+      await fetchTableStatusForUser(
+        supabase,
+        updatedUser,
+        getRestaurantTableByNumber,
+        getActiveTableSession
+      );
+
+    if (statusError) {
+      console.log(
+        'TABLE ONLINE STATUS ERROR:',
+        statusError
+      );
+    }
 
     console.log(
-      `TABLE ${updatedUser.table_number} IS NOW ONLINE`
-    );
-
-    console.log(
-      'ACTIVE TABLE SESSION:',
-      session
+      `TABLET ${updatedUser.table_number} IS NOW ONLINE`
     );
 
     return res.json({
       success: true,
       message:
-        'Table marked as online.',
+        'Tablet marked as online.',
       data: updatedUser,
-      session,
+      ...tableStatus,
     });
   } catch (error) {
     console.error(
@@ -462,29 +449,6 @@ router.post('/heartbeat', async (req, res) => {
       new Date().toISOString();
 
     const {
-      error: sessionError,
-      restaurantTable,
-      session,
-    } =
-      await ensureActiveTableSession(
-        user.table_number
-      );
-
-    if (sessionError) {
-      console.log(
-        'TABLE HEARTBEAT SESSION ERROR:',
-        sessionError
-      );
-
-      return res.status(500).json({
-        success: false,
-        message:
-          sessionError.message ||
-          'Failed to keep active table session.',
-      });
-    }
-
-    const {
       data,
       error,
     } = await supabase
@@ -503,20 +467,30 @@ router.post('/heartbeat', async (req, res) => {
       throw error;
     }
 
-    await supabase
-      .from('restaurant_tables')
-      .update({
-        status: 'occupied',
-        updated_at: now,
-      })
-      .eq('id', restaurantTable.id);
+    const {
+      error: statusError,
+      payload: tableStatus,
+    } =
+      await fetchTableStatusForUser(
+        supabase,
+        data,
+        getRestaurantTableByNumber,
+        getActiveTableSession
+      );
+
+    if (statusError) {
+      console.log(
+        'TABLE HEARTBEAT STATUS ERROR:',
+        statusError
+      );
+    }
 
     return res.json({
       success: true,
       message:
-        'Table heartbeat received.',
+        'Tablet heartbeat received.',
       data,
-      session,
+      ...tableStatus,
     });
   } catch (error) {
     console.error(
@@ -601,30 +575,14 @@ router.post('/offline', async (req, res) => {
       throw error;
     }
 
-    await supabase
-      .from('table_sessions')
-      .update({
-        status: 'closed',
-        updated_at: now,
-      })
-      .eq(
-        'restaurant_table_id',
-        restaurantTable.id
-      )
-      .eq('status', 'active');
-
-    await supabase
-      .from('restaurant_tables')
-      .update({
-        status: 'available',
-        updated_at: now,
-      })
-      .eq('id', restaurantTable.id);
+    // Keep the active table session open so order history
+    // survives staff logout / tablet re-login. Sessions are
+    // only closed when staff marks the table clean on the web.
 
     return res.json({
       success: true,
       message:
-        'Table marked as offline.',
+        'Tablet marked as offline. Table session preserved.',
       data,
     });
   } catch (error) {
@@ -640,6 +598,66 @@ router.post('/offline', async (req, res) => {
       error:
         error.message ||
         String(error),
+    });
+  }
+});
+
+// =========================
+// TABLE STATUS
+// GET /api/table/status
+// =========================
+
+router.get('/status', async (req, res) => {
+  try {
+    const {
+      error: authError,
+      user,
+    } = await getLoggedInTableUser(
+      req
+    );
+
+    if (authError) {
+      return res.status(401).json({
+        success: false,
+        message: authError,
+      });
+    }
+
+    const {
+      error: statusError,
+      payload,
+    } =
+      await fetchTableStatusForUser(
+        supabase,
+        user,
+        getRestaurantTableByNumber,
+        getActiveTableSession
+      );
+
+    if (statusError || !payload) {
+      return res.status(500).json({
+        success: false,
+        message:
+          statusError?.message ||
+          'Failed to fetch table status.',
+      });
+    }
+
+    return res.json({
+      success: true,
+      ...payload,
+    });
+  } catch (error) {
+    console.error(
+      'TABLE STATUS ERROR:',
+      error
+    );
+
+    return res.status(500).json({
+      success: false,
+      message:
+        error.message ||
+        'Failed to fetch table status.',
     });
   }
 });

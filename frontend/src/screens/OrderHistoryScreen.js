@@ -15,6 +15,7 @@ import React, {
   
   import { getTableOrderHistory } from '../api/dinesync';
   import { useAuth } from '../context/AuthContext';
+  import { getOrderStatusLabel } from '../utils/orderStatus';
   
   export default function OrderHistoryScreen({
     navigation,
@@ -32,11 +33,23 @@ import React, {
   
     useEffect(() => {
       fetchOrderHistory();
+
+      const refreshTimer =
+        setInterval(() => {
+          fetchOrderHistory(false);
+        }, 5000);
+
+      return () =>
+        clearInterval(refreshTimer);
     }, []);
   
-    const fetchOrderHistory = async () => {
+    const fetchOrderHistory = async (
+      showLoading = true
+    ) => {
       try {
-        setLoading(true);
+        if (showLoading) {
+          setLoading(true);
+        }
   
         const response =
           await getTableOrderHistory();
@@ -157,10 +170,10 @@ import React, {
   
     const getStatusLabel = (status) => {
       const normalized =
-        String(status || 'pending')
+        String(status || 'Pending')
           .toLowerCase();
   
-      if (normalized === 'pending') {
+      if (normalized === 'Pending') {
         return 'Waiting for Kitchen';
       }
   
@@ -168,13 +181,13 @@ import React, {
         return 'Preparing';
       }
   
-      if (normalized === 'ready') {
+      if (normalized === 'Ready') {
         return 'Ready to Serve';
       }
   
       if (
-        normalized === 'served' ||
-        normalized === 'completed'
+        normalized === 'Served' ||
+        normalized === 'Completed'
       ) {
         return 'Served';
       }
@@ -242,7 +255,7 @@ import React, {
   
             <View style={styles.statusPill}>
               <Text style={styles.statusText}>
-                {getStatusLabel(
+                {getOrderStatusLabel(
                   order.status
                 )}
               </Text>

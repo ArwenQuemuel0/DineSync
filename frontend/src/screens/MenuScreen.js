@@ -16,10 +16,25 @@ import {
   Modal,
 } from 'react-native';
 
+import {
+  useFocusEffect,
+  CommonActions,
+} from '@react-navigation/native';
+
 import { getMenu } from '../api/dinesync';
 
 import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
+import { useTableStatus } from '../context/TableStatusContext';
+
+import {
+  getItemId,
+  isItemOrderable,
+  isOutOfStock,
+  canIncreaseQuantity,
+  getAvailabilityDisplayText,
+  shouldShowLowStockWarning,
+} from '../utils/inventory';
 
 export default function MenuScreen({
   navigation,
@@ -58,14 +73,40 @@ export default function MenuScreen({
     addToCart,
     cartItems,
     updateQuantity,
+    incrementQuantity,
     removeFromCart,
     cartTotal,
-    activeOrderId,
+    syncMenuInventory,
+    refreshCartInventory,
+    getEnrichedItem,
+    validateCurrentCart,
   } = useCart();
+
+  const {
+    canOrder,
+    ensureCanOrder,
+    refreshTableStatus,
+    assignmentMessage,
+  } = useTableStatus();
 
   useEffect(() => {
     fetchMenu();
+
+    const refreshTimer =
+      setInterval(() => {
+        fetchMenu();
+      }, 15000);
+
+    return () =>
+      clearInterval(refreshTimer);
   }, []);
+
+  useFocusEffect(
+    React.useCallback(() => {
+      fetchMenu();
+      refreshTableStatus();
+    }, [refreshTableStatus])
+  );
 
   const fetchMenu = async () => {
     try {
@@ -79,6 +120,10 @@ export default function MenuScreen({
 
       if (response.success) {
         setMenuItems(
+          response.data
+        );
+
+        syncMenuInventory(
           response.data
         );
       } else {
@@ -141,39 +186,6 @@ export default function MenuScreen({
       : '0.00';
   };
 
-  const getItemId = (item) => {
-    return (
-      item?.id ||
-      item?.menu_item_id
-    );
-  };
-
-  const getStock = (item) => {
-    const stockValue =
-      item?.available_quantity ??
-      item?.stock ??
-      item?.inventory ??
-      item?.available_stock ??
-      item?.current_stock;
-
-    if (
-      stockValue === undefined ||
-      stockValue === null ||
-      stockValue === ''
-    ) {
-      return null;
-    }
-
-    const numericStock =
-      Number(stockValue);
-
-    if (!Number.isFinite(numericStock)) {
-      return null;
-    }
-
-    return numericStock;
-  };
-
   const getItemImage = (item) => {
     const image =
       item?.image
@@ -192,67 +204,11 @@ export default function MenuScreen({
     );
   };
 
-  const isItemAvailable = (item) => {
-    const stock =
-      getStock(item);
-
-    const availability =
-      item?.is_available;
-
-    const markedAvailable =
-      availability === true ||
-      availability === 1 ||
-      availability === 'true' ||
-      availability === '1';
-
-    const markedUnavailable =
-      availability === false ||
-      availability === 0 ||
-      availability === 'false' ||
-      availability === '0';
-
-    if (markedUnavailable) {
-      return false;
-    }
-
-    if (stock === null) {
-      return markedAvailable;
-    }
-
-    return markedAvailable && stock > 0;
-  };
-
   const handleAddToCart = (item) => {
-    const stock = getStock(item);
-    const itemId = getItemId(item);
-
-    const existingItem =
-      cartItems.find(
-        (cartItem) =>
-          getItemId(cartItem) === itemId
-      );
-
-    const currentQty =
-      existingItem
-        ? existingItem.quantity
-        : 0;
-
-    if (!isItemAvailable(item)) {
+    if (!isItemOrderable(item)) {
       Alert.alert(
-        'Not Available',
-        'This item is currently not available.'
-      );
-
-      return;
-    }
-
-    if (
-      stock !== null &&
-      currentQty >= stock
-    ) {
-      Alert.alert(
-        'Insufficient Stock',
-        'You cannot add more of this item because it has limited availability.'
+        'Out of Stock',
+        'This item is currently out of stock.'
       );
 
       return;
@@ -264,27 +220,8 @@ export default function MenuScreen({
   const handleIncreaseQuantity = (
     item
   ) => {
-    const stock =
-      getStock(item);
-
-    const itemId =
-      getItemId(item);
-
-    if (
-      stock !== null &&
-      item.quantity >= stock
-    ) {
-      Alert.alert(
-        'Insufficient Stock',
-        'You cannot add more of this item because it has limited availability.'
-      );
-
-      return;
-    }
-
-    updateQuantity(
-      itemId,
-      item.quantity + 1
+    incrementQuantity(
+      getItemId(item)
     );
   };
 
@@ -309,11 +246,45 @@ export default function MenuScreen({
     removeFromCart(itemId);
   };
 
-  const handleCheckout = () => {
+  const handleGoToWelcome = () => {
+    navigation.dispatch(
+      CommonActions.reset({
+        index: 0,
+        routes: [{ name: 'Welcome' }],
+      })
+    );
+  };
+
+  const handleCheckout = async () => {
     if (cartItems.length === 0) {
       Alert.alert(
         'Empty Order',
         'Please add at least one item before proceeding.'
+      );
+
+      return;
+    }
+
+    const tableCheck =
+      await ensureCanOrder();
+
+    if (!tableCheck.allowed) {
+      Alert.alert(
+        'Table Not Assigned',
+        tableCheck.message ||
+          assignmentMessage
+      );
+
+      return;
+    }
+
+    const inventoryCheck =
+      await refreshCartInventory();
+
+    if (!inventoryCheck.valid) {
+      Alert.alert(
+        'Limited Stock',
+        inventoryCheck.message
       );
 
       return;
@@ -368,10 +339,10 @@ export default function MenuScreen({
       })
       .sort((a, b) => {
         const aAvailable =
-          isItemAvailable(a);
+          isItemOrderable(a);
 
         const bAvailable =
-          isItemAvailable(b);
+          isItemOrderable(b);
 
         return (
           Number(bAvailable) -
@@ -394,7 +365,13 @@ export default function MenuScreen({
       getItemImage(item);
 
     const isAvailable =
-      isItemAvailable(item);
+      isItemOrderable(item);
+
+    const isLowStock =
+      shouldShowLowStockWarning(item);
+
+    const availabilityText =
+      getAvailabilityDisplayText(item);
 
     const bestSeller =
       isBestSeller(item);
@@ -462,14 +439,14 @@ export default function MenuScreen({
 
           <Text
             style={
-              isAvailable
-                ? styles.availableText
-                : styles.notAvailableText
+              !isAvailable
+                ? styles.notAvailableText
+                : isLowStock
+                  ? styles.lowStockText
+                  : styles.availableText
             }
           >
-            {isAvailable
-              ? 'Available'
-              : 'Sold Out'}
+            {availabilityText}
           </Text>
 
           <Text style={styles.tapText}>
@@ -483,6 +460,16 @@ export default function MenuScreen({
   const renderCartItem = ({
     item,
   }) => {
+    const enrichedItem =
+      getEnrichedItem(item);
+
+    const atMaxQuantity =
+      !canIncreaseQuantity(
+        enrichedItem,
+        item.quantity,
+        1
+      );
+
     return (
       <View style={styles.cartItem}>
         <View style={styles.cartItemTop}>
@@ -537,10 +524,28 @@ export default function MenuScreen({
           </Text>
 
           <TouchableOpacity
-            style={styles.qtyButton}
-            onPress={() =>
-              handleIncreaseQuantity(item)
+            style={[
+              styles.qtyButton,
+              (atMaxQuantity ||
+                isOutOfStock(enrichedItem)) &&
+                styles.qtyButtonDisabled,
+            ]}
+            disabled={
+              atMaxQuantity ||
+              isOutOfStock(enrichedItem)
             }
+            onPress={() => {
+              if (
+                !atMaxQuantity &&
+                !isOutOfStock(
+                  enrichedItem
+                )
+              ) {
+                handleIncreaseQuantity(
+                  item
+                );
+              }
+            }}
           >
             <Text
               style={styles.qtyButtonText}
@@ -567,9 +572,7 @@ export default function MenuScreen({
       <View style={styles.container}>
         <View style={styles.topBar}>
           <TouchableOpacity
-            onPress={() =>
-              navigation.goBack()
-            }
+            onPress={handleGoToWelcome}
           >
             <Text style={styles.topBarText}>
               {'<'} Go Back
@@ -594,28 +597,22 @@ export default function MenuScreen({
               </Text>
             </TouchableOpacity>
 
-            {activeOrderId ? (
-              <TouchableOpacity
-                style={styles.statusButton}
-                onPress={() =>
-                  navigation.navigate(
-                    'OrderStatus',
-                    {
-                      orderId:
-                        activeOrderId,
-                    }
-                  )
+            <TouchableOpacity
+              style={styles.statusButton}
+              onPress={() =>
+                navigation.navigate(
+                  'OrderStatus'
+                )
+              }
+            >
+              <Text
+                style={
+                  styles.statusButtonText
                 }
               >
-                <Text
-                  style={
-                    styles.statusButtonText
-                  }
-                >
-                  View Order Status
-                </Text>
-              </TouchableOpacity>
-            ) : null}
+                View Order Status
+              </Text>
+            </TouchableOpacity>
 
             <TouchableOpacity
               style={styles.logoutButton}
@@ -669,6 +666,22 @@ export default function MenuScreen({
             </TouchableOpacity>
           )}
         />
+
+        {!canOrder ? (
+          <View
+            style={
+              styles.assignmentBanner
+            }
+          >
+            <Text
+              style={
+                styles.assignmentBannerText
+              }
+            >
+              {assignmentMessage}
+            </Text>
+          </View>
+        ) : null}
 
         <View style={styles.contentArea}>
           <View style={styles.menuSection}>
@@ -754,11 +767,13 @@ export default function MenuScreen({
               <TouchableOpacity
                 style={[
                   styles.checkoutButton,
-                  cartItems.length === 0 &&
+                  (cartItems.length === 0 ||
+                    !canOrder) &&
                     styles.checkoutButtonDisabled,
                 ]}
                 disabled={
-                  cartItems.length === 0
+                  cartItems.length === 0 ||
+                  !canOrder
                 }
                 onPress={handleCheckout}
               >
@@ -965,6 +980,24 @@ const styles =
       color: '#fff',
     },
 
+    assignmentBanner: {
+      backgroundColor: '#fff4e8',
+      borderWidth: 1,
+      borderColor: '#f68c45',
+      borderRadius: 12,
+      paddingVertical: 12,
+      paddingHorizontal: 16,
+      marginBottom: 12,
+    },
+
+    assignmentBannerText: {
+      color: '#8a4b12',
+      fontSize: 16,
+      fontWeight: '700',
+      textAlign: 'center',
+      lineHeight: 22,
+    },
+
     contentArea: {
       flex: 1,
       flexDirection: 'row',
@@ -1071,6 +1104,13 @@ const styles =
       marginTop: 8,
     },
 
+    lowStockText: {
+      color: '#e67e22',
+      fontSize: 15,
+      fontWeight: '700',
+      marginTop: 8,
+    },
+
     tapText: {
       marginTop: 8,
       color: '#999',
@@ -1160,6 +1200,10 @@ const styles =
       backgroundColor: '#f68c45',
       justifyContent: 'center',
       alignItems: 'center',
+    },
+
+    qtyButtonDisabled: {
+      backgroundColor: '#c9c9c9',
     },
 
     qtyButtonText: {
