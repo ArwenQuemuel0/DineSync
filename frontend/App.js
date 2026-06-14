@@ -13,6 +13,7 @@ import WelcomeScreen from './src/screens/WelcomeScreen';
 import MenuScreen from './src/screens/MenuScreen';
 import ItemDetailScreen from './src/screens/ItemDetailScreen';
 import PaymentScreen from './src/screens/PaymentScreen';
+import PaymentWebViewScreen from './src/screens/PaymentWebViewScreen';
 import OrderStatusScreen from './src/screens/OrderStatusScreen';
 import OrderHistoryScreen from './src/screens/OrderHistoryScreen';
 
@@ -22,51 +23,56 @@ export default function App() {
   return (
     <AuthProvider>
       <TableStatusProvider>
-      <CartProvider>
-        <NavigationContainer>
-          <Stack.Navigator
-            initialRouteName="Login"
-            screenOptions={{
-              headerShown: false,
-            }}
-          >
-            <Stack.Screen
-              name="Login"
-              component={LoginScreen}
-            />
+        <CartProvider>
+          <NavigationContainer>
+            <Stack.Navigator
+              initialRouteName="Login"
+              screenOptions={{
+                headerShown: false,
+              }}
+            >
+              <Stack.Screen
+                name="Login"
+                component={LoginScreen}
+              />
 
-            <Stack.Screen
-              name="Welcome"
-              component={WelcomeScreen}
-            />
+              <Stack.Screen
+                name="Welcome"
+                component={WelcomeScreen}
+              />
 
-            <Stack.Screen
-              name="Menu"
-              component={MenuScreen}
-            />
+              <Stack.Screen
+                name="Menu"
+                component={MenuScreen}
+              />
 
-            <Stack.Screen
-              name="ItemDetail"
-              component={ItemDetailScreen}
-            />
+              <Stack.Screen
+                name="ItemDetail"
+                component={ItemDetailScreen}
+              />
 
-            <Stack.Screen
-              name="Payment"
-              component={PaymentScreen}
-            />
+              <Stack.Screen
+                name="Payment"
+                component={PaymentScreen}
+              />
 
-            <Stack.Screen
-              name="OrderStatus"
-              component={OrderStatusScreen}
-            />
+              <Stack.Screen
+                name="PaymentWebView"
+                component={PaymentWebViewScreen}
+              />
 
-            <Stack.Screen
-              name="OrderHistory"
-              component={OrderHistoryScreen}
-            />
-          </Stack.Navigator>
-        </NavigationContainer>
-      </CartProvider>
+              <Stack.Screen
+                name="OrderStatus"
+                component={OrderStatusScreen}
+              />
+
+              <Stack.Screen
+                name="OrderHistory"
+                component={OrderHistoryScreen}
+              />
+            </Stack.Navigator>
+          </NavigationContainer>
+        </CartProvider>
       </TableStatusProvider>
     </AuthProvider>
   );

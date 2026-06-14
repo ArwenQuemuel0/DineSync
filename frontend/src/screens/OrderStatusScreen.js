@@ -14,6 +14,7 @@ import {
 
 import {
   getTableOrderHistory,
+  getOrderStatus,
 } from '../api/dinesync';
 
 import { useAuth } from '../context/AuthContext';
@@ -27,8 +28,13 @@ import {
 } from '../utils/orderStatus';
 
 export default function OrderStatusScreen({
+  route,
   navigation,
 }) {
+  const {
+    orderId,
+  } = route.params || {};
+
   const {
     tableNumber,
     user,
@@ -57,7 +63,22 @@ export default function OrderStatusScreen({
 
     return () =>
       clearInterval(interval);
-  }, [finalTableNumber]);
+  }, [finalTableNumber, orderId]);
+
+  const fetchSpecificOrder = async () => {
+    if (!orderId) {
+      return null;
+    }
+
+    const response =
+      await getOrderStatus(orderId);
+
+    if (response.success) {
+      return response.data;
+    }
+
+    return null;
+  };
 
   const fetchOrders = async (
     showLoading = true
@@ -74,6 +95,26 @@ export default function OrderStatusScreen({
 
         return;
       }
+
+      // =========================
+      // If coming from PaymentWebView,
+      // fetch exact order first using GET /api/orders/:id
+      // =========================
+
+      if (orderId) {
+        const specificOrder =
+          await fetchSpecificOrder();
+
+        if (specificOrder) {
+          setOrders([specificOrder]);
+          setError('');
+          return;
+        }
+      }
+
+      // =========================
+      // Fallback: fetch all active table orders
+      // =========================
 
       const response =
         await getTableOrderHistory();
@@ -190,6 +231,41 @@ export default function OrderStatusScreen({
     return styles.paymentPending;
   };
 
+  const getPaymentMessage = (
+    order
+  ) => {
+    const paymentStatus =
+      normalizePaymentStatus(
+        order.payment_status
+      );
+
+    const orderStatus =
+      normalizeOrderStatus(
+        order.status
+      );
+
+      if (
+        paymentStatus === 'paid' &&
+        orderStatus === 'pending'
+      ) {
+        return 'Payment received. Your order is now in queue.';
+      }
+      
+      if (paymentStatus === 'pending') {
+        return 'Payment is still pending.';
+      }
+
+    if (paymentStatus === 'expired') {
+      return 'Payment expired. Please ask restaurant staff for help.';
+    }
+
+    if (paymentStatus === 'failed') {
+      return 'Payment failed. Please try again or ask restaurant staff for help.';
+    }
+
+    return '';
+  };
+
   const getOrderTotal = (
     order
   ) => {
@@ -237,6 +313,9 @@ export default function OrderStatusScreen({
       item.items ||
       item.order_items ||
       [];
+
+    const paymentMessage =
+      getPaymentMessage(item);
 
     return (
       <View style={styles.orderCard}>
@@ -295,6 +374,12 @@ export default function OrderStatusScreen({
             </View>
           </View>
         </View>
+
+        {paymentMessage ? (
+          <Text style={styles.paymentMessage}>
+            {paymentMessage}
+          </Text>
+        ) : null}
 
         <View style={styles.divider} />
 
@@ -429,7 +514,9 @@ export default function OrderStatusScreen({
         </Text>
 
         <Text style={styles.subHeader}>
-          Active Orders
+          {orderId
+            ? `Order #${orderId}`
+            : 'Active Orders'}
         </Text>
 
         {error ? (
@@ -635,6 +722,18 @@ const styles =
       fontSize: 14,
       fontWeight: '800',
       color: '#333',
+    },
+
+    paymentMessage: {
+      marginTop: 14,
+      backgroundColor: '#fff3e8',
+      color: '#333',
+      paddingVertical: 10,
+      paddingHorizontal: 14,
+      borderRadius: 12,
+      fontSize: 16,
+      fontWeight: '800',
+      lineHeight: 22,
     },
 
     paymentPending: {

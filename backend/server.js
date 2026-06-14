@@ -37,6 +37,9 @@ const tableRoutes =
 const aiRoutes =
   require('./routes/ai');
 
+const xenditWebhookRoutes =
+  require('./routes/xenditWebhook');
+
 // =========================
 // API ROUTES
 // =========================
@@ -60,6 +63,11 @@ app.use(
 app.use(
   '/api/ai',
   aiRoutes
+);
+
+app.use(
+  '/api/webhooks',
+  xenditWebhookRoutes
 );
 
 // =========================
@@ -92,6 +100,24 @@ app.post('/test', (req, res) => {
     message:
       'Backend reached successfully',
   });
+});
+
+// =========================
+// PAYMENT REDIRECT TEST ROUTES
+// These are only landing routes after Xendit payment.
+// Mobile WebView will detect these URLs.
+// =========================
+
+app.get('/payment-success', (req, res) => {
+  res.send(
+    'Payment success. You may now return to DineSync+.'
+  );
+});
+
+app.get('/payment-failed', (req, res) => {
+  res.send(
+    'Payment failed or cancelled. You may now return to DineSync+.'
+  );
 });
 
 // =========================

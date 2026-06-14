@@ -10,12 +10,10 @@ import {
   ActivityIndicator,
   Image,
   Alert,
-  Linking,
 } from 'react-native';
 
 import {
   placeOrder,
-  processPayment,
   extractApiErrorMessage,
 } from '../api/dinesync';
 
@@ -23,7 +21,6 @@ import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
 import { useTableStatus } from '../context/TableStatusContext';
 import { TABLE_ASSIGNMENT_MESSAGE } from '../constants/tableStatus';
-
 
 export default function PaymentScreen({
   route,
@@ -51,8 +48,6 @@ export default function PaymentScreen({
     clearCart,
     setActiveOrderId,
     refreshCartInventory,
-    getCartItems,
-    cartTotal: liveCartTotal,
   } = useCart();
 
   const cartItems =
@@ -134,6 +129,8 @@ export default function PaymentScreen({
 
       // =========================
       // CREATE ORDER FIRST
+      // Backend creates Xendit invoice.
+      // Mobile only receives invoice URL.
       // =========================
 
       const orderResponse =
@@ -157,36 +154,64 @@ export default function PaymentScreen({
       }
 
       const orderId =
+        orderResponse.order_id ||
         orderResponse.data.id;
 
       const invoiceUrl =
+        orderResponse.xendit_invoice_url ||
         orderResponse.data.xendit_invoice_url;
 
-      // =========================
-      // PROCESS PAYMENT / REDIRECT
-      // =========================
+      if (!orderId) {
+        Alert.alert(
+          'Order Error',
+          'Order was created but no order ID was returned.'
+        );
 
-      if (method === 'QR PH' && invoiceUrl) {
-        try {
-          await Linking.openURL(invoiceUrl);
-        } catch (linkError) {
-          console.error(
-            'Failed to open invoice URL:',
-            linkError
-          );
-
-          Alert.alert(
-            'Redirect Failed',
-            'Could not open the payment page. Please contact restaurant staff.'
-          );
-        }
+        return;
       }
 
       clearCart();
 
       setActiveOrderId(orderId);
 
-      navigation.navigate(
+      // =========================
+      // QR PH / XENDIT PAYMENT
+      // Open invoice inside WebView.
+      // =========================
+
+      if (method === 'QR PH') {
+        if (!invoiceUrl) {
+          Alert.alert(
+            'Payment Error',
+            'No Xendit invoice URL was returned. Please contact restaurant staff.'
+          );
+
+          navigation.navigate(
+            'OrderStatus',
+            { orderId }
+          );
+
+          return;
+        }
+
+        navigation.replace(
+          'PaymentWebView',
+          {
+            orderId,
+            invoiceUrl,
+          }
+        );
+
+        return;
+      }
+
+      // =========================
+      // CASH PAYMENT
+      // Order remains pending.
+      // Staff/KDS will handle order flow.
+      // =========================
+
+      navigation.replace(
         'OrderStatus',
         { orderId }
       );
