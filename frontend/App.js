@@ -12,8 +12,8 @@ import LoginScreen from './src/screens/LoginScreen';
 import WelcomeScreen from './src/screens/WelcomeScreen';
 import MenuScreen from './src/screens/MenuScreen';
 import ItemDetailScreen from './src/screens/ItemDetailScreen';
-import PaymentScreen from './src/screens/PaymentScreen';
 import PaymentWebViewScreen from './src/screens/PaymentWebViewScreen';
+import OrderConfirmScreen from './src/screens/OrderConfirmScreen';
 import OrderStatusScreen from './src/screens/OrderStatusScreen';
 import OrderHistoryScreen from './src/screens/OrderHistoryScreen';
 
@@ -52,8 +52,8 @@ export default function App() {
               />
 
               <Stack.Screen
-                name="Payment"
-                component={PaymentScreen}
+                name="OrderConfirm"
+                component={OrderConfirmScreen}
               />
 
               <Stack.Screen

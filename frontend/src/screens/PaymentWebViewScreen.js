@@ -1,4 +1,6 @@
-import React from 'react';
+import React, {
+  useEffect,
+} from 'react';
 
 import {
   View,
@@ -9,7 +11,13 @@ import {
   Alert,
 } from 'react-native';
 
+import {
+  CommonActions,
+} from '@react-navigation/native';
+
 import { WebView } from 'react-native-webview';
+
+import { useTableStatus } from '../context/TableStatusContext';
 
 export default function PaymentWebViewScreen({
   route,
@@ -19,6 +27,34 @@ export default function PaymentWebViewScreen({
     orderId,
     invoiceUrl,
   } = route.params || {};
+
+  const {
+    tableResetRequired,
+    acknowledgeTableReset,
+  } = useTableStatus();
+
+  useEffect(() => {
+    if (!tableResetRequired) {
+      return;
+    }
+
+    acknowledgeTableReset?.();
+
+    navigation.dispatch(
+      CommonActions.reset({
+        index: 0,
+        routes: [
+          {
+            name: 'Welcome',
+          },
+        ],
+      })
+    );
+  }, [
+    tableResetRequired,
+    acknowledgeTableReset,
+    navigation,
+  ]);
 
   if (!invoiceUrl) {
     return (

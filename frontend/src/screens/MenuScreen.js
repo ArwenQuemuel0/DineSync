@@ -1,5 +1,7 @@
 import React, {
+  useCallback,
   useEffect,
+  useMemo,
   useState,
 } from 'react';
 
@@ -14,6 +16,8 @@ import {
   Alert,
   Image,
   Modal,
+  useWindowDimensions,
+  BackHandler,
 } from 'react-native';
 
 import {
@@ -39,6 +43,59 @@ import {
 export default function MenuScreen({
   navigation,
 }) {
+  const {
+    width,
+    height,
+  } = useWindowDimensions();
+
+  const isLandscape =
+    width > height;
+
+  const isSmallScreen =
+    width < 760;
+
+  const useSideCart =
+    width >= 760;
+
+  const cartWidth =
+    isLandscape ? 330 : 285;
+
+  const menuColumns =
+    useSideCart
+      ? isLandscape
+        ? 3
+        : 2
+      : 1;
+
+  const menuCardWidth =
+    useMemo(() => {
+      if (useSideCart) {
+        const availableWidth =
+          width - cartWidth - 48;
+
+        return Math.max(
+          185,
+          Math.floor(
+            availableWidth /
+              menuColumns
+          ) - 18
+        );
+      }
+
+      return Math.max(
+        250,
+        Math.floor(
+          (width - 48) /
+            menuColumns
+        ) - 18
+      );
+    }, [
+      width,
+      cartWidth,
+      menuColumns,
+      useSideCart,
+    ]);
+
   const [menuItems, setMenuItems] =
     useState([]);
 
@@ -79,7 +136,6 @@ export default function MenuScreen({
     syncMenuInventory,
     refreshCartInventory,
     getEnrichedItem,
-    validateCurrentCart,
   } = useCart();
 
   const {
@@ -87,6 +143,8 @@ export default function MenuScreen({
     ensureCanOrder,
     refreshTableStatus,
     assignmentMessage,
+    tableResetRequired,
+    acknowledgeTableReset,
   } = useTableStatus();
 
   useEffect(() => {
@@ -101,8 +159,46 @@ export default function MenuScreen({
       clearInterval(refreshTimer);
   }, []);
 
+  useEffect(() => {
+    if (!tableResetRequired) {
+      return;
+    }
+
+    acknowledgeTableReset?.();
+
+    navigation.dispatch(
+      CommonActions.reset({
+        index: 0,
+        routes: [
+          {
+            name: 'Welcome',
+          },
+        ],
+      })
+    );
+  }, [
+    tableResetRequired,
+    acknowledgeTableReset,
+    navigation,
+  ]);
+
   useFocusEffect(
-    React.useCallback(() => {
+    useCallback(() => {
+      const onBackPress = () => true;
+
+      const subscription =
+        BackHandler.addEventListener(
+          'hardwareBackPress',
+          onBackPress
+        );
+
+      return () =>
+        subscription.remove();
+    }, [])
+  );
+
+  useFocusEffect(
+    useCallback(() => {
       fetchMenu();
       refreshTableStatus();
     }, [refreshTableStatus])
@@ -246,15 +342,6 @@ export default function MenuScreen({
     removeFromCart(itemId);
   };
 
-  const handleGoToWelcome = () => {
-    navigation.dispatch(
-      CommonActions.reset({
-        index: 0,
-        routes: [{ name: 'Welcome' }],
-      })
-    );
-  };
-
   const handleCheckout = async () => {
     if (cartItems.length === 0) {
       Alert.alert(
@@ -300,7 +387,7 @@ export default function MenuScreen({
     }
 
     navigation.navigate(
-      'Payment',
+      'OrderConfirm',
       {
         cartItems,
         total: cartTotal,
@@ -380,6 +467,10 @@ export default function MenuScreen({
       <TouchableOpacity
         style={[
           styles.menuItem,
+          {
+            width:
+              menuCardWidth,
+          },
           !isAvailable &&
             styles.unavailableItem,
         ]}
@@ -408,9 +499,13 @@ export default function MenuScreen({
         ) : null}
 
         <View
-          style={
-            styles.itemImageCircle
-          }
+          style={[
+            styles.itemImageCircle,
+            !isLandscape &&
+              styles.itemImageCirclePortrait,
+            isSmallScreen &&
+              styles.itemImageCircleSmall,
+          ]}
         >
           <Image
             source={
@@ -427,24 +522,38 @@ export default function MenuScreen({
 
         <View style={styles.itemInfo}>
           <Text
-            style={styles.itemName}
+            style={[
+              styles.itemName,
+              !isLandscape &&
+                styles.itemNamePortrait,
+              isSmallScreen &&
+                styles.itemNameSmall,
+            ]}
             numberOfLines={2}
           >
             {item.name}
           </Text>
 
-          <Text style={styles.itemPrice}>
+          <Text
+            style={[
+              styles.itemPrice,
+              isSmallScreen &&
+                styles.itemPriceSmall,
+            ]}
+          >
             ₱{formatMoney(item.price)}
           </Text>
 
           <Text
-            style={
+            style={[
               !isAvailable
                 ? styles.notAvailableText
                 : isLowStock
                   ? styles.lowStockText
-                  : styles.availableText
-            }
+                  : styles.availableText,
+              isSmallScreen &&
+                styles.stockTextSmall,
+            ]}
           >
             {availabilityText}
           </Text>
@@ -570,35 +679,75 @@ export default function MenuScreen({
   return (
     <View style={styles.frame}>
       <View style={styles.container}>
-        <View style={styles.topBar}>
-          <TouchableOpacity
-            onPress={handleGoToWelcome}
-          >
-            <Text style={styles.topBarText}>
-              {'<'} Go Back
+        <View
+          style={[
+            styles.topBar,
+            isSmallScreen &&
+              styles.topBarSmall,
+          ]}
+        >
+          <View>
+            <Text
+              style={[
+                styles.topBarText,
+                isSmallScreen &&
+                  styles.topBarTextSmall,
+              ]}
+            >
+              DineSync+
             </Text>
-          </TouchableOpacity>
 
-          <View style={styles.topIcons}>
-            <Text style={styles.tableText}>
+            <Text style={styles.topBarSubText}>
+              Customer Menu
+            </Text>
+          </View>
+
+          <View
+            style={[
+              styles.topIcons,
+              isSmallScreen &&
+                styles.topIconsSmall,
+            ]}
+          >
+            <Text
+              style={[
+                styles.tableText,
+                isSmallScreen &&
+                  styles.tableTextSmall,
+              ]}
+            >
               Table {tableNumber || user?.table_number || '-'}
             </Text>
 
             <TouchableOpacity
-              style={styles.historyButton}
+              style={[
+                styles.historyButton,
+                isSmallScreen &&
+                  styles.topButtonSmall,
+              ]}
               onPress={() =>
                 navigation.navigate(
                   'OrderHistory'
                 )
               }
             >
-              <Text style={styles.historyButtonText}>
+              <Text
+                style={[
+                  styles.historyButtonText,
+                  isSmallScreen &&
+                    styles.topButtonTextSmall,
+                ]}
+              >
                 Order History
               </Text>
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={styles.statusButton}
+              style={[
+                styles.statusButton,
+                isSmallScreen &&
+                  styles.topButtonSmall,
+              ]}
               onPress={() =>
                 navigation.navigate(
                   'OrderStatus'
@@ -606,19 +755,31 @@ export default function MenuScreen({
               }
             >
               <Text
-                style={
-                  styles.statusButtonText
-                }
+                style={[
+                  styles.statusButtonText,
+                  isSmallScreen &&
+                    styles.topButtonTextSmall,
+                ]}
               >
                 View Order Status
               </Text>
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={styles.logoutButton}
+              style={[
+                styles.logoutButton,
+                isSmallScreen &&
+                  styles.topButtonSmall,
+              ]}
               onPress={openLogoutModal}
             >
-              <Text style={styles.logoutButtonText}>
+              <Text
+                style={[
+                  styles.logoutButtonText,
+                  isSmallScreen &&
+                    styles.topButtonTextSmall,
+                ]}
+              >
                 Staff Logout
               </Text>
             </TouchableOpacity>
@@ -659,6 +820,8 @@ export default function MenuScreen({
                   selectedCategory ===
                     category &&
                     styles.categoryTextActive,
+                  isSmallScreen &&
+                    styles.categoryTextSmall,
                 ]}
               >
                 {category}
@@ -683,14 +846,21 @@ export default function MenuScreen({
           </View>
         ) : null}
 
-        <View style={styles.contentArea}>
+        <View
+          style={[
+            styles.contentArea,
+            !useSideCart &&
+              styles.contentAreaStacked,
+          ]}
+        >
           <View style={styles.menuSection}>
             <FlatList
+              key={`menu-${menuColumns}-${useSideCart ? 'side' : 'stack'}`}
               data={filteredItems}
               renderItem={
                 renderMenuItem
               }
-              numColumns={3}
+              numColumns={menuColumns}
               showsVerticalScrollIndicator={
                 false
               }
@@ -704,19 +874,42 @@ export default function MenuScreen({
                     index
                 )
               }
-              columnWrapperStyle={{
-                justifyContent:
-                  'space-evenly',
-                marginBottom: 14,
-              }}
+              columnWrapperStyle={
+                menuColumns > 1
+                  ? {
+                      justifyContent:
+                        'center',
+                      gap: 14,
+                      marginBottom: 14,
+                    }
+                  : undefined
+              }
               contentContainerStyle={{
                 paddingVertical: 10,
-                paddingBottom: 30,
+                paddingBottom:
+                  useSideCart
+                    ? 30
+                    : 20,
+                alignItems:
+                  menuColumns === 1
+                    ? 'center'
+                    : undefined,
               }}
             />
           </View>
 
-          <View style={styles.cartSidebar}>
+          <View
+            style={[
+              styles.cartSidebar,
+              {
+                width: useSideCart
+                  ? cartWidth
+                  : '100%',
+              },
+              !useSideCart &&
+                styles.cartSidebarStacked,
+            ]}
+          >
             <View style={styles.cartHeader}>
               <Text style={styles.cartIcon}>
                 🛒
@@ -744,11 +937,22 @@ export default function MenuScreen({
                 renderItem={
                   renderCartItem
                 }
+                horizontal={!useSideCart}
+                showsHorizontalScrollIndicator={
+                  false
+                }
                 showsVerticalScrollIndicator={
                   false
                 }
                 contentContainerStyle={{
-                  paddingBottom: 20,
+                  paddingBottom:
+                    useSideCart
+                      ? 20
+                      : 8,
+                  gap:
+                    useSideCart
+                      ? 0
+                      : 12,
                 }}
               />
             )}
@@ -782,19 +986,29 @@ export default function MenuScreen({
                     styles.checkoutButtonText
                   }
                 >
-                  Checkout ({totalQuantity})
+                  Confirm Order ({totalQuantity})
                 </Text>
               </TouchableOpacity>
             </View>
           </View>
         </View>
 
-        <View style={styles.searchBar}>
+        <View
+          style={[
+            styles.searchBar,
+            isSmallScreen &&
+              styles.searchBarSmall,
+          ]}
+        >
           <TextInput
             placeholder="Search menu"
             value={search}
             onChangeText={setSearch}
-            style={styles.searchInput}
+            style={[
+              styles.searchInput,
+              isSmallScreen &&
+                styles.searchInputSmall,
+            ]}
           />
 
           <TouchableOpacity
@@ -876,24 +1090,51 @@ const styles =
     },
 
     topBar: {
-      height: 70,
+      minHeight: 70,
       backgroundColor: '#b8b3b3',
       flexDirection: 'row',
       justifyContent:
         'space-between',
       alignItems: 'center',
       paddingHorizontal: 24,
+      paddingVertical: 8,
+    },
+
+    topBarSmall: {
+      flexDirection: 'column',
+      alignItems: 'flex-start',
+      gap: 8,
+      paddingHorizontal: 14,
+      paddingVertical: 10,
     },
 
     topBarText: {
       color: '#fff',
-      fontWeight: '700',
+      fontWeight: '900',
       fontSize: 28,
+    },
+
+    topBarTextSmall: {
+      fontSize: 23,
+    },
+
+    topBarSubText: {
+      color: '#f7f7f7',
+      fontSize: 13,
+      fontWeight: '700',
+      marginTop: 2,
     },
 
     topIcons: {
       flexDirection: 'row',
       alignItems: 'center',
+      flexWrap: 'wrap',
+      justifyContent: 'flex-end',
+    },
+
+    topIconsSmall: {
+      justifyContent: 'flex-start',
+      gap: 8,
     },
 
     tableText: {
@@ -901,6 +1142,11 @@ const styles =
       fontSize: 20,
       fontWeight: '900',
       marginRight: 14,
+    },
+
+    tableTextSmall: {
+      fontSize: 16,
+      marginRight: 0,
     },
 
     historyButton: {
@@ -945,10 +1191,15 @@ const styles =
       fontWeight: '800',
     },
 
-    iconSpacing: {
-      color: '#f2f2f2',
-      fontSize: 28,
-      marginRight: 20,
+    topButtonSmall: {
+      marginRight: 0,
+      paddingVertical: 7,
+      paddingHorizontal: 10,
+      borderRadius: 10,
+    },
+
+    topButtonTextSmall: {
+      fontSize: 13,
     },
 
     categoryBar: {
@@ -976,6 +1227,10 @@ const styles =
       color: '#333',
     },
 
+    categoryTextSmall: {
+      fontSize: 15,
+    },
+
     categoryTextActive: {
       color: '#fff',
     },
@@ -987,7 +1242,8 @@ const styles =
       borderRadius: 12,
       paddingVertical: 12,
       paddingHorizontal: 16,
-      marginBottom: 12,
+      marginHorizontal: 12,
+      marginTop: 10,
     },
 
     assignmentBannerText: {
@@ -1003,6 +1259,10 @@ const styles =
       flexDirection: 'row',
     },
 
+    contentAreaStacked: {
+      flexDirection: 'column',
+    },
+
     menuSection: {
       flex: 1,
       paddingTop: 14,
@@ -1010,8 +1270,7 @@ const styles =
     },
 
     menuItem: {
-      width: 230,
-      height: 250,
+      minHeight: 235,
       backgroundColor: '#fff',
       borderWidth: 1.5,
       borderColor: '#f0b287',
@@ -1062,13 +1321,21 @@ const styles =
       marginTop: 8,
     },
 
+    itemImageCirclePortrait: {
+      width: 92,
+      height: 92,
+      borderRadius: 46,
+    },
+
+    itemImageCircleSmall: {
+      width: 88,
+      height: 88,
+      borderRadius: 44,
+    },
+
     itemImage: {
       width: '100%',
       height: '100%',
-    },
-
-    itemEmoji: {
-      fontSize: 42,
     },
 
     itemInfo: {
@@ -1083,11 +1350,23 @@ const styles =
       marginTop: 8,
     },
 
+    itemNamePortrait: {
+      fontSize: 18,
+    },
+
+    itemNameSmall: {
+      fontSize: 17,
+    },
+
     itemPrice: {
       color: '#777',
       marginTop: 6,
       fontSize: 18,
       fontWeight: '700',
+    },
+
+    itemPriceSmall: {
+      fontSize: 16,
     },
 
     availableText: {
@@ -1111,6 +1390,10 @@ const styles =
       marginTop: 8,
     },
 
+    stockTextSmall: {
+      fontSize: 13,
+    },
+
     tapText: {
       marginTop: 8,
       color: '#999',
@@ -1119,7 +1402,6 @@ const styles =
     },
 
     cartSidebar: {
-      width: 310,
       backgroundColor: '#fff',
       borderLeftWidth: 1,
       borderLeftColor: '#ddd',
@@ -1127,10 +1409,19 @@ const styles =
       paddingTop: 16,
     },
 
+    cartSidebarStacked: {
+      width: '100%',
+      maxHeight: 235,
+      borderLeftWidth: 0,
+      borderTopWidth: 1,
+      borderTopColor: '#ddd',
+      paddingTop: 10,
+    },
+
     cartHeader: {
       flexDirection: 'row',
       alignItems: 'center',
-      marginBottom: 16,
+      marginBottom: 10,
     },
 
     cartIcon: {
@@ -1154,6 +1445,8 @@ const styles =
       paddingVertical: 12,
       borderBottomWidth: 1,
       borderBottomColor: '#eeeeee',
+      minWidth: 170,
+      maxWidth: 220,
     },
 
     cartItemTop: {
@@ -1221,8 +1514,8 @@ const styles =
     cartFooter: {
       borderTopWidth: 1,
       borderTopColor: '#dddddd',
-      paddingTop: 14,
-      paddingBottom: 14,
+      paddingTop: 12,
+      paddingBottom: 12,
     },
 
     totalRow: {
@@ -1230,7 +1523,7 @@ const styles =
       justifyContent:
         'space-between',
       alignItems: 'center',
-      marginBottom: 14,
+      marginBottom: 12,
     },
 
     totalLabel: {
@@ -1272,6 +1565,10 @@ const styles =
       backgroundColor: '#fafafa',
     },
 
+    searchBarSmall: {
+      padding: 10,
+    },
+
     searchInput: {
       width: '60%',
       backgroundColor: '#fff',
@@ -1282,6 +1579,12 @@ const styles =
       paddingVertical: 12,
       marginRight: 12,
       fontSize: 18,
+    },
+
+    searchInputSmall: {
+      width: '68%',
+      fontSize: 15,
+      paddingVertical: 10,
     },
 
     searchButton: {

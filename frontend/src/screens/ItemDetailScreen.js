@@ -12,10 +12,12 @@ import {
   Image,
   FlatList,
   ActivityIndicator,
+  useWindowDimensions,
 } from 'react-native';
 
 import {
   useFocusEffect,
+  CommonActions,
 } from '@react-navigation/native';
 
 import {
@@ -40,6 +42,23 @@ export default function ItemDetailScreen({
   route,
   navigation,
 }) {
+  const {
+    width,
+    height,
+  } = useWindowDimensions();
+
+  const isLandscape =
+    width > height;
+
+  const isSmallScreen =
+    width < 760;
+
+  const useSideCart =
+    width >= 760;
+
+  const cartWidth =
+    isLandscape ? 330 : 285;
+
   const { item: routeItem } =
     route.params || {};
 
@@ -69,16 +88,41 @@ export default function ItemDetailScreen({
     syncMenuInventory,
     mergeInventoryItems,
     refreshCartInventory,
-    validateCurrentCart,
   } = useCart();
 
   const {
     canOrder,
     ensureCanOrder,
     assignmentMessage,
+    tableResetRequired,
+    acknowledgeTableReset,
   } = useTableStatus();
 
-  const item = liveItem || routeItem;
+  const item =
+    liveItem || routeItem;
+
+  useEffect(() => {
+    if (!tableResetRequired) {
+      return;
+    }
+
+    acknowledgeTableReset?.();
+
+    navigation.dispatch(
+      CommonActions.reset({
+        index: 0,
+        routes: [
+          {
+            name: 'Welcome',
+          },
+        ],
+      })
+    );
+  }, [
+    tableResetRequired,
+    acknowledgeTableReset,
+    navigation,
+  ]);
 
   const refreshLiveItem =
     async () => {
@@ -133,7 +177,10 @@ export default function ItemDetailScreen({
     if (item?.name) {
       fetchRecommendations();
     }
-  }, [item?.id, item?.name]);
+  }, [
+    item?.id,
+    item?.name,
+  ]);
 
   const fetchRecommendations = async () => {
     try {
@@ -178,7 +225,8 @@ export default function ItemDetailScreen({
   };
 
   const formatMoney = (value) => {
-    const n = Number(value);
+    const n =
+      Number(value);
 
     return Number.isFinite(n)
       ? n.toFixed(2)
@@ -232,7 +280,8 @@ export default function ItemDetailScreen({
       : null;
   };
 
-  const imageUri = getItemImage(item);
+  const imageUri =
+    getItemImage(item);
 
   const isAvailable =
     isItemOrderable(item);
@@ -368,11 +417,14 @@ export default function ItemDetailScreen({
       return;
     }
 
-    navigation.navigate('Payment', {
-      cartItems,
-      total: cartTotal,
-      tableNumber,
-    });
+    navigation.navigate(
+      'OrderConfirm',
+      {
+        cartItems,
+        total: cartTotal,
+        tableNumber,
+      }
+    );
   };
 
   const totalQuantity =
@@ -396,6 +448,8 @@ export default function ItemDetailScreen({
       <View
         style={[
           styles.recommendationCard,
+          isSmallScreen &&
+            styles.recommendationCardSmall,
           !recommendedAvailable &&
             styles.recommendationCardDisabled,
         ]}
@@ -409,7 +463,13 @@ export default function ItemDetailScreen({
             )
           }
         >
-          <View style={styles.recommendationCircle}>
+          <View
+            style={[
+              styles.recommendationCircle,
+              isSmallScreen &&
+                styles.recommendationCircleSmall,
+            ]}
+          >
             {recommendedImage ? (
               <Image
                 source={{
@@ -426,7 +486,11 @@ export default function ItemDetailScreen({
           </View>
 
           <Text
-            style={styles.recommendationName}
+            style={[
+              styles.recommendationName,
+              isSmallScreen &&
+                styles.recommendationNameSmall,
+            ]}
             numberOfLines={2}
           >
             {recommendedItem.name}
@@ -474,7 +538,13 @@ export default function ItemDetailScreen({
       );
 
     return (
-      <View style={styles.cartItem}>
+      <View
+        style={[
+          styles.cartItem,
+          !useSideCart &&
+            styles.cartItemStacked,
+        ]}
+      >
         <View style={styles.cartItemTop}>
           <View
             style={styles.cartItemInfo}
@@ -592,36 +662,70 @@ export default function ItemDetailScreen({
   return (
     <View style={styles.frame}>
       <View style={styles.container}>
-        <View style={styles.topBar}>
+        <View
+          style={[
+            styles.topBar,
+            isSmallScreen &&
+              styles.topBarSmall,
+          ]}
+        >
           <TouchableOpacity
             onPress={() =>
               navigation.goBack()
             }
           >
-            <Text style={styles.topBarText}>
+            <Text
+              style={[
+                styles.topBarText,
+                isSmallScreen &&
+                  styles.topBarTextSmall,
+              ]}
+            >
               {'<'} Go Back
             </Text>
           </TouchableOpacity>
 
           <View style={styles.topIcons}>
-            <Text style={styles.tableText}>
+            <Text
+              style={[
+                styles.tableText,
+                isSmallScreen &&
+                  styles.tableTextSmall,
+              ]}
+            >
               Table {tableNumber || '-'}
-            </Text>
-
-            <Text style={styles.iconSpacing}>
-              ◷
-            </Text>
-
-            <Text style={styles.iconSpacing}>
-              🔔
             </Text>
           </View>
         </View>
 
-        <View style={styles.contentArea}>
-          <View style={styles.detailSection}>
-            <View style={styles.detailCard}>
-              <View style={styles.imageCircle}>
+        <View
+          style={[
+            styles.contentArea,
+            !useSideCart &&
+              styles.contentAreaStacked,
+          ]}
+        >
+          <View
+            style={[
+              styles.detailSection,
+              !useSideCart &&
+                styles.detailSectionStacked,
+            ]}
+          >
+            <View
+              style={[
+                styles.detailCard,
+                !useSideCart &&
+                  styles.detailCardStacked,
+              ]}
+            >
+              <View
+                style={[
+                  styles.imageCircle,
+                  isSmallScreen &&
+                    styles.imageCircleSmall,
+                ]}
+              >
                 {imageUri ? (
                   <Image
                     source={{
@@ -639,11 +743,23 @@ export default function ItemDetailScreen({
                 )}
               </View>
 
-              <Text style={styles.itemName}>
+              <Text
+                style={[
+                  styles.itemName,
+                  isSmallScreen &&
+                    styles.itemNameSmall,
+                ]}
+              >
                 {item.name}
               </Text>
 
-              <Text style={styles.itemPrice}>
+              <Text
+                style={[
+                  styles.itemPrice,
+                  isSmallScreen &&
+                    styles.itemPriceSmall,
+                ]}
+              >
                 ₱{formatMoney(item.price)}
               </Text>
 
@@ -666,19 +782,33 @@ export default function ItemDetailScreen({
                 </View>
               ) : null}
 
+              {mealType ? (
+                <Text style={styles.mealTypeText}>
+                  {mealType}
+                </Text>
+              ) : null}
+
               <Text
-                style={
+                style={[
                   !isAvailable
                     ? styles.notAvailableText
                     : isLowStock
                       ? styles.lowStockText
-                      : styles.availableText
-                }
+                      : styles.availableText,
+                  isSmallScreen &&
+                    styles.stockTextSmall,
+                ]}
               >
                 {availabilityText}
               </Text>
 
-              <Text style={styles.description}>
+              <Text
+                style={[
+                  styles.description,
+                  isSmallScreen &&
+                    styles.descriptionSmall,
+                ]}
+              >
                 {itemDescription ||
                   'No description available for this item.'}
               </Text>
@@ -693,16 +823,24 @@ export default function ItemDetailScreen({
                 onPress={handleAddToCart}
               >
                 <Text
-                  style={
-                    styles.addToOrderText
-                  }
+                  style={[
+                    styles.addToOrderText,
+                    isSmallScreen &&
+                      styles.addToOrderTextSmall,
+                  ]}
                 >
                   Add to Order
                 </Text>
               </TouchableOpacity>
 
               <View style={styles.recommendationSection}>
-                <Text style={styles.recommendationTitle}>
+                <Text
+                  style={[
+                    styles.recommendationTitle,
+                    isSmallScreen &&
+                      styles.recommendationTitleSmall,
+                  ]}
+                >
                   Must try pairings!
                 </Text>
 
@@ -743,7 +881,18 @@ export default function ItemDetailScreen({
             </View>
           </View>
 
-          <View style={styles.cartSidebar}>
+          <View
+            style={[
+              styles.cartSidebar,
+              {
+                width: useSideCart
+                  ? cartWidth
+                  : '100%',
+              },
+              !useSideCart &&
+                styles.cartSidebarStacked,
+            ]}
+          >
             <View style={styles.cartHeader}>
               <Text style={styles.cartIcon}>
                 🛒
@@ -769,11 +918,22 @@ export default function ItemDetailScreen({
                   )
                 }
                 renderItem={renderCartItem}
+                horizontal={!useSideCart}
+                showsHorizontalScrollIndicator={
+                  false
+                }
                 showsVerticalScrollIndicator={
                   false
                 }
                 contentContainerStyle={{
-                  paddingBottom: 20,
+                  paddingBottom:
+                    useSideCart
+                      ? 20
+                      : 8,
+                  gap:
+                    useSideCart
+                      ? 0
+                      : 12,
                 }}
               />
             )}
@@ -807,7 +967,7 @@ export default function ItemDetailScreen({
                     styles.checkoutButtonText
                   }
                 >
-                  Checkout ({totalQuantity})
+                  Confirm Order ({totalQuantity})
                 </Text>
               </TouchableOpacity>
             </View>
@@ -831,19 +991,29 @@ const styles =
     },
 
     topBar: {
-      height: 70,
+      minHeight: 70,
       backgroundColor: '#b8b3b3',
       flexDirection: 'row',
       justifyContent:
         'space-between',
       alignItems: 'center',
       paddingHorizontal: 24,
+      paddingVertical: 8,
+    },
+
+    topBarSmall: {
+      minHeight: 58,
+      paddingHorizontal: 16,
     },
 
     topBarText: {
       color: '#fff',
       fontWeight: '700',
       fontSize: 28,
+    },
+
+    topBarTextSmall: {
+      fontSize: 22,
     },
 
     topIcons: {
@@ -855,13 +1025,10 @@ const styles =
       color: '#fff',
       fontWeight: '900',
       fontSize: 22,
-      marginRight: 24,
     },
 
-    iconSpacing: {
-      color: '#f2f2f2',
-      fontSize: 28,
-      marginRight: 20,
+    tableTextSmall: {
+      fontSize: 17,
     },
 
     contentArea: {
@@ -869,11 +1036,20 @@ const styles =
       flexDirection: 'row',
     },
 
+    contentAreaStacked: {
+      flexDirection: 'column',
+    },
+
     detailSection: {
       flex: 1,
       justifyContent: 'center',
       alignItems: 'center',
       padding: 28,
+    },
+
+    detailSectionStacked: {
+      padding: 14,
+      justifyContent: 'flex-start',
     },
 
     detailCard: {
@@ -892,6 +1068,12 @@ const styles =
       elevation: 4,
     },
 
+    detailCardStacked: {
+      width: '100%',
+      minHeight: 0,
+      padding: 18,
+    },
+
     imageCircle: {
       width: 150,
       height: 150,
@@ -901,6 +1083,12 @@ const styles =
       alignItems: 'center',
       overflow: 'hidden',
       marginBottom: 14,
+    },
+
+    imageCircleSmall: {
+      width: 110,
+      height: 110,
+      borderRadius: 55,
     },
 
     itemImage: {
@@ -919,11 +1107,19 @@ const styles =
       textAlign: 'center',
     },
 
+    itemNameSmall: {
+      fontSize: 27,
+    },
+
     itemPrice: {
       color: '#f68c45',
       marginTop: 8,
       fontSize: 30,
       fontWeight: '800',
+    },
+
+    itemPriceSmall: {
+      fontSize: 24,
     },
 
     itemCategory: {
@@ -957,6 +1153,14 @@ const styles =
       textTransform: 'capitalize',
     },
 
+    mealTypeText: {
+      marginTop: 8,
+      color: '#777',
+      fontSize: 14,
+      fontWeight: '900',
+      textTransform: 'capitalize',
+    },
+
     availableText: {
       color: '#4CAF50',
       fontSize: 19,
@@ -978,12 +1182,21 @@ const styles =
       marginTop: 8,
     },
 
+    stockTextSmall: {
+      fontSize: 16,
+    },
+
     description: {
       marginTop: 14,
       fontSize: 18,
       color: '#666',
       textAlign: 'center',
       lineHeight: 26,
+    },
+
+    descriptionSmall: {
+      fontSize: 15,
+      lineHeight: 22,
     },
 
     addToOrderButton: {
@@ -1004,6 +1217,10 @@ const styles =
       fontWeight: '900',
     },
 
+    addToOrderTextSmall: {
+      fontSize: 18,
+    },
+
     recommendationSection: {
       width: '100%',
       marginTop: 22,
@@ -1017,9 +1234,13 @@ const styles =
       textAlign: 'center',
     },
 
+    recommendationTitleSmall: {
+      fontSize: 18,
+    },
+
     recommendationCard: {
       width: 285,
-      height: 105,
+      minHeight: 105,
       backgroundColor: '#fff7ef',
       borderWidth: 1,
       borderColor: '#f0b287',
@@ -1031,6 +1252,10 @@ const styles =
       alignItems: 'center',
       justifyContent:
         'space-between',
+    },
+
+    recommendationCardSmall: {
+      width: 245,
     },
 
     recommendationCardDisabled: {
@@ -1055,6 +1280,12 @@ const styles =
       marginRight: 12,
     },
 
+    recommendationCircleSmall: {
+      width: 54,
+      height: 54,
+      borderRadius: 27,
+    },
+
     recommendationImage: {
       width: '100%',
       height: '100%',
@@ -1069,6 +1300,10 @@ const styles =
       fontSize: 16,
       fontWeight: '900',
       color: '#333',
+    },
+
+    recommendationNameSmall: {
+      fontSize: 14,
     },
 
     recommendationRight: {
@@ -1107,7 +1342,6 @@ const styles =
     },
 
     cartSidebar: {
-      width: 310,
       backgroundColor: '#fff',
       borderLeftWidth: 1,
       borderLeftColor: '#ddd',
@@ -1115,10 +1349,19 @@ const styles =
       paddingTop: 16,
     },
 
+    cartSidebarStacked: {
+      width: '100%',
+      maxHeight: 235,
+      borderLeftWidth: 0,
+      borderTopWidth: 1,
+      borderTopColor: '#ddd',
+      paddingTop: 10,
+    },
+
     cartHeader: {
       flexDirection: 'row',
       alignItems: 'center',
-      marginBottom: 16,
+      marginBottom: 10,
     },
 
     cartIcon: {
@@ -1142,6 +1385,11 @@ const styles =
       paddingVertical: 12,
       borderBottomWidth: 1,
       borderBottomColor: '#eeeeee',
+    },
+
+    cartItemStacked: {
+      minWidth: 170,
+      maxWidth: 220,
     },
 
     cartItemTop: {
@@ -1209,8 +1457,8 @@ const styles =
     cartFooter: {
       borderTopWidth: 1,
       borderTopColor: '#dddddd',
-      paddingTop: 14,
-      paddingBottom: 14,
+      paddingTop: 12,
+      paddingBottom: 12,
     },
 
     totalRow: {
@@ -1218,7 +1466,7 @@ const styles =
       justifyContent:
         'space-between',
       alignItems: 'center',
-      marginBottom: 14,
+      marginBottom: 12,
     },
 
     totalLabel: {

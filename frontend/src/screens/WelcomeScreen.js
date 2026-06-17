@@ -28,7 +28,10 @@ export default function WelcomeScreen({
       <Pressable
         style={styles.screenPress}
         onPress={() =>
-          navigation.navigate('Menu')
+          navigation.reset({
+            index: 0,
+            routes: [{ name: 'Menu' }],
+          })
         }
       >
         <View style={styles.overlay}>

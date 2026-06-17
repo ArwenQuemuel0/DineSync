@@ -13,11 +13,16 @@ import {
 } from 'react-native';
 
 import {
+  CommonActions,
+} from '@react-navigation/native';
+
+import {
   getTableOrderHistory,
   getOrderStatus,
 } from '../api/dinesync';
 
 import { useAuth } from '../context/AuthContext';
+import { useTableStatus } from '../context/TableStatusContext';
 
 import {
   normalizeOrderStatus,
@@ -40,6 +45,11 @@ export default function OrderStatusScreen({
     user,
   } = useAuth();
 
+  const {
+    tableResetRequired,
+    acknowledgeTableReset,
+  } = useTableStatus();
+
   const finalTableNumber =
     tableNumber ||
     user?.table_number;
@@ -52,6 +62,29 @@ export default function OrderStatusScreen({
 
   const [error, setError] =
     useState('');
+
+  useEffect(() => {
+    if (!tableResetRequired) {
+      return;
+    }
+
+    acknowledgeTableReset?.();
+
+    navigation.dispatch(
+      CommonActions.reset({
+        index: 0,
+        routes: [
+          {
+            name: 'Welcome',
+          },
+        ],
+      })
+    );
+  }, [
+    tableResetRequired,
+    acknowledgeTableReset,
+    navigation,
+  ]);
 
   useEffect(() => {
     fetchOrders();
@@ -96,11 +129,6 @@ export default function OrderStatusScreen({
         return;
       }
 
-      // =========================
-      // If coming from PaymentWebView,
-      // fetch exact order first using GET /api/orders/:id
-      // =========================
-
       if (orderId) {
         const specificOrder =
           await fetchSpecificOrder();
@@ -111,10 +139,6 @@ export default function OrderStatusScreen({
           return;
         }
       }
-
-      // =========================
-      // Fallback: fetch all active table orders
-      // =========================
 
       const response =
         await getTableOrderHistory();
@@ -175,6 +199,37 @@ export default function OrderStatusScreen({
     }
 
     return date.toLocaleString();
+  };
+
+  const normalizePaymentMethod = (
+    value
+  ) => {
+    const normalized =
+      String(
+        value || 'Pay at Counter'
+      )
+        .trim()
+        .toLowerCase()
+        .replace(/[_-]+/g, ' ')
+        .replace(/\s+/g, ' ');
+
+    if (
+      normalized === 'qr ph' ||
+      normalized === 'qrph' ||
+      normalized === 'xendit' ||
+      normalized === 'online payment'
+    ) {
+      return 'QR PH';
+    }
+
+    if (
+      normalized === 'pay later' ||
+      normalized === 'later'
+    ) {
+      return 'Pay Later';
+    }
+
+    return 'Pay at Counter';
   };
 
   const getStatusStyle = (
@@ -244,16 +299,17 @@ export default function OrderStatusScreen({
         order.status
       );
 
-      if (
-        paymentStatus === 'paid' &&
-        orderStatus === 'pending'
-      ) {
-        return 'Payment received. Your order is now in queue.';
-      }
-      
-      if (paymentStatus === 'pending') {
-        return 'Payment is still pending.';
-      }
+    const paymentMethod =
+      normalizePaymentMethod(
+        order.payment_method
+      );
+
+    if (
+      paymentStatus === 'paid' &&
+      orderStatus === 'pending'
+    ) {
+      return 'Payment received. Your order is now in queue.';
+    }
 
     if (paymentStatus === 'expired') {
       return 'Payment expired. Please ask restaurant staff for help.';
@@ -263,7 +319,54 @@ export default function OrderStatusScreen({
       return 'Payment failed. Please try again or ask restaurant staff for help.';
     }
 
+    if (paymentMethod === 'Pay at Counter') {
+      return 'Your order has been sent to the kitchen. Please pay at the counter.';
+    }
+
+    if (paymentMethod === 'Pay Later') {
+      return 'Your order has been sent to the kitchen. Payment will be settled later with staff.';
+    }
+
+    if (
+      paymentMethod === 'QR PH' &&
+      paymentStatus === 'pending'
+    ) {
+      return 'QR PH payment is still being processed.';
+    }
+
     return '';
+  };
+
+  const getPaymentLabel = (
+    order
+  ) => {
+    const paymentMethod =
+      normalizePaymentMethod(
+        order.payment_method
+      );
+
+    const paymentStatus =
+      normalizePaymentStatus(
+        order.payment_status
+      );
+
+    if (
+      paymentMethod === 'Pay at Counter' &&
+      paymentStatus === 'pending'
+    ) {
+      return 'Pay at Counter';
+    }
+
+    if (
+      paymentMethod === 'Pay Later' &&
+      paymentStatus === 'pending'
+    ) {
+      return 'Pay Later';
+    }
+
+    return getPaymentStatusLabel(
+      order.payment_status
+    );
   };
 
   const getOrderTotal = (
@@ -367,9 +470,7 @@ export default function OrderStatusScreen({
                   styles.paymentBadgeText
                 }
               >
-                {getPaymentStatusLabel(
-                  item.payment_status
-                )}
+                {getPaymentLabel(item)}
               </Text>
             </View>
           </View>

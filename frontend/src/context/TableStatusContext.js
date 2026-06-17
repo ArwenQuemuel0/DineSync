@@ -26,21 +26,21 @@ const normalizeStatusResponse = (
 
   return {
     table_number:
-      response.table_number ??
-      null,
+      response.table_number ?? null,
+
     table_status:
-      response.table_status ??
-      'available',
+      response.table_status ?? 'available',
+
     tablet_online:
-      response.tablet_online ===
-        true ||
+      response.tablet_online === true ||
       response.tablet_online === 1,
+
     can_order:
       response.can_order === true ||
       response.can_order === 1,
+
     active_session_id:
-      response.active_session_id ??
-      null,
+      response.active_session_id ?? null,
   };
 };
 
@@ -59,12 +59,77 @@ export const TableStatusProvider = ({
     setStatusLoading,
   ] = useState(false);
 
+  const [
+    tableResetRequired,
+    setTableResetRequired,
+  ] = useState(false);
+
   const pollRef = useRef(null);
+
+  const previousSessionIdRef =
+    useRef(null);
+
+  const hasHadActiveSessionRef =
+    useRef(false);
+
+  const detectCleanedTable = (
+    latestStatus
+  ) => {
+    if (!latestStatus) {
+      return;
+    }
+
+    const latestSessionId =
+      latestStatus.active_session_id;
+
+    const latestTableStatus =
+      String(
+        latestStatus.table_status || ''
+      )
+        .trim()
+        .toLowerCase();
+
+    const previousSessionId =
+      previousSessionIdRef.current;
+
+    if (latestSessionId) {
+      hasHadActiveSessionRef.current = true;
+      previousSessionIdRef.current =
+        latestSessionId;
+      return;
+    }
+
+    const sessionWasClosed =
+      hasHadActiveSessionRef.current &&
+      previousSessionId &&
+      !latestSessionId;
+
+    const tableWasCleaned =
+      hasHadActiveSessionRef.current &&
+      (
+        latestTableStatus === 'available' ||
+        latestTableStatus === 'clean' ||
+        latestTableStatus === 'vacant'
+      );
+
+    if (
+      sessionWasClosed ||
+      tableWasCleaned
+    ) {
+      setTableResetRequired(true);
+    }
+
+    previousSessionIdRef.current =
+      latestSessionId;
+  };
 
   const refreshTableStatus =
     useCallback(async () => {
       if (!isLoggedIn) {
         setTableStatus(null);
+        setTableResetRequired(false);
+        previousSessionIdRef.current = null;
+        hasHadActiveSessionRef.current = false;
         return null;
       }
 
@@ -81,6 +146,10 @@ export const TableStatusProvider = ({
             );
 
           setTableStatus(
+            normalized
+          );
+
+          detectCleanedTable(
             normalized
           );
 
@@ -104,6 +173,9 @@ export const TableStatusProvider = ({
   useEffect(() => {
     if (!isLoggedIn) {
       setTableStatus(null);
+      setTableResetRequired(false);
+      previousSessionIdRef.current = null;
+      hasHadActiveSessionRef.current = false;
 
       if (pollRef.current) {
         clearInterval(
@@ -120,7 +192,7 @@ export const TableStatusProvider = ({
     pollRef.current =
       setInterval(() => {
         refreshTableStatus();
-      }, 10000);
+      }, 5000);
 
     return () => {
       if (pollRef.current) {
@@ -156,14 +228,22 @@ export const TableStatusProvider = ({
     };
   };
 
+  const acknowledgeTableReset = () => {
+    setTableResetRequired(false);
+    previousSessionIdRef.current = null;
+    hasHadActiveSessionRef.current = false;
+  };
+
   return (
     <TableStatusContext.Provider
       value={{
         tableStatus,
         canOrder,
         statusLoading,
+        tableResetRequired,
         refreshTableStatus,
         ensureCanOrder,
+        acknowledgeTableReset,
         assignmentMessage:
           TABLE_ASSIGNMENT_MESSAGE,
       }}
