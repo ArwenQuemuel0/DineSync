@@ -425,15 +425,28 @@ export default function MenuScreen({
         return byCategory && bySearch;
       })
       .sort((a, b) => {
+        const aPopular =
+          isBestSeller(a);
+      
+        const bPopular =
+          isBestSeller(b);
+      
         const aAvailable =
           isItemOrderable(a);
-
+      
         const bAvailable =
           isItemOrderable(b);
-
-        return (
-          Number(bAvailable) -
-          Number(aAvailable)
+      
+        if (aPopular !== bPopular) {
+          return Number(bPopular) - Number(aPopular);
+        }
+      
+        if (aAvailable !== bAvailable) {
+          return Number(bAvailable) - Number(aAvailable);
+        }
+      
+        return String(a.name || '').localeCompare(
+          String(b.name || '')
         );
       });
 
