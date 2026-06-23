@@ -50,6 +50,55 @@ import {
   isCustomItem,
 } from '../utils/inventory';
 
+const ASSIGNED_TABLE_STATUSES = [
+  'seated',
+  'occupied',
+  'assigned',
+  'in_use',
+  'active',
+];
+
+const hasValidActiveSession = (sessionId) => {
+  return (
+    sessionId !== null &&
+    sessionId !== undefined &&
+    String(sessionId).trim() !== ''
+  );
+};
+
+const normalizeTableStatus = (status) => {
+  return String(status || '')
+    .trim()
+    .toLowerCase();
+};
+
+const isStaffAssignedStatus = (status) => {
+  return ASSIGNED_TABLE_STATUSES.includes(
+    normalizeTableStatus(status)
+  );
+};
+
+const getStrictOrderPermission = (
+  latestStatus,
+  providerCanOrder
+) => {
+  const hasActiveSession =
+    hasValidActiveSession(
+      latestStatus?.active_session_id
+    );
+
+  const tableIsAssignedByStaff =
+    isStaffAssignedStatus(
+      latestStatus?.table_status
+    );
+
+  return (
+    providerCanOrder === true &&
+    hasActiveSession &&
+    tableIsAssignedByStaff
+  );
+};
+
 export default function MenuScreen({
   navigation,
 }) {
@@ -431,12 +480,23 @@ export default function MenuScreen({
 
   const {
     canOrder,
+    tableStatus,
     ensureCanOrder,
     refreshTableStatus,
     assignmentMessage,
     tableResetRequired,
     acknowledgeTableReset,
   } = useTableStatus();
+
+  const strictCanOrder =
+    getStrictOrderPermission(
+      tableStatus,
+      canOrder
+    );
+
+  const strictAssignmentMessage =
+    assignmentMessage ||
+    'Please wait for service staff to assign your table before placing an order.';
 
   useEffect(() => {
     fetchMenu();
@@ -593,15 +653,38 @@ export default function MenuScreen({
     );
   };
 
+  const checkLatestTablePermission =
+    async () => {
+      const latestStatus =
+        await refreshTableStatus();
+
+      const tableCheck =
+        await ensureCanOrder();
+
+      const allowed =
+        tableCheck?.allowed === true &&
+        getStrictOrderPermission(
+          latestStatus,
+          true
+        );
+
+      return {
+        allowed,
+        message:
+          tableCheck?.message ||
+          strictAssignmentMessage,
+      };
+    };
+
   const handleOpenItem = async (item) => {
     const tableCheck =
-      await ensureCanOrder();
+      await checkLatestTablePermission();
 
     if (!tableCheck?.allowed) {
       Alert.alert(
         'Table Not Assigned',
         tableCheck?.message ||
-          assignmentMessage
+          strictAssignmentMessage
       );
 
       return;
@@ -667,13 +750,13 @@ export default function MenuScreen({
     }
 
     const tableCheck =
-      await ensureCanOrder();
+      await checkLatestTablePermission();
 
     if (!tableCheck?.allowed) {
       Alert.alert(
         'Table Not Assigned',
         tableCheck?.message ||
-          assignmentMessage
+          strictAssignmentMessage
       );
 
       return;
@@ -801,7 +884,7 @@ export default function MenuScreen({
       isBestSeller(item);
 
     const disabled =
-      !isAvailable || !canOrder;
+      !isAvailable || !strictCanOrder;
 
     return (
       <TouchableOpacity
@@ -931,7 +1014,7 @@ export default function MenuScreen({
 
           <Text
             style={[
-              !canOrder
+              !strictCanOrder
                 ? styles.notAvailableText
                 : !isAvailable
                   ? styles.notAvailableText
@@ -945,7 +1028,7 @@ export default function MenuScreen({
             ]}
             numberOfLines={2}
           >
-            {!canOrder
+            {!strictCanOrder
               ? 'Table not assigned'
               : availabilityText}
           </Text>
@@ -959,7 +1042,7 @@ export default function MenuScreen({
               },
             ]}
           >
-            {canOrder
+            {strictCanOrder
               ? 'Tap to view'
               : 'Waiting for staff'}
           </Text>
@@ -1393,7 +1476,7 @@ export default function MenuScreen({
             )}
           />
 
-          {!canOrder ? (
+          {!strictCanOrder ? (
             <View style={styles.assignmentBanner}>
               <Text
                 style={[
@@ -1404,7 +1487,7 @@ export default function MenuScreen({
                   },
                 ]}
               >
-                {assignmentMessage}
+                {strictAssignmentMessage}
               </Text>
             </View>
           ) : null}
@@ -1604,12 +1687,12 @@ export default function MenuScreen({
                         responsive.checkoutPadding,
                     },
                     (cartItems.length === 0 ||
-                      !canOrder) &&
+                      !strictCanOrder) &&
                       styles.checkoutButtonDisabled,
                   ]}
                   disabled={
                     cartItems.length === 0 ||
-                    !canOrder
+                    !strictCanOrder
                   }
                   onPress={handleCheckout}
                 >
