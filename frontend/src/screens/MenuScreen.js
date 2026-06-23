@@ -18,7 +18,16 @@ import {
   Modal,
   useWindowDimensions,
   BackHandler,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  StatusBar,
 } from 'react-native';
+
+import {
+  SafeAreaView,
+  useSafeAreaInsets,
+} from 'react-native-safe-area-context';
 
 import {
   useFocusEffect,
@@ -49,52 +58,334 @@ export default function MenuScreen({
     height,
   } = useWindowDimensions();
 
-  const isLandscape =
-    width > height;
+  const insets =
+    useSafeAreaInsets();
 
-  const isSmallScreen =
-    width < 760;
-
-  const useSideCart =
-    width >= 760;
-
-  const cartWidth =
-    isLandscape ? 330 : 285;
-
-  const menuColumns =
-    useSideCart
-      ? isLandscape
-        ? 3
-        : 2
-      : 1;
-
-  const menuCardWidth =
+  const responsive =
     useMemo(() => {
-      if (useSideCart) {
-        const availableWidth =
-          width - cartWidth - 48;
+      const shortest =
+        Math.min(width, height);
 
+      const base =
+        shortest / 768;
+
+      const isPortrait =
+        height >= width;
+
+      const isPhoneWidth =
+        width < 430;
+
+      const clamp = (
+        value,
+        min,
+        max
+      ) => {
         return Math.max(
-          185,
-          Math.floor(
-            availableWidth /
-              menuColumns
-          ) - 18
+          min,
+          Math.min(value, max)
         );
-      }
+      };
 
-      return Math.max(
-        250,
+      const scale = (
+        size,
+        min = size * 0.65,
+        max = size * 1.08
+      ) => {
+        return Math.round(
+          clamp(size * base, min, max)
+        );
+      };
+
+      const useSideCart =
+        !isPortrait && width >= 720;
+
+      const cartWidth =
+        useSideCart
+          ? clamp(width * 0.27, 270, 355)
+          : '100%';
+
+      const availableMenuWidth =
+        useSideCart
+          ? width - cartWidth
+          : width;
+
+      const menuPaddingH =
+        isPhoneWidth
+          ? scale(12, 10, 14)
+          : scale(18, 12, 24);
+
+      const cardGap =
+        isPhoneWidth
+          ? scale(12, 10, 14)
+          : scale(20, 16, 24);
+
+      const menuColumns =
+        useSideCart
+          ? clamp(
+              Math.floor(
+                availableMenuWidth / 215
+              ),
+              2,
+              3
+            )
+          : isPhoneWidth
+            ? 2
+            : 2;
+
+      const menuCardWidth =
         Math.floor(
-          (width - 48) /
-            menuColumns
-        ) - 18
-      );
+          (
+            availableMenuWidth -
+            menuPaddingH * 2 -
+            cardGap * (menuColumns - 1)
+          ) / menuColumns
+        );
+
+      const finalImageSize =
+        isPhoneWidth
+          ? scale(64, 54, 70)
+          : menuColumns > 1 && !useSideCart
+            ? scale(88, 66, 94)
+            : scale(102, 74, 110);
+
+      const stackedCartMaxHeight =
+        isPhoneWidth
+          ? clamp(height * 0.2, 135, 175)
+          : clamp(height * 0.24, 175, 235);
+
+      return {
+        isPhoneWidth,
+        useSideCart,
+        cartWidth,
+        menuColumns,
+        menuCardWidth,
+        stackedCartMaxHeight,
+        cardGap,
+
+        topSafeExtra:
+          isPhoneWidth
+            ? 10
+            : 6,
+
+        topBarMinHeight:
+          isPhoneWidth
+            ? scale(86, 78, 94)
+            : scale(74, 62, 82),
+
+        topBarPaddingH:
+          isPhoneWidth
+            ? scale(12, 10, 14)
+            : scale(18, 12, 24),
+
+        topBarPaddingV:
+          isPhoneWidth
+            ? scale(8, 6, 10)
+            : scale(8, 6, 10),
+
+        topTitle:
+          isPhoneWidth
+            ? scale(21, 17, 22)
+            : scale(28, 20, 28),
+
+        topSubtitle:
+          scale(13, 10, 13),
+
+        tableText:
+          isPhoneWidth
+            ? scale(14, 11, 14)
+            : scale(20, 12, 20),
+
+        topButtonFont:
+          isPhoneWidth
+            ? scale(12, 10, 12)
+            : scale(15, 10, 15),
+
+        topButtonPaddingV:
+          isPhoneWidth
+            ? scale(6, 5, 6)
+            : scale(8, 5, 8),
+
+        topButtonPaddingH:
+          isPhoneWidth
+            ? scale(9, 7, 10)
+            : scale(14, 7, 14),
+
+        categoryHeight:
+          isPhoneWidth
+            ? scale(58, 50, 62)
+            : scale(70, 52, 70),
+
+        categoryPaddingV:
+          scale(12, 8, 12),
+
+        categoryPaddingH:
+          isPhoneWidth
+            ? scale(18, 12, 20)
+            : scale(22, 12, 22),
+
+        categoryText:
+          scale(18, 12, 18),
+
+        bannerText:
+          scale(16, 12, 16),
+
+        menuPaddingTop:
+          isPhoneWidth
+            ? scale(14, 12, 16)
+            : scale(18, 14, 22),
+
+        menuPaddingH,
+
+        itemMinHeight:
+          isPhoneWidth
+            ? scale(178, 160, 188)
+            : menuColumns > 1 && !useSideCart
+              ? scale(220, 195, 235)
+              : scale(235, 205, 245),
+
+        itemPadding:
+          isPhoneWidth
+            ? scale(9, 7, 10)
+            : scale(13, 10, 15),
+
+        itemRadius:
+          scale(18, 14, 18),
+
+        imageSize:
+          finalImageSize,
+
+        imageRadius:
+          finalImageSize / 2,
+
+        itemName:
+          isPhoneWidth
+            ? scale(14, 12, 15)
+            : menuColumns > 1 && !useSideCart
+              ? scale(18, 13, 18)
+              : scale(21, 16, 21),
+
+        itemCategory:
+          isPhoneWidth
+            ? scale(10, 8, 11)
+            : scale(12, 9, 12),
+
+        itemPrice:
+          isPhoneWidth
+            ? scale(15, 12, 16)
+            : scale(18, 13, 18),
+
+        stockText:
+          isPhoneWidth
+            ? scale(12, 10, 13)
+            : scale(15, 10, 15),
+
+        tapText:
+          isPhoneWidth
+            ? scale(11, 9, 12)
+            : scale(13, 10, 13),
+
+        badgeText:
+          isPhoneWidth
+            ? scale(9, 8, 10)
+            : scale(12, 9, 12),
+
+        customBadgeText:
+          isPhoneWidth
+            ? scale(8, 7, 9)
+            : scale(11, 8, 11),
+
+        sidebarPaddingH:
+          scale(14, 8, 16),
+
+        sidebarPaddingT:
+          isPhoneWidth
+            ? scale(8, 6, 10)
+            : scale(12, 7, 16),
+
+        cartIcon:
+          scale(24, 17, 24),
+
+        cartTitle:
+          scale(22, 15, 22),
+
+        cartItemName:
+          scale(15, 11, 15),
+
+        cartItemPrice:
+          scale(14, 11, 14),
+
+        cartRequest:
+          scale(13, 10, 13),
+
+        removeText:
+          scale(24, 17, 24),
+
+        qtyButton:
+          scale(30, 22, 32),
+
+        qtyButtonText:
+          scale(18, 13, 18),
+
+        qtyText:
+          scale(16, 12, 16),
+
+        totalLabel:
+          scale(18, 13, 18),
+
+        totalValue:
+          scale(22, 16, 22),
+
+        checkoutText:
+          scale(16, 12, 16),
+
+        checkoutPadding:
+          isPhoneWidth
+            ? scale(10, 8, 11)
+            : scale(12, 9, 14),
+
+        searchPadding:
+          isPhoneWidth
+            ? scale(10, 8, 12)
+            : scale(12, 9, 14),
+
+        searchBottomPadding:
+          isPhoneWidth
+            ? Math.max(insets.bottom + 8, 18)
+            : Math.max(insets.bottom + 6, 14),
+
+        searchFont:
+          scale(18, 12, 18),
+
+        searchButtonText:
+          scale(18, 12, 18),
+
+        searchButtonPaddingV:
+          scale(12, 8, 12),
+
+        searchButtonPaddingH:
+          isPhoneWidth
+            ? scale(16, 12, 18)
+            : scale(24, 12, 24),
+
+        modalWidth:
+          clamp(width * 0.86, 300, 420),
+
+        modalTitle:
+          scale(28, 20, 28),
+
+        modalText:
+          scale(16, 12, 16),
+
+        modalInput:
+          scale(17, 13, 17),
+
+        modalButton:
+          scale(16, 13, 16),
+      };
     }, [
       width,
-      cartWidth,
-      menuColumns,
-      useSideCart,
+      height,
+      insets.bottom,
     ]);
 
   const [menuItems, setMenuItems] =
@@ -302,7 +593,20 @@ export default function MenuScreen({
     );
   };
 
-  const handleOpenItem = (item) => {
+  const handleOpenItem = async (item) => {
+    const tableCheck =
+      await ensureCanOrder();
+
+    if (!tableCheck?.allowed) {
+      Alert.alert(
+        'Table Not Assigned',
+        tableCheck?.message ||
+          assignmentMessage
+      );
+
+      return;
+    }
+
     if (!isItemOrderable(item)) {
       Alert.alert(
         'Unavailable',
@@ -365,10 +669,10 @@ export default function MenuScreen({
     const tableCheck =
       await ensureCanOrder();
 
-    if (!tableCheck.allowed) {
+    if (!tableCheck?.allowed) {
       Alert.alert(
         'Table Not Assigned',
-        tableCheck.message ||
+        tableCheck?.message ||
           assignmentMessage
       );
 
@@ -448,14 +752,18 @@ export default function MenuScreen({
           isItemOrderable(b);
 
         if (aPopular !== bPopular) {
-          return Number(bPopular) - Number(aPopular);
+          return Number(bPopular) -
+            Number(aPopular);
         }
 
         if (aAvailable !== bAvailable) {
-          return Number(bAvailable) - Number(aAvailable);
+          return Number(bAvailable) -
+            Number(aAvailable);
         }
 
-        return String(a.name || '').localeCompare(
+        return String(
+          a.name || ''
+        ).localeCompare(
           String(b.name || '')
         );
       });
@@ -492,34 +800,45 @@ export default function MenuScreen({
     const bestSeller =
       isBestSeller(item);
 
+    const disabled =
+      !isAvailable || !canOrder;
+
     return (
       <TouchableOpacity
         style={[
           styles.menuItem,
           {
             width:
-              menuCardWidth,
+              responsive.menuCardWidth,
+            minHeight:
+              responsive.itemMinHeight,
+            padding:
+              responsive.itemPadding,
+            borderRadius:
+              responsive.itemRadius,
+            marginBottom:
+              responsive.cardGap,
           },
-          !isAvailable &&
+          disabled &&
             styles.unavailableItem,
           customItem &&
             styles.customMenuItem,
         ]}
-        disabled={!isAvailable}
+        disabled={disabled}
         onPress={() =>
           handleOpenItem(item)
         }
       >
         {bestSeller ? (
-          <View
-            style={
-              styles.bestSellerBadge
-            }
-          >
+          <View style={styles.bestSellerBadge}>
             <Text
-              style={
-                styles.bestSellerBadgeText
-              }
+              style={[
+                styles.bestSellerBadgeText,
+                {
+                  fontSize:
+                    responsive.badgeText,
+                },
+              ]}
             >
               🔥 Popular
             </Text>
@@ -528,7 +847,15 @@ export default function MenuScreen({
 
         {customItem ? (
           <View style={styles.customBadge}>
-            <Text style={styles.customBadgeText}>
+            <Text
+              style={[
+                styles.customBadgeText,
+                {
+                  fontSize:
+                    responsive.customBadgeText,
+                },
+              ]}
+            >
               Chef Oppa Special
             </Text>
           </View>
@@ -537,10 +864,14 @@ export default function MenuScreen({
         <View
           style={[
             styles.itemImageCircle,
-            !isLandscape &&
-              styles.itemImageCirclePortrait,
-            isSmallScreen &&
-              styles.itemImageCircleSmall,
+            {
+              width:
+                responsive.imageSize,
+              height:
+                responsive.imageSize,
+              borderRadius:
+                responsive.imageRadius,
+            },
           ]}
         >
           <Image
@@ -549,9 +880,7 @@ export default function MenuScreen({
                 ? { uri: imageUri }
                 : require('../../assets/placeholder-food.png')
             }
-            style={
-              styles.itemImage
-            }
+            style={styles.itemImage}
             resizeMode="cover"
           />
         </View>
@@ -560,10 +889,10 @@ export default function MenuScreen({
           <Text
             style={[
               styles.itemName,
-              !isLandscape &&
-                styles.itemNamePortrait,
-              isSmallScreen &&
-                styles.itemNameSmall,
+              {
+                fontSize:
+                  responsive.itemName,
+              },
             ]}
             numberOfLines={2}
           >
@@ -573,8 +902,10 @@ export default function MenuScreen({
           <Text
             style={[
               styles.itemCategoryText,
-              isSmallScreen &&
-                styles.itemCategoryTextSmall,
+              {
+                fontSize:
+                  responsive.itemCategory,
+              },
             ]}
             numberOfLines={1}
           >
@@ -584,11 +915,14 @@ export default function MenuScreen({
           <Text
             style={[
               styles.itemPrice,
-              isSmallScreen &&
-                styles.itemPriceSmall,
+              {
+                fontSize:
+                  responsive.itemPrice,
+              },
               customItem &&
                 styles.customPrice,
             ]}
+            numberOfLines={1}
           >
             {customItem
               ? 'To be confirmed'
@@ -597,20 +931,37 @@ export default function MenuScreen({
 
           <Text
             style={[
-              !isAvailable
+              !canOrder
                 ? styles.notAvailableText
-                : isLowStock
-                  ? styles.lowStockText
-                  : styles.availableText,
-              isSmallScreen &&
-                styles.stockTextSmall,
+                : !isAvailable
+                  ? styles.notAvailableText
+                  : isLowStock
+                    ? styles.lowStockText
+                    : styles.availableText,
+              {
+                fontSize:
+                  responsive.stockText,
+              },
             ]}
+            numberOfLines={2}
           >
-            {availabilityText}
+            {!canOrder
+              ? 'Table not assigned'
+              : availabilityText}
           </Text>
 
-          <Text style={styles.tapText}>
-            Tap to view
+          <Text
+            style={[
+              styles.tapText,
+              {
+                fontSize:
+                  responsive.tapText,
+              },
+            ]}
+          >
+            {canOrder
+              ? 'Tap to view'
+              : 'Waiting for staff'}
           </Text>
         </View>
       </TouchableOpacity>
@@ -636,20 +987,36 @@ export default function MenuScreen({
           );
 
     return (
-      <View style={styles.cartItem}>
+      <View
+        style={[
+          styles.cartItem,
+          !responsive.useSideCart &&
+            styles.cartItemBottom,
+        ]}
+      >
         <View style={styles.cartItemTop}>
-          <View
-            style={styles.cartItemInfo}
-          >
+          <View style={styles.cartItemInfo}>
             <Text
-              style={styles.cartItemName}
+              style={[
+                styles.cartItemName,
+                {
+                  fontSize:
+                    responsive.cartItemName,
+                },
+              ]}
               numberOfLines={2}
             >
               {item.name}
             </Text>
 
             <Text
-              style={styles.cartItemPrice}
+              style={[
+                styles.cartItemPrice,
+                {
+                  fontSize:
+                    responsive.cartItemPrice,
+                },
+              ]}
             >
               {customCartItem
                 ? 'To be confirmed'
@@ -658,7 +1025,15 @@ export default function MenuScreen({
 
             {customCartItem &&
             item.special_request ? (
-              <Text style={styles.cartRequestText}>
+              <Text
+                style={[
+                  styles.cartRequestText,
+                  {
+                    fontSize:
+                      responsive.cartRequest,
+                  },
+                ]}
+              >
                 Request: {item.special_request}
               </Text>
             ) : null}
@@ -671,7 +1046,15 @@ export default function MenuScreen({
               )
             }
           >
-            <Text style={styles.removeText}>
+            <Text
+              style={[
+                styles.removeText,
+                {
+                  fontSize:
+                    responsive.removeText,
+                },
+              ]}
+            >
               ×
             </Text>
           </TouchableOpacity>
@@ -686,7 +1069,17 @@ export default function MenuScreen({
         ) : (
           <View style={styles.qtyRow}>
             <TouchableOpacity
-              style={styles.qtyButton}
+              style={[
+                styles.qtyButton,
+                {
+                  width:
+                    responsive.qtyButton,
+                  height:
+                    responsive.qtyButton,
+                  borderRadius:
+                    responsive.qtyButton / 3,
+                },
+              ]}
               onPress={() =>
                 handleDecreaseQuantity(
                   item
@@ -694,19 +1087,41 @@ export default function MenuScreen({
               }
             >
               <Text
-                style={styles.qtyButtonText}
+                style={[
+                  styles.qtyButtonText,
+                  {
+                    fontSize:
+                      responsive.qtyButtonText,
+                  },
+                ]}
               >
                 -
               </Text>
             </TouchableOpacity>
 
-            <Text style={styles.qtyText}>
+            <Text
+              style={[
+                styles.qtyText,
+                {
+                  fontSize:
+                    responsive.qtyText,
+                },
+              ]}
+            >
               {item.quantity}
             </Text>
 
             <TouchableOpacity
               style={[
                 styles.qtyButton,
+                {
+                  width:
+                    responsive.qtyButton,
+                  height:
+                    responsive.qtyButton,
+                  borderRadius:
+                    responsive.qtyButton / 3,
+                },
                 (atMaxQuantity ||
                   isOutOfStock(enrichedItem)) &&
                   styles.qtyButtonDisabled,
@@ -729,7 +1144,13 @@ export default function MenuScreen({
               }}
             >
               <Text
-                style={styles.qtyButtonText}
+                style={[
+                  styles.qtyButtonText,
+                  {
+                    fontSize:
+                      responsive.qtyButtonText,
+                  },
+                ]}
               >
                 +
               </Text>
@@ -742,368 +1163,527 @@ export default function MenuScreen({
 
   if (loading) {
     return (
-      <ActivityIndicator
-        size="large"
-        style={{ flex: 1 }}
-      />
+      <View style={styles.loadingScreen}>
+        <ActivityIndicator
+          size="large"
+          color="#f68c45"
+        />
+      </View>
     );
   }
 
   return (
     <View style={styles.frame}>
-      <View style={styles.container}>
+      <StatusBar
+        barStyle="light-content"
+        backgroundColor="#b8b3b3"
+        translucent={false}
+      />
+
+      <SafeAreaView
+        style={styles.safeArea}
+        edges={[
+          'top',
+          'bottom',
+        ]}
+      >
         <View
           style={[
-            styles.topBar,
-            isSmallScreen &&
-              styles.topBarSmall,
+            styles.container,
+            {
+              paddingTop:
+                responsive.topSafeExtra,
+            },
           ]}
         >
-          <View>
-            <Text
-              style={[
-                styles.topBarText,
-                isSmallScreen &&
-                  styles.topBarTextSmall,
-              ]}
-            >
-              DineSync+
-            </Text>
-
-            <Text style={styles.topBarSubText}>
-              Customer Menu
-            </Text>
-          </View>
-
           <View
             style={[
-              styles.topIcons,
-              isSmallScreen &&
-                styles.topIconsSmall,
-            ]}
-          >
-            <Text
-              style={[
-                styles.tableText,
-                isSmallScreen &&
-                  styles.tableTextSmall,
-              ]}
-            >
-              Table {tableNumber || user?.table_number || '-'}
-            </Text>
-
-            <TouchableOpacity
-              style={[
-                styles.historyButton,
-                isSmallScreen &&
-                  styles.topButtonSmall,
-              ]}
-              onPress={() =>
-                navigation.navigate(
-                  'OrderHistory'
-                )
-              }
-            >
-              <Text
-                style={[
-                  styles.historyButtonText,
-                  isSmallScreen &&
-                    styles.topButtonTextSmall,
-                ]}
-              >
-                Order History
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[
-                styles.statusButton,
-                isSmallScreen &&
-                  styles.topButtonSmall,
-              ]}
-              onPress={() =>
-                navigation.navigate(
-                  'OrderStatus'
-                )
-              }
-            >
-              <Text
-                style={[
-                  styles.statusButtonText,
-                  isSmallScreen &&
-                    styles.topButtonTextSmall,
-                ]}
-              >
-                View Order Status
-              </Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[
-                styles.logoutButton,
-                isSmallScreen &&
-                  styles.topButtonSmall,
-              ]}
-              onPress={openLogoutModal}
-            >
-              <Text
-                style={[
-                  styles.logoutButtonText,
-                  isSmallScreen &&
-                    styles.topButtonTextSmall,
-                ]}
-              >
-                Staff Logout
-              </Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        <FlatList
-          horizontal
-          data={categories}
-          keyExtractor={(item) => item}
-          showsHorizontalScrollIndicator={
-            false
-          }
-          style={styles.categoryBar}
-          contentContainerStyle={{
-            paddingHorizontal: 10,
-            alignItems: 'center',
-          }}
-          renderItem={({
-            item: category,
-          }) => (
-            <TouchableOpacity
-              style={[
-                styles.categoryBtn,
-                selectedCategory ===
-                  category &&
-                  styles.categoryBtnActive,
-              ]}
-              onPress={() =>
-                setSelectedCategory(
-                  category
-                )
-              }
-            >
-              <Text
-                style={[
-                  styles.categoryText,
-                  selectedCategory ===
-                    category &&
-                    styles.categoryTextActive,
-                  isSmallScreen &&
-                    styles.categoryTextSmall,
-                ]}
-              >
-                {category}
-              </Text>
-            </TouchableOpacity>
-          )}
-        />
-
-        {!canOrder ? (
-          <View
-            style={
-              styles.assignmentBanner
-            }
-          >
-            <Text
-              style={
-                styles.assignmentBannerText
-              }
-            >
-              {assignmentMessage}
-            </Text>
-          </View>
-        ) : null}
-
-        <View
-          style={[
-            styles.contentArea,
-            !useSideCart &&
-              styles.contentAreaStacked,
-          ]}
-        >
-          <View style={styles.menuSection}>
-            <FlatList
-              key={`menu-${menuColumns}-${useSideCart ? 'side' : 'stack'}`}
-              data={filteredItems}
-              renderItem={
-                renderMenuItem
-              }
-              numColumns={menuColumns}
-              showsVerticalScrollIndicator={
-                false
-              }
-              keyboardShouldPersistTaps="handled"
-              keyExtractor={(
-                item,
-                index
-              ) =>
-                String(
-                  getItemId(item) ||
-                    index
-                )
-              }
-              columnWrapperStyle={
-                menuColumns > 1
-                  ? {
-                      justifyContent:
-                        'center',
-                      gap: 14,
-                      marginBottom: 14,
-                    }
-                  : undefined
-              }
-              contentContainerStyle={{
-                paddingVertical: 10,
-                paddingBottom:
-                  useSideCart
-                    ? 30
-                    : 20,
-                alignItems:
-                  menuColumns === 1
-                    ? 'center'
-                    : undefined,
-              }}
-            />
-          </View>
-
-          <View
-            style={[
-              styles.cartSidebar,
+              styles.topBar,
               {
-                width: useSideCart
-                  ? cartWidth
-                  : '100%',
+                minHeight:
+                  responsive.topBarMinHeight,
+                paddingHorizontal:
+                  responsive.topBarPaddingH,
+                paddingVertical:
+                  responsive.topBarPaddingV,
               },
-              !useSideCart &&
-                styles.cartSidebarStacked,
             ]}
           >
-            <View style={styles.cartHeader}>
-              <Text style={styles.cartIcon}>
-                🛒
+            <View style={styles.brandBox}>
+              <Text
+                style={[
+                  styles.topBarText,
+                  {
+                    fontSize:
+                      responsive.topTitle,
+                  },
+                ]}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+              >
+                DineSync+
               </Text>
 
-              <Text style={styles.cartTitle}>
-                Your Order
+              <Text
+                style={[
+                  styles.topBarSubText,
+                  {
+                    fontSize:
+                      responsive.topSubtitle,
+                  },
+                ]}
+                numberOfLines={1}
+              >
+                Customer Menu
               </Text>
             </View>
 
-            {cartItems.length === 0 ? (
+            <View style={styles.topIcons}>
               <Text
-                style={styles.emptyCartText}
+                style={[
+                  styles.tableText,
+                  {
+                    fontSize:
+                      responsive.tableText,
+                  },
+                ]}
+                numberOfLines={1}
               >
-                No items added yet.
+                Table {tableNumber || user?.table_number || '-'}
               </Text>
-            ) : (
-              <FlatList
-                data={cartItems}
-                keyExtractor={(item) =>
-                  String(
-                    getItemId(item)
-                  )
-                }
-                renderItem={
-                  renderCartItem
-                }
-                horizontal={!useSideCart}
-                showsHorizontalScrollIndicator={
-                  false
-                }
-                showsVerticalScrollIndicator={
-                  false
-                }
-                contentContainerStyle={{
-                  paddingBottom:
-                    useSideCart
-                      ? 20
-                      : 8,
-                  gap:
-                    useSideCart
-                      ? 0
-                      : 12,
-                }}
-              />
-            )}
-
-            <View style={styles.cartFooter}>
-              <View style={styles.totalRow}>
-                <Text style={styles.totalLabel}>
-                  Total:
-                </Text>
-
-                <Text style={styles.totalValue}>
-                  ₱{formatMoney(cartTotal)}
-                </Text>
-              </View>
-
-              {hasCustomRequest ? (
-                <Text style={styles.cartWarningText}>
-                  Chef Oppa Special requests require staff confirmation for final price and availability.
-                </Text>
-              ) : null}
 
               <TouchableOpacity
                 style={[
-                  styles.checkoutButton,
-                  (cartItems.length === 0 ||
-                    !canOrder) &&
-                    styles.checkoutButtonDisabled,
+                  styles.historyButton,
+                  {
+                    paddingVertical:
+                      responsive.topButtonPaddingV,
+                    paddingHorizontal:
+                      responsive.topButtonPaddingH,
+                  },
                 ]}
-                disabled={
-                  cartItems.length === 0 ||
-                  !canOrder
+                onPress={() =>
+                  navigation.navigate(
+                    'OrderHistory'
+                  )
                 }
-                onPress={handleCheckout}
               >
                 <Text
-                  style={
-                    styles.checkoutButtonText
-                  }
+                  style={[
+                    styles.historyButtonText,
+                    {
+                      fontSize:
+                        responsive.topButtonFont,
+                    },
+                  ]}
+                  numberOfLines={1}
                 >
-                  Confirm Order ({totalQuantity})
+                  Order History
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[
+                  styles.statusButton,
+                  {
+                    paddingVertical:
+                      responsive.topButtonPaddingV,
+                    paddingHorizontal:
+                      responsive.topButtonPaddingH,
+                  },
+                ]}
+                onPress={() =>
+                  navigation.navigate(
+                    'OrderStatus'
+                  )
+                }
+              >
+                <Text
+                  style={[
+                    styles.statusButtonText,
+                    {
+                      fontSize:
+                        responsive.topButtonFont,
+                    },
+                  ]}
+                  numberOfLines={1}
+                >
+                  View Order Status
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[
+                  styles.logoutButton,
+                  {
+                    paddingVertical:
+                      responsive.topButtonPaddingV,
+                    paddingHorizontal:
+                      responsive.topButtonPaddingH,
+                  },
+                ]}
+                onPress={openLogoutModal}
+              >
+                <Text
+                  style={[
+                    styles.logoutButtonText,
+                    {
+                      fontSize:
+                        responsive.topButtonFont,
+                    },
+                  ]}
+                  numberOfLines={1}
+                >
+                  Staff Logout
                 </Text>
               </TouchableOpacity>
             </View>
           </View>
-        </View>
 
-        <View
-          style={[
-            styles.searchBar,
-            isSmallScreen &&
-              styles.searchBarSmall,
-          ]}
-        >
-          <TextInput
-            placeholder="Search menu"
-            value={search}
-            onChangeText={setSearch}
+          <FlatList
+            horizontal
+            data={categories}
+            keyExtractor={(item) => item}
+            showsHorizontalScrollIndicator={false}
             style={[
-              styles.searchInput,
-              isSmallScreen &&
-                styles.searchInputSmall,
+              styles.categoryBar,
+              {
+                maxHeight:
+                  responsive.categoryHeight,
+              },
             ]}
+            contentContainerStyle={{
+              paddingHorizontal: 10,
+              alignItems: 'center',
+            }}
+            renderItem={({
+              item: category,
+            }) => (
+              <TouchableOpacity
+                style={[
+                  styles.categoryBtn,
+                  {
+                    paddingVertical:
+                      responsive.categoryPaddingV,
+                    paddingHorizontal:
+                      responsive.categoryPaddingH,
+                  },
+                  selectedCategory === category &&
+                    styles.categoryBtnActive,
+                ]}
+                onPress={() =>
+                  setSelectedCategory(category)
+                }
+              >
+                <Text
+                  style={[
+                    styles.categoryText,
+                    {
+                      fontSize:
+                        responsive.categoryText,
+                    },
+                    selectedCategory === category &&
+                      styles.categoryTextActive,
+                  ]}
+                  numberOfLines={1}
+                >
+                  {category}
+                </Text>
+              </TouchableOpacity>
+            )}
           />
 
-          <TouchableOpacity
-            style={styles.searchButton}
-            onPress={() => {}}
+          {!canOrder ? (
+            <View style={styles.assignmentBanner}>
+              <Text
+                style={[
+                  styles.assignmentBannerText,
+                  {
+                    fontSize:
+                      responsive.bannerText,
+                  },
+                ]}
+              >
+                {assignmentMessage}
+              </Text>
+            </View>
+          ) : null}
+
+          <View
+            style={[
+              styles.contentArea,
+              {
+                flexDirection:
+                  responsive.useSideCart
+                    ? 'row'
+                    : 'column',
+              },
+            ]}
           >
-            <Text
-              style={
-                styles.searchButtonText
-              }
+            <View
+              style={[
+                styles.menuSection,
+                {
+                  paddingTop:
+                    responsive.menuPaddingTop,
+                  paddingHorizontal:
+                    responsive.menuPaddingH,
+                },
+              ]}
             >
-              Search
-            </Text>
-          </TouchableOpacity>
+              <FlatList
+                key={`menu-${responsive.menuColumns}-${responsive.useSideCart ? 'side' : 'stack'}`}
+                data={filteredItems}
+                renderItem={renderMenuItem}
+                numColumns={responsive.menuColumns}
+                showsVerticalScrollIndicator={false}
+                keyboardShouldPersistTaps="handled"
+                keyExtractor={(
+                  item,
+                  index
+                ) =>
+                  String(
+                    getItemId(item) ||
+                      index
+                  )
+                }
+                columnWrapperStyle={
+                  responsive.menuColumns > 1
+                    ? {
+                        justifyContent:
+                          'center',
+                        gap:
+                          responsive.cardGap,
+                      }
+                    : undefined
+                }
+                contentContainerStyle={{
+                  paddingTop: 2,
+                  paddingBottom:
+                    responsive.useSideCart
+                      ? 30
+                      : responsive.cardGap + 18,
+                  alignItems:
+                    responsive.menuColumns === 1
+                      ? 'center'
+                      : undefined,
+                }}
+              />
+            </View>
+
+            <View
+              style={[
+                styles.cartSidebar,
+                {
+                  width:
+                    responsive.useSideCart
+                      ? responsive.cartWidth
+                      : '100%',
+                  maxHeight:
+                    responsive.useSideCart
+                      ? undefined
+                      : responsive.stackedCartMaxHeight,
+                  paddingHorizontal:
+                    responsive.sidebarPaddingH,
+                  paddingTop:
+                    responsive.sidebarPaddingT,
+                  borderLeftWidth:
+                    responsive.useSideCart
+                      ? 1
+                      : 0,
+                  borderTopWidth:
+                    responsive.useSideCart
+                      ? 0
+                      : 1,
+                },
+              ]}
+            >
+              <View style={styles.cartHeader}>
+                <Text
+                  style={[
+                    styles.cartIcon,
+                    {
+                      fontSize:
+                        responsive.cartIcon,
+                    },
+                  ]}
+                >
+                  🛒
+                </Text>
+
+                <Text
+                  style={[
+                    styles.cartTitle,
+                    {
+                      fontSize:
+                        responsive.cartTitle,
+                    },
+                  ]}
+                >
+                  Your Order
+                </Text>
+              </View>
+
+              {cartItems.length === 0 ? (
+                <Text
+                  style={[
+                    styles.emptyCartText,
+                    {
+                      fontSize:
+                        responsive.cartItemName,
+                    },
+                  ]}
+                >
+                  No items added yet.
+                </Text>
+              ) : (
+                <FlatList
+                  data={cartItems}
+                  keyExtractor={(item) =>
+                    String(getItemId(item))
+                  }
+                  renderItem={renderCartItem}
+                  horizontal={
+                    !responsive.useSideCart
+                  }
+                  showsHorizontalScrollIndicator={false}
+                  showsVerticalScrollIndicator={false}
+                  contentContainerStyle={{
+                    paddingBottom:
+                      responsive.useSideCart
+                        ? 20
+                        : 8,
+                    gap:
+                      responsive.useSideCart
+                        ? 0
+                        : 12,
+                  }}
+                />
+              )}
+
+              <View style={styles.cartFooter}>
+                <View style={styles.totalRow}>
+                  <Text
+                    style={[
+                      styles.totalLabel,
+                      {
+                        fontSize:
+                          responsive.totalLabel,
+                      },
+                    ]}
+                  >
+                    Total:
+                  </Text>
+
+                  <Text
+                    style={[
+                      styles.totalValue,
+                      {
+                        fontSize:
+                          responsive.totalValue,
+                      },
+                    ]}
+                    numberOfLines={1}
+                    adjustsFontSizeToFit
+                  >
+                    ₱{formatMoney(cartTotal)}
+                  </Text>
+                </View>
+
+                {hasCustomRequest ? (
+                  <Text style={styles.cartWarningText}>
+                    Chef Oppa Special requests require staff confirmation for final price and availability.
+                  </Text>
+                ) : null}
+
+                <TouchableOpacity
+                  style={[
+                    styles.checkoutButton,
+                    {
+                      paddingVertical:
+                        responsive.checkoutPadding,
+                    },
+                    (cartItems.length === 0 ||
+                      !canOrder) &&
+                      styles.checkoutButtonDisabled,
+                  ]}
+                  disabled={
+                    cartItems.length === 0 ||
+                    !canOrder
+                  }
+                  onPress={handleCheckout}
+                >
+                  <Text
+                    style={[
+                      styles.checkoutButtonText,
+                      {
+                        fontSize:
+                          responsive.checkoutText,
+                      },
+                    ]}
+                    numberOfLines={1}
+                    adjustsFontSizeToFit
+                  >
+                    Confirm Order ({totalQuantity})
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+
+          <View
+            style={[
+              styles.searchBar,
+              {
+                padding:
+                  responsive.searchPadding,
+                paddingBottom:
+                  responsive.searchBottomPadding,
+              },
+            ]}
+          >
+            <TextInput
+              placeholder="Search menu"
+              value={search}
+              onChangeText={setSearch}
+              style={[
+                styles.searchInput,
+                {
+                  fontSize:
+                    responsive.searchFont,
+                },
+              ]}
+              placeholderTextColor="#999"
+            />
+
+            <TouchableOpacity
+              style={[
+                styles.searchButton,
+                {
+                  paddingVertical:
+                    responsive.searchButtonPaddingV,
+                  paddingHorizontal:
+                    responsive.searchButtonPaddingH,
+                },
+              ]}
+              onPress={() => {}}
+            >
+              <Text
+                style={[
+                  styles.searchButtonText,
+                  {
+                    fontSize:
+                      responsive.searchButtonText,
+                    },
+                  ]}
+                numberOfLines={1}
+              >
+                Search
+              </Text>
+            </TouchableOpacity>
+          </View>
         </View>
-      </View>
+      </SafeAreaView>
 
       <Modal
         transparent
@@ -1111,46 +1691,105 @@ export default function MenuScreen({
         animationType="fade"
         onRequestClose={closeLogoutModal}
       >
-        <View style={styles.modalOverlay}>
-          <View style={styles.logoutModal}>
-            <Text style={styles.modalTitle}>
-              Staff Logout
-            </Text>
-
-            <Text style={styles.modalText}>
-              Enter staff password to logout this tablet.
-            </Text>
-
-            <TextInput
-              style={styles.passwordInput}
-              value={logoutPassword}
-              onChangeText={setLogoutPassword}
-              placeholder="Enter password"
-              secureTextEntry
-              autoCapitalize="none"
-            />
-
-            <View style={styles.modalActions}>
-              <TouchableOpacity
-                style={styles.cancelButton}
-                onPress={closeLogoutModal}
+        <KeyboardAvoidingView
+          style={styles.modalOverlay}
+          behavior={
+            Platform.OS === 'ios'
+              ? 'padding'
+              : 'height'
+          }
+        >
+          <ScrollView
+            contentContainerStyle={styles.modalScrollContent}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
+            <View
+              style={[
+                styles.logoutModal,
+                {
+                  width:
+                    responsive.modalWidth,
+                },
+              ]}
+            >
+              <Text
+                style={[
+                  styles.modalTitle,
+                  {
+                    fontSize:
+                      responsive.modalTitle,
+                  },
+                ]}
               >
-                <Text style={styles.cancelButtonText}>
-                  Cancel
-                </Text>
-              </TouchableOpacity>
+                Staff Logout
+              </Text>
 
-              <TouchableOpacity
-                style={styles.confirmButton}
-                onPress={handleConfirmLogout}
+              <Text
+                style={[
+                  styles.modalText,
+                  {
+                    fontSize:
+                      responsive.modalText,
+                  },
+                ]}
               >
-                <Text style={styles.confirmButtonText}>
-                  Logout
-                </Text>
-              </TouchableOpacity>
+                Enter staff password to logout this tablet.
+              </Text>
+
+              <TextInput
+                style={[
+                  styles.passwordInput,
+                  {
+                    fontSize:
+                      responsive.modalInput,
+                  },
+                ]}
+                value={logoutPassword}
+                onChangeText={setLogoutPassword}
+                placeholder="Enter password"
+                secureTextEntry
+                autoCapitalize="none"
+              />
+
+              <View style={styles.modalActions}>
+                <TouchableOpacity
+                  style={styles.cancelButton}
+                  onPress={closeLogoutModal}
+                >
+                  <Text
+                    style={[
+                      styles.cancelButtonText,
+                      {
+                        fontSize:
+                          responsive.modalButton,
+                      },
+                    ]}
+                  >
+                    Cancel
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.confirmButton}
+                  onPress={handleConfirmLogout}
+                >
+                  <Text
+                    style={[
+                      styles.confirmButtonText,
+                      {
+                        fontSize:
+                          responsive.modalButton,
+                      },
+                    ]}
+                  >
+                    Logout
+                  </Text>
+                </TouchableOpacity>
+              </View>
             </View>
-          </View>
-        </View>
+          </ScrollView>
+        </KeyboardAvoidingView>
       </Modal>
     </View>
   );
@@ -1160,7 +1799,19 @@ const styles =
   StyleSheet.create({
     frame: {
       flex: 1,
-      backgroundColor: '#171717',
+      backgroundColor: '#b8b3b3',
+    },
+
+    safeArea: {
+      flex: 1,
+      backgroundColor: '#b8b3b3',
+    },
+
+    loadingScreen: {
+      flex: 1,
+      backgroundColor: '#efefef',
+      justifyContent: 'center',
+      alignItems: 'center',
     },
 
     container: {
@@ -1169,128 +1820,83 @@ const styles =
     },
 
     topBar: {
-      minHeight: 70,
       backgroundColor: '#b8b3b3',
       flexDirection: 'row',
-      justifyContent:
-        'space-between',
+      justifyContent: 'space-between',
       alignItems: 'center',
-      paddingHorizontal: 24,
-      paddingVertical: 8,
+      gap: 8,
+      flexWrap: 'wrap',
     },
 
-    topBarSmall: {
-      flexDirection: 'column',
-      alignItems: 'flex-start',
-      gap: 8,
-      paddingHorizontal: 14,
-      paddingVertical: 10,
+    brandBox: {
+      flexShrink: 1,
+      minWidth: 92,
+      maxWidth: 145,
     },
 
     topBarText: {
       color: '#fff',
       fontWeight: '900',
-      fontSize: 28,
-    },
-
-    topBarTextSmall: {
-      fontSize: 23,
     },
 
     topBarSubText: {
       color: '#f7f7f7',
-      fontSize: 13,
       fontWeight: '700',
-      marginTop: 2,
+      marginTop: 1,
     },
 
     topIcons: {
+      flex: 1,
       flexDirection: 'row',
       alignItems: 'center',
       flexWrap: 'wrap',
       justifyContent: 'flex-end',
-    },
-
-    topIconsSmall: {
-      justifyContent: 'flex-start',
-      gap: 8,
+      gap: 6,
+      minWidth: 220,
     },
 
     tableText: {
       color: '#fff',
-      fontSize: 20,
       fontWeight: '900',
-      marginRight: 14,
-    },
-
-    tableTextSmall: {
-      fontSize: 16,
-      marginRight: 0,
     },
 
     historyButton: {
       backgroundColor: '#fff',
-      paddingVertical: 8,
-      paddingHorizontal: 14,
       borderRadius: 12,
-      marginRight: 14,
     },
 
     historyButtonText: {
       color: '#f68c45',
-      fontSize: 15,
       fontWeight: '900',
     },
 
     statusButton: {
       backgroundColor: '#f68c45',
-      paddingVertical: 8,
-      paddingHorizontal: 14,
       borderRadius: 12,
-      marginRight: 14,
     },
 
     statusButtonText: {
       color: '#fff',
-      fontSize: 15,
       fontWeight: '800',
     },
 
     logoutButton: {
       backgroundColor: '#333',
-      paddingVertical: 8,
-      paddingHorizontal: 14,
       borderRadius: 12,
-      marginRight: 14,
     },
 
     logoutButtonText: {
       color: '#fff',
-      fontSize: 15,
       fontWeight: '800',
     },
 
-    topButtonSmall: {
-      marginRight: 0,
-      paddingVertical: 7,
-      paddingHorizontal: 10,
-      borderRadius: 10,
-    },
-
-    topButtonTextSmall: {
-      fontSize: 13,
-    },
-
     categoryBar: {
-      maxHeight: 70,
       backgroundColor: '#f7f7f7',
       borderBottomWidth: 1,
       borderColor: '#e3e3e3',
     },
 
     categoryBtn: {
-      paddingVertical: 12,
-      paddingHorizontal: 22,
       borderRadius: 24,
       backgroundColor: '#ececec',
       marginRight: 10,
@@ -1302,12 +1908,7 @@ const styles =
 
     categoryText: {
       fontWeight: '700',
-      fontSize: 18,
       color: '#333',
-    },
-
-    categoryTextSmall: {
-      fontSize: 15,
     },
 
     categoryTextActive: {
@@ -1327,7 +1928,6 @@ const styles =
 
     assignmentBannerText: {
       color: '#8a4b12',
-      fontSize: 16,
       fontWeight: '700',
       textAlign: 'center',
       lineHeight: 22,
@@ -1335,29 +1935,18 @@ const styles =
 
     contentArea: {
       flex: 1,
-      flexDirection: 'row',
-    },
-
-    contentAreaStacked: {
-      flexDirection: 'column',
     },
 
     menuSection: {
       flex: 1,
-      paddingTop: 14,
-      paddingHorizontal: 8,
     },
 
     menuItem: {
-      minHeight: 235,
       backgroundColor: '#fff',
       borderWidth: 1.5,
       borderColor: '#f0b287',
-      borderRadius: 18,
-      marginHorizontal: 5,
       alignItems: 'center',
       justifyContent: 'center',
-      padding: 14,
       position: 'relative',
       overflow: 'hidden',
       shadowColor: '#000',
@@ -1377,61 +1966,44 @@ const styles =
 
     bestSellerBadge: {
       position: 'absolute',
-      top: 10,
-      left: 10,
+      top: 6,
+      left: 6,
       backgroundColor: '#fff4eb',
       borderWidth: 1,
       borderColor: '#f68c45',
       borderRadius: 999,
-      paddingVertical: 5,
-      paddingHorizontal: 10,
+      paddingVertical: 3,
+      paddingHorizontal: 6,
       zIndex: 10,
     },
 
     bestSellerBadgeText: {
       color: '#f68c45',
-      fontSize: 12,
       fontWeight: '900',
     },
 
     customBadge: {
       position: 'absolute',
-      top: 10,
-      right: 10,
+      top: 6,
+      right: 6,
       backgroundColor: '#f68c45',
       borderRadius: 999,
-      paddingVertical: 5,
-      paddingHorizontal: 10,
+      paddingVertical: 3,
+      paddingHorizontal: 6,
       zIndex: 10,
     },
 
     customBadgeText: {
       color: '#fff',
-      fontSize: 11,
       fontWeight: '900',
     },
 
     itemImageCircle: {
-      width: 105,
-      height: 105,
-      borderRadius: 55,
       backgroundColor: '#ececec',
       justifyContent: 'center',
       alignItems: 'center',
       overflow: 'hidden',
       marginTop: 8,
-    },
-
-    itemImageCirclePortrait: {
-      width: 92,
-      height: 92,
-      borderRadius: 46,
-    },
-
-    itemImageCircleSmall: {
-      width: 88,
-      height: 88,
-      borderRadius: 44,
     },
 
     itemImage: {
@@ -1442,39 +2014,26 @@ const styles =
     itemInfo: {
       alignItems: 'center',
       marginTop: 8,
+      width: '100%',
     },
 
     itemName: {
       fontWeight: '800',
-      fontSize: 21,
       textAlign: 'center',
-      marginTop: 8,
-    },
-
-    itemNamePortrait: {
-      fontSize: 18,
-    },
-
-    itemNameSmall: {
-      fontSize: 17,
+      marginTop: 6,
+      color: '#222',
     },
 
     itemCategoryText: {
-      marginTop: 4,
+      marginTop: 3,
       color: '#999',
-      fontSize: 12,
       fontWeight: '800',
       textAlign: 'center',
     },
 
-    itemCategoryTextSmall: {
-      fontSize: 11,
-    },
-
     itemPrice: {
       color: '#777',
-      marginTop: 6,
-      fontSize: 18,
+      marginTop: 5,
       fontWeight: '700',
       textAlign: 'center',
     },
@@ -1484,97 +2043,77 @@ const styles =
       fontWeight: '900',
     },
 
-    itemPriceSmall: {
-      fontSize: 16,
-    },
-
     availableText: {
       color: '#4CAF50',
-      fontSize: 15,
       fontWeight: '700',
-      marginTop: 8,
+      marginTop: 6,
       textAlign: 'center',
     },
 
     notAvailableText: {
       color: 'red',
-      fontSize: 15,
       fontWeight: '700',
-      marginTop: 8,
+      marginTop: 6,
       textAlign: 'center',
     },
 
     lowStockText: {
       color: '#e67e22',
-      fontSize: 15,
       fontWeight: '700',
-      marginTop: 8,
+      marginTop: 6,
       textAlign: 'center',
     },
 
-    stockTextSmall: {
-      fontSize: 13,
-    },
-
     tapText: {
-      marginTop: 8,
+      marginTop: 6,
       color: '#999',
-      fontSize: 13,
       fontWeight: '700',
     },
 
     cartSidebar: {
       backgroundColor: '#fff',
-      borderLeftWidth: 1,
       borderLeftColor: '#ddd',
-      paddingHorizontal: 14,
-      paddingTop: 16,
-    },
-
-    cartSidebarStacked: {
-      width: '100%',
-      maxHeight: 235,
-      borderLeftWidth: 0,
-      borderTopWidth: 1,
       borderTopColor: '#ddd',
-      paddingTop: 10,
     },
 
     cartHeader: {
       flexDirection: 'row',
       alignItems: 'center',
-      marginBottom: 10,
+      marginBottom: 8,
     },
 
     cartIcon: {
-      fontSize: 24,
       marginRight: 8,
     },
 
     cartTitle: {
-      fontSize: 22,
       fontWeight: '800',
       color: '#222',
     },
 
     emptyCartText: {
-      fontSize: 16,
       color: '#777',
       marginTop: 10,
     },
 
     cartItem: {
-      paddingVertical: 12,
+      paddingVertical: 10,
       borderBottomWidth: 1,
       borderBottomColor: '#eeeeee',
       minWidth: 170,
       maxWidth: 230,
     },
 
+    cartItemBottom: {
+      borderBottomWidth: 0,
+      borderRightWidth: 1,
+      borderRightColor: '#eeeeee',
+      paddingRight: 10,
+    },
+
     cartItemTop: {
       flexDirection: 'row',
-      justifyContent:
-        'space-between',
+      justifyContent: 'space-between',
       alignItems: 'flex-start',
     },
 
@@ -1584,13 +2123,11 @@ const styles =
     },
 
     cartItemName: {
-      fontSize: 15,
       fontWeight: '800',
       color: '#222',
     },
 
     cartItemPrice: {
-      fontSize: 14,
       fontWeight: '700',
       color: '#f68c45',
       marginTop: 4,
@@ -1598,7 +2135,6 @@ const styles =
 
     cartRequestText: {
       marginTop: 5,
-      fontSize: 13,
       color: '#666',
       fontWeight: '700',
       lineHeight: 18,
@@ -1634,7 +2170,6 @@ const styles =
     },
 
     removeText: {
-      fontSize: 24,
       fontWeight: '800',
       color: '#999',
     },
@@ -1646,9 +2181,6 @@ const styles =
     },
 
     qtyButton: {
-      width: 30,
-      height: 30,
-      borderRadius: 8,
       backgroundColor: '#f68c45',
       justifyContent: 'center',
       alignItems: 'center',
@@ -1661,11 +2193,9 @@ const styles =
     qtyButtonText: {
       color: '#fff',
       fontWeight: '800',
-      fontSize: 18,
     },
 
     qtyText: {
-      fontSize: 16,
       fontWeight: '800',
       marginHorizontal: 12,
     },
@@ -1673,34 +2203,33 @@ const styles =
     cartFooter: {
       borderTopWidth: 1,
       borderTopColor: '#dddddd',
-      paddingTop: 12,
-      paddingBottom: 12,
+      paddingTop: 10,
+      paddingBottom: 10,
     },
 
     totalRow: {
       flexDirection: 'row',
-      justifyContent:
-        'space-between',
+      justifyContent: 'space-between',
       alignItems: 'center',
-      marginBottom: 12,
+      marginBottom: 10,
+      gap: 10,
     },
 
     totalLabel: {
-      fontSize: 18,
       fontWeight: '800',
       color: '#333',
     },
 
     totalValue: {
-      fontSize: 22,
       fontWeight: '900',
       color: '#f68c45',
+      flexShrink: 1,
+      textAlign: 'right',
     },
 
     checkoutButton: {
       backgroundColor: '#f68c45',
       borderRadius: 10,
-      paddingVertical: 14,
       alignItems: 'center',
     },
 
@@ -1710,74 +2239,61 @@ const styles =
 
     checkoutButtonText: {
       color: '#fff',
-      fontSize: 16,
       fontWeight: '800',
     },
 
     searchBar: {
       borderTopWidth: 1,
       borderColor: '#ddd',
-      padding: 14,
       flexDirection: 'row',
       justifyContent: 'center',
       alignItems: 'center',
       backgroundColor: '#fafafa',
-    },
-
-    searchBarSmall: {
-      padding: 10,
+      gap: 10,
     },
 
     searchInput: {
-      width: '60%',
+      flex: 1,
+      maxWidth: 760,
       backgroundColor: '#fff',
       borderRadius: 28,
       borderWidth: 1,
       borderColor: '#ddd',
       paddingHorizontal: 18,
-      paddingVertical: 12,
-      marginRight: 12,
-      fontSize: 18,
-    },
-
-    searchInputSmall: {
-      width: '68%',
-      fontSize: 15,
       paddingVertical: 10,
+      color: '#222',
     },
 
     searchButton: {
       backgroundColor: '#f68c45',
       borderRadius: 12,
-      paddingVertical: 12,
-      paddingHorizontal: 24,
     },
 
     searchButtonText: {
       color: '#fff',
       fontWeight: '700',
-      fontSize: 18,
     },
 
     modalOverlay: {
       flex: 1,
       backgroundColor:
         'rgba(0, 0, 0, 0.55)',
+    },
+
+    modalScrollContent: {
+      flexGrow: 1,
       justifyContent: 'center',
       alignItems: 'center',
       padding: 24,
     },
 
     logoutModal: {
-      width: '100%',
-      maxWidth: 420,
       backgroundColor: '#fff',
       borderRadius: 20,
       padding: 24,
     },
 
     modalTitle: {
-      fontSize: 28,
       fontWeight: '900',
       color: '#333',
       textAlign: 'center',
@@ -1785,7 +2301,6 @@ const styles =
     },
 
     modalText: {
-      fontSize: 16,
       color: '#666',
       textAlign: 'center',
       marginBottom: 18,
@@ -1799,7 +2314,6 @@ const styles =
       borderRadius: 12,
       paddingHorizontal: 14,
       paddingVertical: 12,
-      fontSize: 17,
       marginBottom: 20,
     },
 
@@ -1819,7 +2333,6 @@ const styles =
 
     cancelButtonText: {
       color: '#333',
-      fontSize: 16,
       fontWeight: '800',
     },
 
@@ -1834,7 +2347,6 @@ const styles =
 
     confirmButtonText: {
       color: '#fff',
-      fontSize: 16,
       fontWeight: '800',
     },
   });

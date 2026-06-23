@@ -4,7 +4,7 @@
     "slug": "dinesync",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/dinesync-icon.png",
     "userInterfaceStyle": "light",
     "splash": {
       "image": "./assets/dinesync-icon.png",

@@ -1,5 +1,6 @@
 import React, {
   useEffect,
+  useMemo,
   useState,
 } from 'react';
 
@@ -8,10 +9,17 @@ import {
   Text,
   StyleSheet,
   TouchableOpacity,
-  ActivityIndicator,
   FlatList,
   Alert,
+  ActivityIndicator,
+  useWindowDimensions,
+  StatusBar,
 } from 'react-native';
+
+import {
+  SafeAreaView,
+  useSafeAreaInsets,
+} from 'react-native-safe-area-context';
 
 import {
   CommonActions,
@@ -26,6 +34,217 @@ export default function OrderHistoryScreen({
   navigation,
 }) {
   const { tableNumber } = useAuth();
+
+  const {
+    width,
+    height,
+  } = useWindowDimensions();
+
+  const insets =
+    useSafeAreaInsets();
+
+  const responsive =
+    useMemo(() => {
+      const shortest =
+        Math.min(width, height);
+
+      const longest =
+        Math.max(width, height);
+
+      const isPhone =
+        width < 600;
+
+      const isVeryNarrow =
+        width < 430;
+
+      const base =
+        shortest / 768;
+
+      const clamp = (
+        value,
+        min,
+        max
+      ) => {
+        return Math.max(
+          min,
+          Math.min(value, max)
+        );
+      };
+
+      const scale = (
+        size,
+        min = size * 0.65,
+        max = size * 1.08
+      ) => {
+        return Math.round(
+          clamp(size * base, min, max)
+        );
+      };
+
+      return {
+        isPhone,
+        isVeryNarrow,
+
+        safeTopExtra:
+          isPhone
+            ? 6
+            : 8,
+
+        safeBottomExtra:
+          Math.max(insets.bottom + 8, 16),
+
+        topBarHeight:
+          isPhone
+            ? scale(64, 56, 68)
+            : scale(76, 60, 78),
+
+        topBarPadding:
+          isVeryNarrow
+            ? scale(12, 10, 14)
+            : isPhone
+              ? scale(14, 12, 16)
+              : scale(24, 14, 26),
+
+        topGap:
+          scale(12, 6, 12),
+
+        backText:
+          isPhone
+            ? scale(16, 14, 17)
+            : scale(26, 16, 26),
+
+        title:
+          isVeryNarrow
+            ? scale(20, 18, 22)
+            : isPhone
+              ? scale(23, 20, 24)
+              : scale(30, 20, 30),
+
+        tableText:
+          isPhone
+            ? scale(16, 14, 17)
+            : scale(22, 15, 22),
+
+        loadingText:
+          scale(22, 16, 22),
+
+        listPadding:
+          isVeryNarrow
+            ? scale(12, 10, 14)
+            : isPhone
+              ? scale(14, 12, 16)
+              : scale(24, 16, 32),
+
+        listBottom:
+          isPhone
+            ? Math.max(insets.bottom + 26, 34)
+            : Math.max(insets.bottom + 36, 44),
+
+        cardPadding:
+          isVeryNarrow
+            ? scale(14, 12, 16)
+            : isPhone
+              ? scale(16, 14, 18)
+              : scale(22, 16, 24),
+
+        cardRadius:
+          scale(22, 16, 24),
+
+        cardMargin:
+          isPhone
+            ? scale(16, 14, 18)
+            : scale(18, 14, 20),
+
+        batchTitle:
+          isPhone
+            ? scale(22, 19, 23)
+            : scale(28, 20, 28),
+
+        orderNumber:
+          scale(17, 12, 17),
+
+        statusText:
+          scale(15, 11, 15),
+
+        statusPaddingV:
+          scale(8, 5, 8),
+
+        statusPaddingH:
+          scale(14, 9, 14),
+
+        createdText:
+          scale(15, 11, 15),
+
+        dividerMargin:
+          scale(16, 10, 16),
+
+        itemName:
+          scale(18, 14, 18),
+
+        itemDetails:
+          scale(15, 11, 15),
+
+        itemSubtotal:
+          scale(17, 13, 17),
+
+        noItemsText:
+          scale(16, 12, 16),
+
+        totalPadding:
+          scale(16, 11, 16),
+
+        totalRadius:
+          scale(14, 10, 14),
+
+        totalLabel:
+          isPhone
+            ? scale(17, 15, 18)
+            : scale(20, 15, 20),
+
+        totalValue:
+          isPhone
+            ? scale(21, 18, 22)
+            : scale(24, 18, 24),
+
+        emptyIcon:
+          isPhone
+            ? scale(70, 55, 74)
+            : scale(90, 60, 90),
+
+        emptyTitle:
+          isPhone
+            ? scale(23, 19, 24)
+            : scale(30, 21, 30),
+
+        emptyText:
+          scale(19, 13, 19),
+
+        emptyLine:
+          scale(28, 20, 28),
+
+        refreshMargin:
+          scale(28, 18, 28),
+
+        refreshPaddingV:
+          scale(16, 11, 16),
+
+        refreshPaddingH:
+          scale(34, 22, 34),
+
+        refreshRadius:
+          scale(14, 10, 14),
+
+        refreshText:
+          scale(20, 15, 20),
+
+        maxContentWidth:
+          clamp(longest * 0.94, 340, 1100),
+      };
+    }, [
+      width,
+      height,
+      insets.bottom,
+    ]);
 
   const {
     tableResetRequired,
@@ -216,17 +435,43 @@ export default function OrderHistoryScreen({
     return (
       <View style={styles.itemRow}>
         <View style={styles.itemInfo}>
-          <Text style={styles.itemName}>
+          <Text
+            style={[
+              styles.itemName,
+              {
+                fontSize:
+                  responsive.itemName,
+              },
+            ]}
+            numberOfLines={2}
+          >
             {getItemName(item)}
           </Text>
 
-          <Text style={styles.itemDetails}>
+          <Text
+            style={[
+              styles.itemDetails,
+              {
+                fontSize:
+                  responsive.itemDetails,
+              },
+            ]}
+          >
             Qty: {quantity} × ₱
             {formatMoney(price)}
           </Text>
         </View>
 
-        <Text style={styles.itemSubtotal}>
+        <Text
+          style={[
+            styles.itemSubtotal,
+            {
+              fontSize:
+                responsive.itemSubtotal,
+            },
+          ]}
+          numberOfLines={2}
+        >
           ₱{formatMoney(subtotal)}
         </Text>
       </View>
@@ -241,22 +486,71 @@ export default function OrderHistoryScreen({
       getOrderItems(order);
 
     return (
-      <View style={styles.batchCard}>
+      <View
+        style={[
+          styles.batchCard,
+          {
+            padding:
+              responsive.cardPadding,
+            borderRadius:
+              responsive.cardRadius,
+            marginBottom:
+              responsive.cardMargin,
+          },
+        ]}
+      >
         <View style={styles.batchHeader}>
-          <View>
-            <Text style={styles.batchTitle}>
+          <View style={styles.batchHeaderLeft}>
+            <Text
+              style={[
+                styles.batchTitle,
+                {
+                  fontSize:
+                    responsive.batchTitle,
+                },
+              ]}
+              numberOfLines={1}
+            >
               Batch {index + 1}
             </Text>
 
-            <Text style={styles.orderNumber}>
+            <Text
+              style={[
+                styles.orderNumber,
+                {
+                  fontSize:
+                    responsive.orderNumber,
+                },
+              ]}
+              numberOfLines={2}
+            >
               {order.order_number
                 ? order.order_number
                 : `Order ID: ${order.id}`}
             </Text>
           </View>
 
-          <View style={styles.statusPill}>
-            <Text style={styles.statusText}>
+          <View
+            style={[
+              styles.statusPill,
+              {
+                paddingVertical:
+                  responsive.statusPaddingV,
+                paddingHorizontal:
+                  responsive.statusPaddingH,
+              },
+            ]}
+          >
+            <Text
+              style={[
+                styles.statusText,
+                {
+                  fontSize:
+                    responsive.statusText,
+                },
+              ]}
+              numberOfLines={1}
+            >
               {getOrderStatusLabel(
                 order.status
               )}
@@ -264,17 +558,41 @@ export default function OrderHistoryScreen({
           </View>
         </View>
 
-        <Text style={styles.createdText}>
+        <Text
+          style={[
+            styles.createdText,
+            {
+              fontSize:
+                responsive.createdText,
+            },
+          ]}
+        >
           Created:{' '}
           {formatDateTime(
             order.created_at
           )}
         </Text>
 
-        <View style={styles.divider} />
+        <View
+          style={[
+            styles.divider,
+            {
+              marginVertical:
+                responsive.dividerMargin,
+            },
+          ]}
+        />
 
         {items.length === 0 ? (
-          <Text style={styles.noItemsText}>
+          <Text
+            style={[
+              styles.noItemsText,
+              {
+                fontSize:
+                  responsive.noItemsText,
+              },
+            ]}
+          >
             No items found for this order.
           </Text>
         ) : (
@@ -295,12 +613,40 @@ export default function OrderHistoryScreen({
           />
         )}
 
-        <View style={styles.totalRow}>
-          <Text style={styles.totalLabel}>
+        <View
+          style={[
+            styles.totalRow,
+            {
+              padding:
+                responsive.totalPadding,
+              borderRadius:
+                responsive.totalRadius,
+            },
+          ]}
+        >
+          <Text
+            style={[
+              styles.totalLabel,
+              {
+                fontSize:
+                  responsive.totalLabel,
+              },
+            ]}
+          >
             Total Amount
           </Text>
 
-          <Text style={styles.totalValue}>
+          <Text
+            style={[
+              styles.totalValue,
+              {
+                fontSize:
+                  responsive.totalValue,
+              },
+            ]}
+            numberOfLines={1}
+            adjustsFontSizeToFit
+          >
             ₱
             {formatMoney(
               getOrderTotal(order)
@@ -314,89 +660,239 @@ export default function OrderHistoryScreen({
   if (loading) {
     return (
       <View style={styles.frame}>
-        <View style={styles.container}>
-          <ActivityIndicator
-            size="large"
-            color="#f68c45"
-          />
+        <StatusBar
+          barStyle="dark-content"
+          backgroundColor="#efefef"
+          translucent={false}
+        />
 
-          <Text style={styles.loadingText}>
-            Loading order history...
-          </Text>
-        </View>
+        <SafeAreaView
+          style={styles.safeArea}
+          edges={[
+            'top',
+            'bottom',
+          ]}
+        >
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator
+              size="large"
+              color="#f68c45"
+            />
+
+            <Text
+              style={[
+                styles.loadingText,
+                {
+                  fontSize:
+                    responsive.loadingText,
+                },
+              ]}
+            >
+              Loading order history...
+            </Text>
+          </View>
+        </SafeAreaView>
       </View>
     );
   }
 
   return (
     <View style={styles.frame}>
-      <View style={styles.container}>
-        <View style={styles.topBar}>
-          <TouchableOpacity
-            onPress={() =>
-              navigation.goBack()
-            }
+      <StatusBar
+        barStyle="light-content"
+        backgroundColor="#b8b3b3"
+        translucent={false}
+      />
+
+      <SafeAreaView
+        style={styles.safeArea}
+        edges={[
+          'top',
+          'bottom',
+        ]}
+      >
+        <View
+          style={[
+            styles.container,
+            {
+              paddingTop:
+                responsive.safeTopExtra,
+            },
+          ]}
+        >
+          <View
+            style={[
+              styles.topBar,
+              {
+                minHeight:
+                  responsive.topBarHeight,
+                paddingHorizontal:
+                  responsive.topBarPadding,
+                gap:
+                  responsive.topGap,
+              },
+            ]}
           >
-            <Text style={styles.backText}>
-              {'<'} Go Back
-            </Text>
-          </TouchableOpacity>
-
-          <Text style={styles.title}>
-            Order History
-          </Text>
-
-          <Text style={styles.tableText}>
-            Table {tableNumber || '-'}
-          </Text>
-        </View>
-
-        {orders.length === 0 ? (
-          <View style={styles.emptyContainer}>
-            <Text style={styles.emptyIcon}>
-              🧾
-            </Text>
-
-            <Text style={styles.emptyTitle}>
-              No orders yet for this table session.
-            </Text>
-
-            <Text style={styles.emptyText}>
-              Orders placed from this tablet will appear here after they are submitted.
-            </Text>
-
             <TouchableOpacity
-              style={styles.refreshButton}
-              onPress={fetchOrderHistory}
+              style={styles.topBarSide}
+              onPress={() =>
+                navigation.goBack()
+              }
             >
-              <Text style={styles.refreshButtonText}>
-                Refresh
+              <Text
+                style={[
+                  styles.backText,
+                  {
+                    fontSize:
+                      responsive.backText,
+                  },
+                ]}
+                numberOfLines={1}
+              >
+                {'<'} Go Back
               </Text>
             </TouchableOpacity>
+
+            <Text
+              style={[
+                styles.title,
+                {
+                  fontSize:
+                    responsive.title,
+                },
+              ]}
+              numberOfLines={1}
+              adjustsFontSizeToFit
+            >
+              Order History
+            </Text>
+
+            <View style={styles.topBarSideRight}>
+              <Text
+                style={[
+                  styles.tableText,
+                  {
+                    fontSize:
+                      responsive.tableText,
+                  },
+                ]}
+                numberOfLines={1}
+              >
+                Table {tableNumber || '-'}
+              </Text>
+            </View>
           </View>
-        ) : (
-          <FlatList
-            data={orders}
-            keyExtractor={(
-              order,
-              index
-            ) =>
-              String(
-                order.id || index
-              )
-            }
-            renderItem={renderBatch}
-            refreshing={refreshing}
-            onRefresh={handleRefresh}
-            showsVerticalScrollIndicator={
-              false
-            }
-            contentContainerStyle={
-              styles.listContent
-            }
-          />
-        )}
-      </View>
+
+          {orders.length === 0 ? (
+            <View
+              style={[
+                styles.emptyContainer,
+                {
+                  paddingBottom:
+                    responsive.safeBottomExtra +
+                    30,
+                },
+              ]}
+            >
+              <Text
+                style={[
+                  styles.emptyIcon,
+                  {
+                    fontSize:
+                      responsive.emptyIcon,
+                    marginBottom:
+                      responsive.listPadding / 1.5,
+                  },
+                ]}
+              >
+                🧾
+              </Text>
+
+              <Text
+                style={[
+                  styles.emptyTitle,
+                  {
+                    fontSize:
+                      responsive.emptyTitle,
+                  },
+                ]}
+              >
+                No orders yet for this table session.
+              </Text>
+
+              <Text
+                style={[
+                  styles.emptyText,
+                  {
+                    fontSize:
+                      responsive.emptyText,
+                    lineHeight:
+                      responsive.emptyLine,
+                  },
+                ]}
+              >
+                Orders placed from this tablet will appear here after they are submitted.
+              </Text>
+
+              <TouchableOpacity
+                style={[
+                  styles.refreshButton,
+                  {
+                    marginTop:
+                      responsive.refreshMargin,
+                    paddingVertical:
+                      responsive.refreshPaddingV,
+                    paddingHorizontal:
+                      responsive.refreshPaddingH,
+                    borderRadius:
+                      responsive.refreshRadius,
+                  },
+                ]}
+                onPress={fetchOrderHistory}
+              >
+                <Text
+                  style={[
+                    styles.refreshButtonText,
+                    {
+                      fontSize:
+                        responsive.refreshText,
+                    },
+                  ]}
+                >
+                  Refresh
+                </Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <FlatList
+              data={orders}
+              keyExtractor={(
+                order,
+                index
+              ) =>
+                String(
+                  order.id || index
+                )
+              }
+              renderItem={renderBatch}
+              refreshing={refreshing}
+              onRefresh={handleRefresh}
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={[
+                styles.listContent,
+                {
+                  padding:
+                    responsive.listPadding,
+                  paddingBottom:
+                    responsive.listBottom,
+                  maxWidth:
+                    responsive.maxContentWidth,
+                },
+              ]}
+            />
+          )}
+        </View>
+      </SafeAreaView>
     </View>
   );
 }
@@ -405,7 +901,12 @@ const styles =
   StyleSheet.create({
     frame: {
       flex: 1,
-      backgroundColor: '#171717',
+      backgroundColor: '#b8b3b3',
+    },
+
+    safeArea: {
+      flex: 1,
+      backgroundColor: '#b8b3b3',
     },
 
     container: {
@@ -413,50 +914,64 @@ const styles =
       backgroundColor: '#efefef',
     },
 
-    topBar: {
-      height: 76,
-      backgroundColor: '#b8b3b3',
-      flexDirection: 'row',
+    loadingContainer: {
+      flex: 1,
+      backgroundColor: '#efefef',
+      justifyContent: 'center',
       alignItems: 'center',
-      justifyContent: 'space-between',
       paddingHorizontal: 24,
-    },
-
-    backText: {
-      color: '#fff',
-      fontSize: 26,
-      fontWeight: '800',
-    },
-
-    title: {
-      color: '#fff',
-      fontSize: 30,
-      fontWeight: '900',
-    },
-
-    tableText: {
-      color: '#fff',
-      fontSize: 22,
-      fontWeight: '900',
     },
 
     loadingText: {
       marginTop: 16,
-      fontSize: 22,
       fontWeight: '800',
       color: '#555',
+      textAlign: 'center',
+    },
+
+    topBar: {
+      backgroundColor: '#b8b3b3',
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingVertical: 8,
+    },
+
+    topBarSide: {
+      flex: 1,
+      alignItems: 'flex-start',
+    },
+
+    topBarSideRight: {
+      flex: 1,
+      alignItems: 'flex-end',
+    },
+
+    backText: {
+      color: '#fff',
+      fontWeight: '800',
+    },
+
+    title: {
+      flex: 1.2,
+      color: '#fff',
+      fontWeight: '900',
+      textAlign: 'center',
+    },
+
+    tableText: {
+      color: '#fff',
+      fontWeight: '900',
+      textAlign: 'right',
     },
 
     listContent: {
-      padding: 24,
-      paddingBottom: 40,
+      width: '100%',
+      alignSelf: 'center',
     },
 
     batchCard: {
       backgroundColor: '#fff',
-      borderRadius: 22,
-      padding: 22,
-      marginBottom: 18,
       borderWidth: 1.5,
       borderColor: '#f0b287',
       shadowColor: '#000',
@@ -469,17 +984,21 @@ const styles =
       flexDirection: 'row',
       justifyContent: 'space-between',
       alignItems: 'flex-start',
+      gap: 12,
+    },
+
+    batchHeaderLeft: {
+      flex: 1,
+      paddingRight: 8,
     },
 
     batchTitle: {
-      fontSize: 28,
       fontWeight: '900',
       color: '#333',
     },
 
     orderNumber: {
       marginTop: 4,
-      fontSize: 17,
       fontWeight: '800',
       color: '#777',
     },
@@ -488,20 +1007,18 @@ const styles =
       backgroundColor: '#fff3e8',
       borderColor: '#f68c45',
       borderWidth: 1.5,
-      paddingVertical: 8,
-      paddingHorizontal: 14,
       borderRadius: 999,
+      maxWidth: 160,
     },
 
     statusText: {
       color: '#f68c45',
-      fontSize: 15,
       fontWeight: '900',
+      textAlign: 'center',
     },
 
     createdText: {
       marginTop: 12,
-      fontSize: 15,
       fontWeight: '700',
       color: '#777',
     },
@@ -509,7 +1026,6 @@ const styles =
     divider: {
       height: 1,
       backgroundColor: '#eee',
-      marginVertical: 16,
     },
 
     itemRow: {
@@ -519,34 +1035,33 @@ const styles =
       paddingVertical: 10,
       borderBottomWidth: 1,
       borderBottomColor: '#f1f1f1',
+      gap: 12,
     },
 
     itemInfo: {
       flex: 1,
-      paddingRight: 14,
+      paddingRight: 8,
     },
 
     itemName: {
-      fontSize: 18,
       fontWeight: '900',
       color: '#333',
     },
 
     itemDetails: {
       marginTop: 4,
-      fontSize: 15,
       fontWeight: '700',
       color: '#777',
     },
 
     itemSubtotal: {
-      fontSize: 17,
       fontWeight: '900',
       color: '#f68c45',
+      textAlign: 'right',
+      maxWidth: 150,
     },
 
     noItemsText: {
-      fontSize: 16,
       color: '#777',
       fontWeight: '700',
       textAlign: 'center',
@@ -559,36 +1074,31 @@ const styles =
       justifyContent: 'space-between',
       alignItems: 'center',
       backgroundColor: '#fafafa',
-      borderRadius: 14,
-      padding: 16,
+      gap: 12,
     },
 
     totalLabel: {
-      fontSize: 20,
       fontWeight: '900',
       color: '#333',
     },
 
     totalValue: {
-      fontSize: 24,
       fontWeight: '900',
       color: '#f68c45',
+      textAlign: 'right',
+      flexShrink: 1,
     },
 
     emptyContainer: {
       flex: 1,
       justifyContent: 'center',
       alignItems: 'center',
-      paddingHorizontal: 32,
+      paddingHorizontal: 24,
     },
 
-    emptyIcon: {
-      fontSize: 90,
-      marginBottom: 18,
-    },
+    emptyIcon: {},
 
     emptyTitle: {
-      fontSize: 30,
       fontWeight: '900',
       color: '#333',
       textAlign: 'center',
@@ -596,25 +1106,19 @@ const styles =
 
     emptyText: {
       marginTop: 12,
-      fontSize: 19,
       fontWeight: '700',
       color: '#777',
       textAlign: 'center',
       maxWidth: 620,
-      lineHeight: 28,
     },
 
     refreshButton: {
-      marginTop: 28,
       backgroundColor: '#f68c45',
-      paddingVertical: 16,
-      paddingHorizontal: 34,
-      borderRadius: 14,
+      alignItems: 'center',
     },
 
     refreshButtonText: {
       color: '#fff',
-      fontSize: 20,
       fontWeight: '900',
     },
   });

@@ -1,4 +1,7 @@
-import React from 'react';
+import React, {
+  useEffect,
+  useMemo,
+} from 'react';
 
 import {
   View,
@@ -8,17 +11,22 @@ import {
   StyleSheet,
   Image,
   Alert,
+  useWindowDimensions,
+  StatusBar,
 } from 'react-native';
 
-import { useFocusEffect } from '@react-navigation/native';
+import {
+  SafeAreaView,
+  useSafeAreaInsets,
+} from 'react-native-safe-area-context';
+
+import {
+  CommonActions,
+} from '@react-navigation/native';
 
 import { useCart } from '../context/CartContext';
+import { useAuth } from '../context/AuthContext';
 import { useTableStatus } from '../context/TableStatusContext';
-import { TABLE_ASSIGNMENT_MESSAGE } from '../constants/tableStatus';
-import {
-  placeOrder,
-  extractApiErrorMessage,
-} from '../api/dinesync';
 
 import {
   getItemId,
@@ -30,6 +38,237 @@ export default function CartScreen({
   navigation,
 }) {
   const {
+    width,
+    height,
+  } = useWindowDimensions();
+
+  const insets =
+    useSafeAreaInsets();
+
+  const responsive =
+    useMemo(() => {
+      const shortest =
+        Math.min(width, height);
+
+      const isPhone =
+        width < 600;
+
+      const isVeryNarrow =
+        width < 430;
+
+      const isLandscape =
+        width > height;
+
+      const base =
+        shortest / 768;
+
+      const clamp = (
+        value,
+        min,
+        max
+      ) => {
+        return Math.max(
+          min,
+          Math.min(value, max)
+        );
+      };
+
+      const scale = (
+        size,
+        min = size * 0.65,
+        max = size * 1.05
+      ) => {
+        return Math.round(
+          clamp(size * base, min, max)
+        );
+      };
+
+      const visualSize =
+        isVeryNarrow
+          ? scale(92, 70, 96)
+          : isPhone
+            ? scale(105, 82, 110)
+            : scale(130, 90, 130);
+
+      const qtySize =
+        isVeryNarrow
+          ? scale(42, 36, 44)
+          : isPhone
+            ? scale(48, 40, 50)
+            : scale(62, 42, 62);
+
+      return {
+        isPhone,
+        isVeryNarrow,
+        isLandscape,
+
+        screenPaddingH:
+          isVeryNarrow
+            ? scale(14, 12, 16)
+            : isPhone
+              ? scale(18, 14, 22)
+              : scale(32, 20, 32),
+
+        screenPaddingTop:
+          isPhone
+            ? scale(12, 10, 16)
+            : scale(18, 14, 24),
+
+        screenPaddingBottom:
+          Math.max(
+            insets.bottom + 10,
+            isPhone ? 18 : 22
+          ),
+
+        logoSize:
+          isPhone
+            ? scale(58, 46, 62)
+            : scale(80, 56, 80),
+
+        headerFont:
+          isVeryNarrow
+            ? scale(34, 28, 36)
+            : isPhone
+              ? scale(40, 30, 42)
+              : scale(56, 38, 56),
+
+        backFont:
+          isPhone
+            ? scale(18, 15, 20)
+            : scale(28, 18, 28),
+
+        clearFont:
+          isPhone
+            ? scale(15, 13, 16)
+            : scale(20, 14, 20),
+
+        titleMarginTop:
+          isPhone
+            ? scale(14, 10, 16)
+            : scale(18, 14, 22),
+
+        titleMarginBottom:
+          isPhone
+            ? scale(14, 12, 16)
+            : scale(18, 14, 22),
+
+        cardPadding:
+          isVeryNarrow
+            ? scale(14, 12, 16)
+            : isPhone
+              ? scale(16, 13, 18)
+              : scale(24, 16, 24),
+
+        cardRadius:
+          scale(20, 14, 22),
+
+        cardGap:
+          isPhone
+            ? scale(18, 15, 22)
+            : scale(18, 14, 20),
+
+        visualSize,
+
+        visualRadius:
+          visualSize / 2,
+
+        visualText:
+          isPhone
+            ? scale(44, 34, 46)
+            : scale(62, 40, 62),
+
+        itemName:
+          isVeryNarrow
+            ? scale(21, 18, 22)
+            : isPhone
+              ? scale(25, 20, 26)
+              : scale(38, 24, 38),
+
+        itemDesc:
+          isPhone
+            ? scale(14, 12, 15)
+            : scale(20, 14, 20),
+
+        itemPrice:
+          isPhone
+            ? scale(23, 19, 25)
+            : scale(36, 22, 36),
+
+        infoGap:
+          isPhone
+            ? scale(14, 10, 16)
+            : scale(24, 14, 24),
+
+        qtySize,
+
+        qtyRadius:
+          qtySize / 2,
+
+        qtyText:
+          isPhone
+            ? scale(24, 20, 26)
+            : scale(34, 24, 34),
+
+        quantityText:
+          isPhone
+            ? scale(23, 19, 25)
+            : scale(34, 22, 34),
+
+        quantityMargin:
+          isPhone
+            ? scale(12, 9, 14)
+            : scale(22, 12, 22),
+
+        footerPaddingV:
+          isPhone
+            ? scale(15, 12, 17)
+            : scale(24, 16, 24),
+
+        footerPaddingH:
+          isPhone
+            ? scale(16, 13, 18)
+            : scale(32, 18, 32),
+
+        footerRadius:
+          scale(18, 14, 20),
+
+        totalText:
+          isPhone
+            ? scale(24, 20, 26)
+            : scale(42, 26, 42),
+
+        checkoutFont:
+          isPhone
+            ? scale(16, 14, 17)
+            : scale(24, 16, 24),
+
+        checkoutPaddingV:
+          isPhone
+            ? scale(13, 11, 14)
+            : scale(18, 12, 18),
+
+        checkoutPaddingH:
+          isPhone
+            ? scale(22, 18, 24)
+            : scale(36, 22, 36),
+
+        emptyText:
+          isPhone
+            ? scale(21, 18, 22)
+            : scale(30, 20, 30),
+
+        emptyMargin:
+          isPhone
+            ? scale(80, 55, 90)
+            : scale(120, 70, 120),
+      };
+    }, [
+      width,
+      height,
+      insets.bottom,
+    ]);
+
+  const {
     cartItems,
     updateQuantity,
     incrementQuantity,
@@ -37,14 +276,47 @@ export default function CartScreen({
     clearCart,
     getEnrichedItem,
     refreshCartInventory,
-    validateCurrentCart,
   } = useCart();
+
+  const {
+    tableNumber,
+    user,
+  } = useAuth();
 
   const {
     canOrder,
     ensureCanOrder,
     assignmentMessage,
+    tableResetRequired,
+    acknowledgeTableReset,
   } = useTableStatus();
+
+  const finalTableNumber =
+    tableNumber ||
+    user?.table_number;
+
+  useEffect(() => {
+    if (!tableResetRequired) {
+      return;
+    }
+
+    acknowledgeTableReset?.();
+
+    navigation.dispatch(
+      CommonActions.reset({
+        index: 0,
+        routes: [
+          {
+            name: 'Welcome',
+          },
+        ],
+      })
+    );
+  }, [
+    tableResetRequired,
+    acknowledgeTableReset,
+    navigation,
+  ]);
 
   const formatMoney = (value) => {
     const n = Number(value);
@@ -61,6 +333,24 @@ export default function CartScreen({
   };
 
   const handleCheckout = async () => {
+    if (cartItems.length === 0) {
+      Alert.alert(
+        'Empty Order',
+        'Please add at least one item before proceeding.'
+      );
+
+      return;
+    }
+
+    if (!finalTableNumber) {
+      Alert.alert(
+        'Table Error',
+        'No table number found. Please login again using the assigned table account.'
+      );
+
+      return;
+    }
+
     const tableCheck =
       await ensureCanOrder();
 
@@ -86,51 +376,19 @@ export default function CartScreen({
       return;
     }
 
-    try {
-      const response =
-        await placeOrder(cartItems);
-  
-      if (response.success) {
-        clearCart();
-  
-        navigation.navigate(
-          'Payment',
-          {
-            orderId:
-              response.data.id,
-            totalAmount:
-              cartTotal,
-          }
-        );
+    navigation.navigate(
+      'OrderConfirm',
+      {
+        cartItems,
+        total: cartTotal,
+        tableNumber: finalTableNumber,
       }
-    } catch (error) {
-      console.error(
-        'Failed to place order:',
-        error.response?.data ||
-          error.message
-      );
-  
-      const errorMessage =
-        extractApiErrorMessage(
-          error,
-          'Failed to place order. Please try again.'
-        );
-
-      const isAssignmentError =
-        error?.response?.status === 403 ||
-        errorMessage ===
-          TABLE_ASSIGNMENT_MESSAGE;
-
-      Alert.alert(
-        isAssignmentError
-          ? 'Table Not Assigned'
-          : 'Order Failed',
-        errorMessage
-      );
-    }
+    );
   };
 
-  const renderItem = ({ item }) => {
+  const renderItem = ({
+    item,
+  }) => {
     const enrichedItem =
       getEnrichedItem(item);
 
@@ -141,325 +399,616 @@ export default function CartScreen({
         1
       );
 
+    const disabledIncrease =
+      atMaxQuantity ||
+      isOutOfStock(enrichedItem);
+
     return (
-    <View style={styles.cartItem}>
-      <View style={styles.itemVisual}>
-        <Text
-          style={styles.itemVisualText}
-        >
-          🍜
-        </Text>
-      </View>
-
-      <View style={styles.itemInfo}>
-        <Text style={styles.itemName}>
-          {item.name}
-        </Text>
-
-        <Text style={styles.itemDesc}>
-          Korean dish prepared fresh and
-          served hot.
-        </Text>
-
-        <Text style={styles.itemPrice}>
-          ₱{formatMoney(item.price)}
-        </Text>
-      </View>
-
       <View
-        style={styles.quantityContainer}
+        style={[
+          styles.cartItem,
+          responsive.isPhone &&
+            styles.cartItemPhone,
+          {
+            padding:
+              responsive.cardPadding,
+            borderRadius:
+              responsive.cardRadius,
+            marginBottom:
+              responsive.cardGap,
+          },
+        ]}
       >
-        <TouchableOpacity
-          onPress={() =>
-            updateQuantity(
-              item.id,
-              item.quantity - 1
-            )
-          }
-          style={styles.qtyBtn}
-        >
-          <Text style={styles.qtyText}>
-            -
-          </Text>
-        </TouchableOpacity>
-
-        <Text style={styles.quantity}>
-          {item.quantity}
-        </Text>
-
-        <TouchableOpacity
-          onPress={() =>
-            handleIncreaseQuantity(item)
-          }
-          disabled={
-            atMaxQuantity ||
-            isOutOfStock(enrichedItem)
-          }
+        <View
           style={[
-            styles.qtyBtn,
-            (atMaxQuantity ||
-              isOutOfStock(enrichedItem)) &&
-              styles.qtyBtnDisabled,
+            styles.itemVisual,
+            {
+              width:
+                responsive.visualSize,
+              height:
+                responsive.visualSize,
+              borderRadius:
+                responsive.visualRadius,
+            },
           ]}
         >
-          <Text style={styles.qtyText}>
-            +
+          <Text
+            style={[
+              styles.itemVisualText,
+              {
+                fontSize:
+                  responsive.visualText,
+              },
+            ]}
+          >
+            🍜
           </Text>
-        </TouchableOpacity>
+        </View>
+
+        <View
+          style={[
+            styles.itemInfo,
+            responsive.isPhone &&
+              styles.itemInfoPhone,
+            {
+              marginLeft:
+                responsive.isPhone
+                  ? 0
+                  : responsive.infoGap,
+            },
+          ]}
+        >
+          <Text
+            style={[
+              styles.itemName,
+              {
+                fontSize:
+                  responsive.itemName,
+              },
+            ]}
+            numberOfLines={2}
+          >
+            {item.name}
+          </Text>
+
+          <Text
+            style={[
+              styles.itemDesc,
+              {
+                fontSize:
+                  responsive.itemDesc,
+              },
+            ]}
+            numberOfLines={2}
+          >
+            Korean dish prepared fresh and served hot.
+          </Text>
+
+          <Text
+            style={[
+              styles.itemPrice,
+              {
+                fontSize:
+                  responsive.itemPrice,
+              },
+            ]}
+            numberOfLines={1}
+          >
+            ₱{formatMoney(item.price)}
+          </Text>
+        </View>
+
+        <View
+          style={[
+            styles.quantityContainer,
+            responsive.isPhone &&
+              styles.quantityContainerPhone,
+          ]}
+        >
+          <TouchableOpacity
+            onPress={() =>
+              updateQuantity(
+                item.id,
+                item.quantity - 1
+              )
+            }
+            style={[
+              styles.qtyBtn,
+              {
+                width:
+                  responsive.qtySize,
+                height:
+                  responsive.qtySize,
+                borderRadius:
+                  responsive.qtyRadius,
+              },
+            ]}
+          >
+            <Text
+              style={[
+                styles.qtyText,
+                {
+                  fontSize:
+                    responsive.qtyText,
+                },
+              ]}
+            >
+              -
+            </Text>
+          </TouchableOpacity>
+
+          <Text
+            style={[
+              styles.quantity,
+              {
+                fontSize:
+                  responsive.quantityText,
+                marginHorizontal:
+                  responsive.quantityMargin,
+              },
+            ]}
+          >
+            {item.quantity}
+          </Text>
+
+          <TouchableOpacity
+            onPress={() =>
+              handleIncreaseQuantity(item)
+            }
+            disabled={disabledIncrease}
+            style={[
+              styles.qtyBtn,
+              {
+                width:
+                  responsive.qtySize,
+                height:
+                  responsive.qtySize,
+                borderRadius:
+                  responsive.qtyRadius,
+              },
+              disabledIncrease &&
+                styles.qtyBtnDisabled,
+            ]}
+          >
+            <Text
+              style={[
+                styles.qtyText,
+                {
+                  fontSize:
+                    responsive.qtyText,
+                },
+              ]}
+            >
+              +
+            </Text>
+          </TouchableOpacity>
+        </View>
       </View>
-    </View>
     );
   };
 
   return (
     <View style={styles.frame}>
-      <View style={styles.container}>
-        <View style={styles.headerRow}>
-          <TouchableOpacity
-            onPress={() =>
-              navigation.goBack()
-            }
-          >
-            <Text style={styles.backText}>
-              {'<'} Go Back
-            </Text>
-          </TouchableOpacity>
+      <StatusBar
+        barStyle="dark-content"
+        backgroundColor="#efefef"
+        translucent={false}
+      />
 
-          <Image
-            source={require('../../assets/chefoppa_logo.png')}
-            style={styles.logo}
-            resizeMode={'contain'}
-          />
-        </View>
-
-        <Text style={styles.header}>
-          My Cart
-        </Text>
-
-        <TouchableOpacity
-          onPress={clearCart}
+      <SafeAreaView
+        style={styles.safeArea}
+        edges={[
+          'top',
+          'bottom',
+        ]}
+      >
+        <View
+          style={[
+            styles.container,
+            {
+              paddingHorizontal:
+                responsive.screenPaddingH,
+              paddingTop:
+                responsive.screenPaddingTop,
+              paddingBottom:
+                responsive.screenPaddingBottom,
+            },
+          ]}
         >
-          <Text style={styles.clearText}>
-            Clear Order
-          </Text>
-        </TouchableOpacity>
+          <View style={styles.headerRow}>
+            <TouchableOpacity
+              onPress={() =>
+                navigation.goBack()
+              }
+            >
+              <Text
+                style={[
+                  styles.backText,
+                  {
+                    fontSize:
+                      responsive.backFont,
+                  },
+                ]}
+                numberOfLines={1}
+              >
+                {'<'} Go Back
+              </Text>
+            </TouchableOpacity>
 
-        <FlatList
-          data={cartItems}
-          renderItem={renderItem}
-          keyExtractor={(item, index) =>
-            String(item?.id || index)
-          }
-          showsVerticalScrollIndicator={
-            false
-          }
-          contentContainerStyle={{
-            paddingBottom: 20,
-          }}
-          ListEmptyComponent={
-            <Text style={styles.emptyText}>
-              Your cart is empty
-            </Text>
-          }
-        />
+            <Image
+              source={require('../../assets/chefoppa_logo.png')}
+              style={[
+                styles.logo,
+                {
+                  width:
+                    responsive.logoSize,
+                  height:
+                    responsive.logoSize,
+                },
+              ]}
+              resizeMode="contain"
+            />
+          </View>
 
-        <View style={styles.footer}>
-          <Text style={styles.totalText}>
-            Total:{' '}
-            ₱{formatMoney(cartTotal)}
-          </Text>
-
-          <TouchableOpacity
+          <View
             style={[
-              styles.checkoutBtn,
-              (cartItems.length === 0 ||
-                !canOrder) &&
-                styles.qtyBtnDisabled,
+              styles.titleRow,
+              {
+                marginTop:
+                  responsive.titleMarginTop,
+                marginBottom:
+                  responsive.titleMarginBottom,
+              },
             ]}
-            onPress={handleCheckout}
-            disabled={
-              cartItems.length === 0 ||
-              !canOrder
-            }
           >
             <Text
-              style={styles.checkoutBtnText}
+              style={[
+                styles.header,
+                {
+                  fontSize:
+                    responsive.headerFont,
+                },
+              ]}
+              numberOfLines={1}
+              adjustsFontSizeToFit
             >
-              Order Now
+              My Cart
             </Text>
-          </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={clearCart}
+              disabled={cartItems.length === 0}
+              style={[
+                cartItems.length === 0 &&
+                  styles.disabledAction,
+              ]}
+            >
+              <Text
+                style={[
+                  styles.clearText,
+                  {
+                    fontSize:
+                      responsive.clearFont,
+                  },
+                ]}
+                numberOfLines={1}
+              >
+                Clear Order
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          {!canOrder ? (
+            <View style={styles.assignmentBanner}>
+              <Text style={styles.assignmentBannerText}>
+                {assignmentMessage}
+              </Text>
+            </View>
+          ) : null}
+
+          <FlatList
+            data={cartItems}
+            renderItem={renderItem}
+            keyExtractor={(item, index) =>
+              String(
+                getItemId(item) ||
+                  item?.id ||
+                  index
+              )
+            }
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={{
+              paddingBottom:
+                responsive.footerPaddingV + 26,
+              flexGrow: 1,
+            }}
+            ListEmptyComponent={
+              <Text
+                style={[
+                  styles.emptyText,
+                  {
+                    fontSize:
+                      responsive.emptyText,
+                    marginTop:
+                      responsive.emptyMargin,
+                  },
+                ]}
+              >
+                Your cart is empty
+              </Text>
+            }
+          />
+
+          <View
+            style={[
+              styles.footer,
+              responsive.isPhone &&
+                styles.footerPhone,
+              {
+                paddingVertical:
+                  responsive.footerPaddingV,
+                paddingHorizontal:
+                  responsive.footerPaddingH,
+                borderRadius:
+                  responsive.footerRadius,
+              },
+            ]}
+          >
+            <Text
+              style={[
+                styles.totalText,
+                {
+                  fontSize:
+                    responsive.totalText,
+                },
+              ]}
+              numberOfLines={1}
+              adjustsFontSizeToFit
+            >
+              Total: ₱{formatMoney(cartTotal)}
+            </Text>
+
+            <TouchableOpacity
+              style={[
+                styles.checkoutBtn,
+                {
+                  paddingVertical:
+                    responsive.checkoutPaddingV,
+                  paddingHorizontal:
+                    responsive.checkoutPaddingH,
+                },
+                (cartItems.length === 0 ||
+                  !canOrder) &&
+                  styles.qtyBtnDisabled,
+              ]}
+              onPress={handleCheckout}
+              disabled={
+                cartItems.length === 0 ||
+                !canOrder
+              }
+            >
+              <Text
+                style={[
+                  styles.checkoutBtnText,
+                  {
+                    fontSize:
+                      responsive.checkoutFont,
+                  },
+                ]}
+                numberOfLines={1}
+              >
+                Order Now
+              </Text>
+            </TouchableOpacity>
+          </View>
         </View>
-      </View>
+      </SafeAreaView>
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  frame: {
-    flex: 1,
-    backgroundColor: '#171717',
-  },
+const styles =
+  StyleSheet.create({
+    frame: {
+      flex: 1,
+      backgroundColor: '#efefef',
+    },
 
-  // MATCH ITEM DETAIL SCREEN
-  container: {
-    flex: 1,
-    backgroundColor: '#efefef',
-    padding: 32,
-  },
+    safeArea: {
+      flex: 1,
+      backgroundColor: '#efefef',
+    },
 
-  headerRow: {
-    flexDirection: 'row',
-    justifyContent:
-      'space-between',
-    alignItems: 'center',
-  },
+    container: {
+      flex: 1,
+      backgroundColor: '#efefef',
+    },
 
-  backText: {
-    fontSize: 28,
-    color: '#3b3b3b',
-    fontWeight: '700',
-  },
+    headerRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      gap: 12,
+    },
 
-  logo: {
-    width: 80,
-    height: 80,
-  },
+    backText: {
+      color: '#3b3b3b',
+      fontWeight: '800',
+    },
 
-  header: {
-    marginTop: 24,
-    fontSize: 56,
-    fontWeight: '800',
-    color: '#3d3d3d',
-  },
+    logo: {},
 
-  clearText: {
-    alignSelf: 'flex-end',
-    color: '#999',
-    marginBottom: 18,
-    fontSize: 20,
-    fontWeight: '600',
-  },
+    titleRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      gap: 14,
+      flexWrap: 'wrap',
+    },
 
-  cartItem: {
-    flexDirection: 'row',
-    borderWidth: 1.5,
-    borderColor: '#f0b287',
-    backgroundColor: '#f7f7f7',
-    padding: 24,
-    alignItems: 'center',
-    marginBottom: 18,
-    borderRadius: 20,
-  },
+    header: {
+      flexShrink: 1,
+      fontWeight: '900',
+      color: '#3d3d3d',
+    },
 
-  itemVisual: {
-    width: 130,
-    height: 130,
-    borderRadius: 65,
-    backgroundColor: '#ddd',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
+    clearText: {
+      color: '#999',
+      fontWeight: '800',
+    },
 
-  itemVisualText: {
-    fontSize: 62,
-  },
+    disabledAction: {
+      opacity: 0.45,
+    },
 
-  itemInfo: {
-    flex: 1,
-    marginLeft: 24,
-  },
+    assignmentBanner: {
+      backgroundColor: '#fff4e8',
+      borderWidth: 1,
+      borderColor: '#f68c45',
+      borderRadius: 12,
+      paddingVertical: 12,
+      paddingHorizontal: 16,
+      marginBottom: 16,
+    },
 
-  itemName: {
-    fontSize: 38,
-    fontWeight: '800',
-    color: '#f68c45',
-  },
+    assignmentBannerText: {
+      color: '#8a4b12',
+      fontWeight: '800',
+      textAlign: 'center',
+      lineHeight: 22,
+    },
 
-  itemDesc: {
-    color: '#888',
-    fontSize: 20,
-    marginTop: 6,
-  },
+    cartItem: {
+      flexDirection: 'row',
+      borderWidth: 1.5,
+      borderColor: '#f0b287',
+      backgroundColor: '#fff',
+      alignItems: 'center',
+      gap: 12,
+      shadowColor: '#000',
+      shadowOpacity: 0.06,
+      shadowRadius: 6,
+      elevation: 2,
+    },
 
-  itemPrice: {
-    color: '#2f2f2f',
-    marginTop: 12,
-    fontSize: 36,
-    fontWeight: '700',
-  },
+    cartItemPhone: {
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
 
-  quantityContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
+    itemVisual: {
+      backgroundColor: '#eee',
+      justifyContent: 'center',
+      alignItems: 'center',
+      flexShrink: 0,
+    },
 
-  qtyBtn: {
-    backgroundColor: '#e5e5e5',
-    width: 62,
-    height: 62,
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderRadius: 31,
-  },
+    itemVisualText: {},
 
-  qtyBtnDisabled: {
-    opacity: 0.45,
-  },
+    itemInfo: {
+      flex: 1,
+      minWidth: 160,
+    },
 
-  qtyText: {
-    fontSize: 34,
-    fontWeight: 'bold',
-    color: '#333',
-  },
+    itemInfoPhone: {
+      minWidth: 0,
+      flex: 1,
+    },
 
-  quantity: {
-    marginHorizontal: 22,
-    fontSize: 34,
-    fontWeight: '700',
-    color: '#333',
-  },
+    itemName: {
+      fontWeight: '900',
+      color: '#f68c45',
+    },
 
-  // MATCH ITEM DETAIL ACTION BAR
-  footer: {
-    marginTop: 20,
-    alignSelf: 'center',
-    width: '82%',
-    maxWidth: 920,
-    borderWidth: 1,
-    borderColor: '#d0d0d0',
-    backgroundColor: '#fafafa',
-    paddingVertical: 24,
-    paddingHorizontal: 32,
-    flexDirection: 'row',
-    justifyContent:
-      'space-between',
-    alignItems: 'center',
-    borderRadius: 18,
-  },
+    itemDesc: {
+      color: '#888',
+      marginTop: 6,
+      lineHeight: 21,
+      fontWeight: '600',
+    },
 
-  totalText: {
-    fontSize: 42,
-    fontWeight: '800',
-    color: '#333',
-  },
+    itemPrice: {
+      color: '#2f2f2f',
+      marginTop: 10,
+      fontWeight: '800',
+    },
 
-  checkoutBtn: {
-    backgroundColor: '#f68c45',
-    paddingVertical: 18,
-    paddingHorizontal: 36,
-    borderRadius: 20,
-  },
+    quantityContainer: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      flexShrink: 0,
+    },
 
-  checkoutBtnText: {
-    color: '#fff',
-    fontSize: 24,
-    fontWeight: '800',
-  },
+    quantityContainerPhone: {
+      width: '100%',
+      marginTop: 12,
+    },
 
-  emptyText: {
-    marginTop: 120,
-    alignSelf: 'center',
-    color: '#999',
-    fontSize: 30,
-  },
-});
+    qtyBtn: {
+      backgroundColor: '#f68c45',
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+
+    qtyBtnDisabled: {
+      opacity: 0.45,
+    },
+
+    qtyText: {
+      fontWeight: '900',
+      color: '#fff',
+    },
+
+    quantity: {
+      fontWeight: '900',
+      color: '#333',
+      textAlign: 'center',
+    },
+
+    footer: {
+      marginTop: 16,
+      alignSelf: 'center',
+      width: '100%',
+      maxWidth: 920,
+      borderWidth: 1,
+      borderColor: '#d0d0d0',
+      backgroundColor: '#fafafa',
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      gap: 14,
+    },
+
+    footerPhone: {
+      flexDirection: 'column',
+      alignItems: 'stretch',
+    },
+
+    totalText: {
+      flex: 1,
+      minWidth: 190,
+      fontWeight: '900',
+      color: '#333',
+    },
+
+    checkoutBtn: {
+      backgroundColor: '#f68c45',
+      borderRadius: 16,
+      alignItems: 'center',
+      justifyContent: 'center',
+      flexShrink: 0,
+    },
+
+    checkoutBtnText: {
+      color: '#fff',
+      fontWeight: '900',
+    },
+
+    emptyText: {
+      alignSelf: 'center',
+      color: '#999',
+      fontWeight: '800',
+      textAlign: 'center',
+    },
+  });

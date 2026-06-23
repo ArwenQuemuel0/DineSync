@@ -14,7 +14,13 @@ import {
   ActivityIndicator,
   useWindowDimensions,
   ScrollView,
+  StatusBar,
 } from 'react-native';
+
+import {
+  SafeAreaView,
+  useSafeAreaInsets,
+} from 'react-native-safe-area-context';
 
 import {
   CommonActions,
@@ -45,6 +51,218 @@ export default function OrderConfirmScreen({
   } = route.params || {};
 
   const {
+    width,
+    height,
+  } = useWindowDimensions();
+
+  const insets =
+    useSafeAreaInsets();
+
+  const responsive =
+    useMemo(() => {
+      const shortest =
+        Math.min(width, height);
+
+      const longest =
+        Math.max(width, height);
+
+      const isPortrait =
+        height >= width;
+
+      const isPhone =
+        width < 600;
+
+      const isVeryNarrow =
+        width < 430;
+
+      const base =
+        shortest / 768;
+
+      const clamp = (
+        value,
+        min,
+        max
+      ) => {
+        return Math.max(
+          min,
+          Math.min(value, max)
+        );
+      };
+
+      const scale = (
+        size,
+        min = size * 0.65,
+        max = size * 1.08
+      ) => {
+        return Math.round(
+          clamp(size * base, min, max)
+        );
+      };
+
+      const useTwoPane =
+        !isPortrait && width >= 720;
+
+      const screenPadding =
+        isVeryNarrow
+          ? scale(12, 10, 14)
+          : isPhone
+            ? scale(14, 12, 16)
+            : scale(22, 16, 24);
+
+      return {
+        isPhone,
+        isVeryNarrow,
+        useTwoPane,
+
+        safeTopExtra:
+          isPhone
+            ? 6
+            : 8,
+
+        safeBottomExtra:
+          Math.max(insets.bottom + 8, 16),
+
+        containerPadding:
+          screenPadding,
+
+        topBarHeight:
+          isPhone
+            ? scale(50, 44, 54)
+            : scale(58, 48, 62),
+
+        backText:
+          isPhone
+            ? scale(17, 15, 18)
+            : scale(24, 17, 24),
+
+        tableText:
+          isPhone
+            ? scale(17, 15, 18)
+            : scale(24, 17, 24),
+
+        header:
+          isVeryNarrow
+            ? scale(30, 26, 32)
+            : isPhone
+              ? scale(34, 28, 36)
+              : scale(46, 32, 48),
+
+        subHeader:
+          isPhone
+            ? scale(14, 12, 15)
+            : scale(18, 14, 18),
+
+        subHeaderMargin:
+          isPhone
+            ? scale(12, 10, 14)
+            : scale(18, 14, 20),
+
+        contentGap:
+          isPhone
+            ? scale(14, 12, 16)
+            : scale(18, 12, 20),
+
+        cardPadding:
+          isVeryNarrow
+            ? scale(14, 12, 15)
+            : isPhone
+              ? scale(16, 13, 18)
+              : scale(22, 16, 24),
+
+        cardRadius:
+          scale(22, 16, 24),
+
+        receiptTitle:
+          isPhone
+            ? scale(23, 20, 24)
+            : scale(30, 22, 30),
+
+        receiptTable:
+          scale(18, 13, 18),
+
+        dividerMargin:
+          isPhone
+            ? scale(12, 9, 13)
+            : scale(16, 10, 16),
+
+        itemName:
+          scale(19, 14, 19),
+
+        itemUnit:
+          scale(14, 11, 14),
+
+        itemSubtotal:
+          scale(18, 13, 18),
+
+        requestText:
+          scale(14, 11, 14),
+
+        summaryLabel:
+          scale(18, 14, 18),
+
+        summaryValue:
+          scale(20, 15, 20),
+
+        totalLabel:
+          isPhone
+            ? scale(18, 16, 19)
+            : scale(23, 17, 23),
+
+        totalValue:
+          isPhone
+            ? scale(23, 20, 24)
+            : scale(28, 22, 28),
+
+        noticeText:
+          scale(14, 11, 14),
+
+        optionTitle:
+          isPhone
+            ? scale(21, 18, 22)
+            : scale(26, 20, 26),
+
+        paymentTitle:
+          scale(20, 15, 20),
+
+        paymentDesc:
+          scale(14, 11, 14),
+
+        disclaimerTitle:
+          scale(18, 14, 18),
+
+        disclaimerText:
+          scale(15, 12, 15),
+
+        buttonText:
+          scale(20, 15, 20),
+
+        buttonPadding:
+          scale(16, 12, 16),
+
+        optionMaxHeight:
+          useTwoPane
+            ? undefined
+            : isPhone
+              ? undefined
+              : clamp(height * 0.42, 360, 500),
+
+        receiptMaxHeight:
+          useTwoPane
+            ? undefined
+            : isPhone
+              ? undefined
+              : clamp(height * 0.42, 350, 480),
+
+        maxContentWidth:
+          clamp(longest * 0.95, 340, 1300),
+      };
+    }, [
+      width,
+      height,
+      insets.bottom,
+    ]);
+
+  const {
     tableNumber,
     user,
   } = useAuth();
@@ -63,14 +281,6 @@ export default function OrderConfirmScreen({
     tableResetRequired,
     acknowledgeTableReset,
   } = useTableStatus();
-
-  const {
-    width,
-    height,
-  } = useWindowDimensions();
-
-  const isLandscape =
-    width > height;
 
   const finalTableNumber =
     routeTableNumber ||
@@ -403,7 +613,13 @@ export default function OrderConfirmScreen({
       <View style={styles.receiptItem}>
         <View style={styles.receiptItemLeft}>
           <Text
-            style={styles.itemName}
+            style={[
+              styles.itemName,
+              {
+                fontSize:
+                  responsive.itemName,
+              },
+            ]}
             numberOfLines={2}
           >
             {quantity}x {item.name}
@@ -411,24 +627,57 @@ export default function OrderConfirmScreen({
 
           {customItem ? (
             <>
-              <Text style={styles.customPriceText}>
+              <Text
+                style={[
+                  styles.customPriceText,
+                  {
+                    fontSize:
+                      responsive.itemUnit,
+                  },
+                ]}
+              >
                 Price: To be confirmed
               </Text>
 
               {requestText ? (
-                <Text style={styles.requestText}>
+                <Text
+                  style={[
+                    styles.requestText,
+                    {
+                      fontSize:
+                        responsive.requestText,
+                    },
+                  ]}
+                >
                   Request: {requestText}
                 </Text>
               ) : null}
             </>
           ) : (
-            <Text style={styles.itemUnitPrice}>
+            <Text
+              style={[
+                styles.itemUnitPrice,
+                {
+                  fontSize:
+                    responsive.itemUnit,
+                },
+              ]}
+            >
               ₱{formatMoney(price)} each
             </Text>
           )}
         </View>
 
-        <Text style={styles.itemSubtotal}>
+        <Text
+          style={[
+            styles.itemSubtotal,
+            {
+              fontSize:
+                responsive.itemSubtotal,
+            },
+          ]}
+          numberOfLines={2}
+        >
           {customItem
             ? 'To be confirmed'
             : `₱${formatMoney(subtotal)}`}
@@ -436,6 +685,304 @@ export default function OrderConfirmScreen({
       </View>
     );
   };
+
+  const receiptCard = (
+    <View
+      style={[
+        styles.receiptCard,
+        {
+          padding:
+            responsive.cardPadding,
+          borderRadius:
+            responsive.cardRadius,
+          maxHeight:
+            responsive.receiptMaxHeight,
+        },
+        responsive.useTwoPane &&
+          styles.receiptTwoPane,
+      ]}
+    >
+      <Text
+        style={[
+          styles.receiptTitle,
+          {
+            fontSize:
+              responsive.receiptTitle,
+          },
+        ]}
+      >
+        Order Summary
+      </Text>
+
+      <Text
+        style={[
+          styles.receiptTable,
+          {
+            fontSize:
+              responsive.receiptTable,
+          },
+        ]}
+      >
+        Table {finalTableNumber || '-'}
+      </Text>
+
+      <View
+        style={[
+          styles.receiptDivider,
+          {
+            marginVertical:
+              responsive.dividerMargin,
+          },
+        ]}
+      />
+
+      <FlatList
+        data={cartItems}
+        keyExtractor={(item, index) =>
+          String(
+            item.menu_item_id ||
+              item.id ||
+              index
+          )
+        }
+        renderItem={renderReceiptItem}
+        showsVerticalScrollIndicator={false}
+        nestedScrollEnabled
+        contentContainerStyle={{
+          paddingBottom: 12,
+        }}
+      />
+
+      <View
+        style={[
+          styles.receiptDivider,
+          {
+            marginVertical:
+              responsive.dividerMargin,
+          },
+        ]}
+      />
+
+      <View style={styles.summaryRow}>
+        <Text
+          style={[
+            styles.summaryLabel,
+            {
+              fontSize:
+                responsive.summaryLabel,
+            },
+          ]}
+        >
+          Total Items
+        </Text>
+
+        <Text
+          style={[
+            styles.summaryValue,
+            {
+              fontSize:
+                responsive.summaryValue,
+            },
+          ]}
+        >
+          {totalItems}
+        </Text>
+      </View>
+
+      <View style={styles.summaryRow}>
+        <Text
+          style={[
+            styles.grandTotalLabel,
+            {
+              fontSize:
+                responsive.totalLabel,
+            },
+          ]}
+        >
+          Total Amount
+        </Text>
+
+        <Text
+          style={[
+            styles.grandTotalValue,
+            {
+              fontSize:
+                responsive.totalValue,
+            },
+          ]}
+          numberOfLines={1}
+          adjustsFontSizeToFit
+        >
+          ₱{formatMoney(total)}
+        </Text>
+      </View>
+
+      {hasCustomRequest ? (
+        <Text
+          style={[
+            styles.customNotice,
+            {
+              fontSize:
+                responsive.noticeText,
+            },
+          ]}
+        >
+          Chef Oppa Special requests are not included in the total yet. Final price and availability will be confirmed by staff.
+        </Text>
+      ) : null}
+    </View>
+  );
+
+  const optionCard = (
+    <ScrollView
+      style={[
+        styles.optionCard,
+        {
+          padding:
+            responsive.cardPadding,
+          borderRadius:
+            responsive.cardRadius,
+          maxHeight:
+            responsive.optionMaxHeight,
+        },
+        responsive.useTwoPane &&
+          styles.optionTwoPane,
+      ]}
+      nestedScrollEnabled
+      showsVerticalScrollIndicator={false}
+      contentContainerStyle={{
+        paddingBottom: 20,
+      }}
+    >
+      <Text
+        style={[
+          styles.optionTitle,
+          {
+            fontSize:
+              responsive.optionTitle,
+          },
+        ]}
+      >
+        Payment Option
+      </Text>
+
+      {hasCustomRequest ? (
+        <View style={styles.qrWarningBox}>
+          <Text
+            style={[
+              styles.qrWarningText,
+              {
+                fontSize:
+                  responsive.noticeText,
+              },
+            ]}
+          >
+            Chef Oppa Special requests must be confirmed by staff. QR PH payment is not available for custom requests.
+          </Text>
+        </View>
+      ) : null}
+
+      {paymentOptions.map((option) => {
+        const active =
+          selectedPayment ===
+          option.label;
+
+        return (
+          <TouchableOpacity
+            key={option.label}
+            style={[
+              styles.paymentOption,
+              active &&
+                styles.paymentOptionActive,
+              option.disabled &&
+                styles.paymentOptionDisabled,
+            ]}
+            disabled={option.disabled}
+            onPress={() =>
+              handleSelectPayment(option)
+            }
+          >
+            <Text
+              style={[
+                styles.paymentOptionTitle,
+                {
+                  fontSize:
+                    responsive.paymentTitle,
+                },
+                active &&
+                  styles.paymentOptionTitleActive,
+                option.disabled &&
+                  styles.paymentOptionTitleDisabled,
+              ]}
+            >
+              {option.label}
+            </Text>
+
+            <Text
+              style={[
+                styles.paymentOptionDesc,
+                {
+                  fontSize:
+                    responsive.paymentDesc,
+                },
+              ]}
+            >
+              {option.description}
+            </Text>
+          </TouchableOpacity>
+        );
+      })}
+
+      <View style={styles.disclaimerBox}>
+        <Text
+          style={[
+            styles.disclaimerTitle,
+            {
+              fontSize:
+                responsive.disclaimerTitle,
+            },
+          ]}
+        >
+          Disclaimer
+        </Text>
+
+        <Text
+          style={[
+            styles.disclaimerText,
+            {
+              fontSize:
+                responsive.disclaimerText,
+            },
+          ]}
+        >
+          Once confirmed, the order cannot be cancelled or changed.
+        </Text>
+      </View>
+
+      <TouchableOpacity
+        style={[
+          styles.confirmButton,
+          {
+            paddingVertical:
+              responsive.buttonPadding,
+          },
+        ]}
+        onPress={handleFinalConfirm}
+      >
+        <Text
+          style={[
+            styles.confirmButtonText,
+            {
+              fontSize:
+                responsive.buttonText,
+            },
+          ]}
+        >
+          Confirm Order
+        </Text>
+      </TouchableOpacity>
+    </ScrollView>
+  );
 
   if (loading) {
     return (
@@ -445,7 +992,15 @@ export default function OrderConfirmScreen({
           color="#f68c45"
         />
 
-        <Text style={styles.loadingText}>
+        <Text
+          style={[
+            styles.loadingText,
+            {
+              fontSize:
+                responsive.buttonText,
+            },
+          ]}
+        >
           Sending order to kitchen...
         </Text>
       </View>
@@ -454,185 +1009,141 @@ export default function OrderConfirmScreen({
 
   return (
     <View style={styles.frame}>
-      <View style={styles.container}>
-        <View style={styles.topBar}>
-          <TouchableOpacity
-            onPress={() =>
-              navigation.goBack()
-            }
-          >
-            <Text style={styles.backText}>
-              {'<'} Go Back
-            </Text>
-          </TouchableOpacity>
+      <StatusBar
+        barStyle="dark-content"
+        backgroundColor="#efefef"
+        translucent={false}
+      />
 
-          <Text style={styles.tableText}>
-            Table {finalTableNumber || '-'}
-          </Text>
-        </View>
-
-        <Text style={styles.header}>
-          Confirm Order
-        </Text>
-
-        <Text style={styles.subHeader}>
-          Review your order before sending it to the kitchen.
-        </Text>
-
+      <SafeAreaView
+        style={styles.safeArea}
+        edges={[
+          'top',
+          'bottom',
+        ]}
+      >
         <View
           style={[
-            styles.content,
-            isLandscape
-              ? styles.contentLandscape
-              : styles.contentPortrait,
+            styles.container,
+            {
+              padding:
+                responsive.containerPadding,
+              paddingTop:
+                responsive.containerPadding +
+                responsive.safeTopExtra,
+              paddingBottom:
+                responsive.safeBottomExtra,
+            },
           ]}
         >
           <View
             style={[
-              styles.receiptCard,
-              isLandscape
-                ? styles.receiptLandscape
-                : styles.receiptPortrait,
+              styles.topBar,
+              {
+                minHeight:
+                  responsive.topBarHeight,
+              },
             ]}
           >
-            <Text style={styles.receiptTitle}>
-              Order Summary
-            </Text>
-
-            <Text style={styles.receiptTable}>
-              Table {finalTableNumber || '-'}
-            </Text>
-
-            <View style={styles.receiptDivider} />
-
-            <FlatList
-              data={cartItems}
-              keyExtractor={(item, index) =>
-                String(
-                  item.menu_item_id ||
-                    item.id ||
-                    index
-                )
-              }
-              renderItem={renderReceiptItem}
-              showsVerticalScrollIndicator={false}
-              contentContainerStyle={{
-                paddingBottom: 12,
-              }}
-            />
-
-            <View style={styles.receiptDivider} />
-
-            <View style={styles.summaryRow}>
-              <Text style={styles.summaryLabel}>
-                Total Items
-              </Text>
-
-              <Text style={styles.summaryValue}>
-                {totalItems}
-              </Text>
-            </View>
-
-            <View style={styles.summaryRow}>
-              <Text style={styles.grandTotalLabel}>
-                Total Amount
-              </Text>
-
-              <Text style={styles.grandTotalValue}>
-                ₱{formatMoney(total)}
-              </Text>
-            </View>
-
-            {hasCustomRequest ? (
-              <Text style={styles.customNotice}>
-                Chef Oppa Special requests are not included in the total yet. Final price and availability will be confirmed by staff.
-              </Text>
-            ) : null}
-          </View>
-
-          <ScrollView
-            style={[
-              styles.optionCard,
-              isLandscape
-                ? styles.optionLandscape
-                : styles.optionPortrait,
-            ]}
-            contentContainerStyle={{
-              paddingBottom: 20,
-            }}
-          >
-            <Text style={styles.optionTitle}>
-              Payment Option
-            </Text>
-
-            {hasCustomRequest ? (
-              <View style={styles.qrWarningBox}>
-                <Text style={styles.qrWarningText}>
-                  Chef Oppa Special requests must be confirmed by staff. QR PH payment is not available for custom requests.
-                </Text>
-              </View>
-            ) : null}
-
-            {paymentOptions.map((option) => {
-              const active =
-                selectedPayment ===
-                option.label;
-
-              return (
-                <TouchableOpacity
-                  key={option.label}
-                  style={[
-                    styles.paymentOption,
-                    active &&
-                      styles.paymentOptionActive,
-                    option.disabled &&
-                      styles.paymentOptionDisabled,
-                  ]}
-                  disabled={option.disabled}
-                  onPress={() =>
-                    handleSelectPayment(option)
-                  }
-                >
-                  <Text
-                    style={[
-                      styles.paymentOptionTitle,
-                      active &&
-                        styles.paymentOptionTitleActive,
-                      option.disabled &&
-                        styles.paymentOptionTitleDisabled,
-                    ]}
-                  >
-                    {option.label}
-                  </Text>
-
-                  <Text style={styles.paymentOptionDesc}>
-                    {option.description}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })}
-
-            <View style={styles.disclaimerBox}>
-              <Text style={styles.disclaimerTitle}>
-                Disclaimer
-              </Text>
-
-              <Text style={styles.disclaimerText}>
-                Once confirmed, the order cannot be cancelled or changed.
-              </Text>
-            </View>
-
             <TouchableOpacity
-              style={styles.confirmButton}
-              onPress={handleFinalConfirm}
+              onPress={() =>
+                navigation.goBack()
+              }
             >
-              <Text style={styles.confirmButtonText}>
-                Confirm Order
+              <Text
+                style={[
+                  styles.backText,
+                  {
+                    fontSize:
+                      responsive.backText,
+                  },
+                ]}
+                numberOfLines={1}
+              >
+                {'<'} Go Back
               </Text>
             </TouchableOpacity>
-          </ScrollView>
+
+            <Text
+              style={[
+                styles.tableText,
+                {
+                  fontSize:
+                    responsive.tableText,
+                },
+              ]}
+              numberOfLines={1}
+            >
+              Table {finalTableNumber || '-'}
+            </Text>
+          </View>
+
+          <Text
+            style={[
+              styles.header,
+              {
+                fontSize:
+                  responsive.header,
+              },
+            ]}
+            numberOfLines={1}
+            adjustsFontSizeToFit
+          >
+            Confirm Order
+          </Text>
+
+          <Text
+            style={[
+              styles.subHeader,
+              {
+                fontSize:
+                  responsive.subHeader,
+                marginBottom:
+                  responsive.subHeaderMargin,
+              },
+            ]}
+          >
+            Review your order before sending it to the kitchen.
+          </Text>
+
+          {responsive.useTwoPane ? (
+            <View
+              style={[
+                styles.content,
+                {
+                  flexDirection: 'row',
+                  gap:
+                    responsive.contentGap,
+                  maxWidth:
+                    responsive.maxContentWidth,
+                },
+              ]}
+            >
+              {receiptCard}
+              {optionCard}
+            </View>
+          ) : (
+            <ScrollView
+              style={styles.phoneScroll}
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+              contentContainerStyle={[
+                styles.phoneScrollContent,
+                {
+                  gap:
+                    responsive.contentGap,
+                  paddingBottom:
+                    responsive.safeBottomExtra +
+                    18,
+                },
+              ]}
+            >
+              {receiptCard}
+              {optionCard}
+            </ScrollView>
+          )}
         </View>
-      </View>
+      </SafeAreaView>
     </View>
   );
 }
@@ -641,13 +1152,17 @@ const styles =
   StyleSheet.create({
     frame: {
       flex: 1,
-      backgroundColor: '#171717',
+      backgroundColor: '#efefef',
+    },
+
+    safeArea: {
+      flex: 1,
+      backgroundColor: '#efefef',
     },
 
     container: {
       flex: 1,
       backgroundColor: '#efefef',
-      padding: 22,
     },
 
     loadingContainer: {
@@ -655,36 +1170,35 @@ const styles =
       backgroundColor: '#efefef',
       justifyContent: 'center',
       alignItems: 'center',
+      paddingHorizontal: 24,
     },
 
     loadingText: {
       marginTop: 12,
-      fontSize: 20,
       fontWeight: '800',
       color: '#333',
+      textAlign: 'center',
     },
 
     topBar: {
-      height: 58,
       flexDirection: 'row',
       justifyContent: 'space-between',
       alignItems: 'center',
+      gap: 12,
     },
 
     backText: {
-      fontSize: 24,
       fontWeight: '900',
       color: '#333',
     },
 
     tableText: {
-      fontSize: 24,
       fontWeight: '900',
       color: '#f68c45',
+      textAlign: 'right',
     },
 
     header: {
-      fontSize: 46,
       fontWeight: '900',
       color: '#333',
       textAlign: 'center',
@@ -692,69 +1206,53 @@ const styles =
     },
 
     subHeader: {
-      fontSize: 18,
       fontWeight: '700',
       color: '#666',
       textAlign: 'center',
       marginTop: 6,
-      marginBottom: 18,
     },
 
     content: {
       flex: 1,
-      gap: 18,
+      alignSelf: 'center',
+      width: '100%',
     },
 
-    contentLandscape: {
-      flexDirection: 'row',
+    phoneScroll: {
+      flex: 1,
     },
 
-    contentPortrait: {
-      flexDirection: 'column',
+    phoneScrollContent: {
+      paddingBottom: 24,
     },
 
     receiptCard: {
       backgroundColor: '#fff',
-      borderRadius: 22,
-      padding: 22,
       borderWidth: 1.5,
       borderColor: '#f0b287',
     },
 
-    receiptLandscape: {
-      flex: 1.25,
-    },
-
-    receiptPortrait: {
-      flex: 1,
-      minHeight: 360,
+    receiptTwoPane: {
+      flex: 1.18,
     },
 
     optionCard: {
       backgroundColor: '#fff',
-      borderRadius: 22,
-      padding: 22,
       borderWidth: 1,
       borderColor: '#ddd',
     },
 
-    optionLandscape: {
-      flex: 0.85,
-    },
-
-    optionPortrait: {
-      maxHeight: 430,
+    optionTwoPane: {
+      flex: 0.82,
     },
 
     receiptTitle: {
-      fontSize: 30,
       fontWeight: '900',
       color: '#333',
       textAlign: 'center',
     },
 
     receiptTable: {
-      fontSize: 18,
       fontWeight: '800',
       color: '#777',
       textAlign: 'center',
@@ -764,7 +1262,6 @@ const styles =
     receiptDivider: {
       height: 1,
       backgroundColor: '#eee',
-      marginVertical: 16,
     },
 
     receiptItem: {
@@ -779,31 +1276,27 @@ const styles =
 
     receiptItemLeft: {
       flex: 1,
-      paddingRight: 12,
+      paddingRight: 8,
     },
 
     itemName: {
-      fontSize: 19,
       fontWeight: '900',
       color: '#333',
     },
 
     itemUnitPrice: {
-      fontSize: 14,
       fontWeight: '700',
       color: '#777',
       marginTop: 3,
     },
 
     customPriceText: {
-      fontSize: 14,
       fontWeight: '900',
       color: '#f68c45',
       marginTop: 4,
     },
 
     requestText: {
-      fontSize: 14,
       fontWeight: '700',
       color: '#666',
       marginTop: 5,
@@ -811,7 +1304,6 @@ const styles =
     },
 
     itemSubtotal: {
-      fontSize: 18,
       fontWeight: '900',
       color: '#f68c45',
       textAlign: 'right',
@@ -823,30 +1315,29 @@ const styles =
       justifyContent: 'space-between',
       alignItems: 'center',
       marginTop: 8,
+      gap: 12,
     },
 
     summaryLabel: {
-      fontSize: 18,
       fontWeight: '800',
       color: '#555',
     },
 
     summaryValue: {
-      fontSize: 20,
       fontWeight: '900',
       color: '#333',
     },
 
     grandTotalLabel: {
-      fontSize: 23,
       fontWeight: '900',
       color: '#333',
     },
 
     grandTotalValue: {
-      fontSize: 28,
       fontWeight: '900',
       color: '#f68c45',
+      flexShrink: 1,
+      textAlign: 'right',
     },
 
     customNotice: {
@@ -857,14 +1348,12 @@ const styles =
       borderRadius: 12,
       padding: 12,
       color: '#8a4b12',
-      fontSize: 14,
       fontWeight: '800',
       lineHeight: 20,
       textAlign: 'center',
     },
 
     optionTitle: {
-      fontSize: 26,
       fontWeight: '900',
       color: '#333',
       marginBottom: 14,
@@ -882,7 +1371,6 @@ const styles =
 
     qrWarningText: {
       color: '#8a4b12',
-      fontSize: 14,
       fontWeight: '800',
       lineHeight: 20,
       textAlign: 'center',
@@ -908,7 +1396,6 @@ const styles =
     },
 
     paymentOptionTitle: {
-      fontSize: 20,
       fontWeight: '900',
       color: '#333',
     },
@@ -922,7 +1409,6 @@ const styles =
     },
 
     paymentOptionDesc: {
-      fontSize: 14,
       fontWeight: '700',
       color: '#777',
       marginTop: 4,
@@ -939,14 +1425,12 @@ const styles =
     },
 
     disclaimerTitle: {
-      fontSize: 18,
       fontWeight: '900',
       color: '#8a4b12',
       marginBottom: 4,
     },
 
     disclaimerText: {
-      fontSize: 15,
       fontWeight: '700',
       color: '#8a4b12',
       lineHeight: 21,
@@ -955,14 +1439,12 @@ const styles =
     confirmButton: {
       backgroundColor: '#f68c45',
       borderRadius: 16,
-      paddingVertical: 16,
       alignItems: 'center',
       marginTop: 16,
     },
 
     confirmButtonText: {
       color: '#fff',
-      fontSize: 20,
       fontWeight: '900',
     },
   });

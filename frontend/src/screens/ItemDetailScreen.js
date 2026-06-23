@@ -1,5 +1,6 @@
 import React, {
   useEffect,
+  useMemo,
   useState,
 } from 'react';
 
@@ -14,7 +15,15 @@ import {
   ActivityIndicator,
   useWindowDimensions,
   TextInput,
+  StatusBar,
+  ScrollView,
+  Platform,
 } from 'react-native';
+
+import {
+  SafeAreaView,
+  useSafeAreaInsets,
+} from 'react-native-safe-area-context';
 
 import {
   useFocusEffect,
@@ -49,17 +58,274 @@ export default function ItemDetailScreen({
     height,
   } = useWindowDimensions();
 
-  const isLandscape =
-    width > height;
+  const insets =
+    useSafeAreaInsets();
 
-  const isSmallScreen =
-    width < 760;
+  const responsive =
+    useMemo(() => {
+      const shortest =
+        Math.min(width, height);
 
-  const useSideCart =
-    width >= 760;
+      const longest =
+        Math.max(width, height);
 
-  const cartWidth =
-    isLandscape ? 330 : 285;
+      const isPortrait =
+        height >= width;
+
+      const isPhone =
+        width < 600;
+
+      const isVeryNarrow =
+        width < 430;
+
+      const base =
+        shortest / 768;
+
+      const clamp = (
+        value,
+        min,
+        max
+      ) => {
+        return Math.max(
+          min,
+          Math.min(value, max)
+        );
+      };
+
+      const scale = (
+        size,
+        min = size * 0.65,
+        max = size * 1.08
+      ) => {
+        return Math.round(
+          clamp(size * base, min, max)
+        );
+      };
+
+      const useSideCart =
+        !isPortrait && width >= 720;
+
+      const cartWidth =
+        useSideCart
+          ? clamp(width * 0.28, 275, 360)
+          : '100%';
+
+      const imageSize =
+        isPhone
+          ? scale(112, 86, 118)
+          : scale(150, 105, 165);
+
+      const recommendationWidth =
+        isPhone
+          ? clamp(width * 0.74, 235, 320)
+          : clamp(width * 0.22, 220, 300);
+
+      const cartMaxHeight =
+        useSideCart
+          ? undefined
+          : isVeryNarrow
+            ? clamp(height * 0.22, 145, 185)
+            : clamp(height * 0.25, 175, 240);
+
+      return {
+        isPhone,
+        isVeryNarrow,
+        useSideCart,
+        cartWidth,
+        cartMaxHeight,
+
+        topSafeExtra:
+          isPhone
+            ? 8
+            : 6,
+
+        bottomSafeExtra:
+          Math.max(insets.bottom + 8, 14),
+
+        topBarHeight:
+          isPhone
+            ? scale(58, 52, 62)
+            : scale(70, 58, 74),
+
+        topBarPaddingH:
+          isPhone
+            ? scale(14, 10, 16)
+            : scale(24, 14, 26),
+
+        topText:
+          isPhone
+            ? scale(18, 15, 20)
+            : scale(28, 18, 28),
+
+        tableText:
+          isPhone
+            ? scale(16, 13, 17)
+            : scale(22, 15, 22),
+
+        detailPadding:
+          isPhone
+            ? scale(14, 10, 16)
+            : scale(28, 16, 30),
+
+        detailBottomPadding:
+          isPhone
+            ? scale(18, 14, 22)
+            : scale(24, 18, 30),
+
+        cardPadding:
+          isPhone
+            ? scale(18, 14, 20)
+            : scale(28, 18, 30),
+
+        cardRadius:
+          scale(24, 16, 26),
+
+        imageSize,
+
+        imageRadius:
+          imageSize / 2,
+
+        emoji:
+          isPhone
+            ? scale(50, 38, 54)
+            : scale(68, 44, 70),
+
+        itemName:
+          isPhone
+            ? scale(27, 22, 29)
+            : scale(38, 26, 40),
+
+        itemPrice:
+          isPhone
+            ? scale(23, 19, 25)
+            : scale(30, 22, 32),
+
+        category:
+          scale(17, 13, 18),
+
+        tagText:
+          scale(12, 10, 13),
+
+        stockText:
+          isPhone
+            ? scale(16, 13, 17)
+            : scale(19, 15, 20),
+
+        description:
+          isPhone
+            ? scale(15, 13, 16)
+            : scale(18, 14, 18),
+
+        descriptionLine:
+          isPhone
+            ? scale(22, 19, 23)
+            : scale(26, 21, 27),
+
+        label:
+          scale(17, 13, 18),
+
+        inputFont:
+          scale(16, 13, 16),
+
+        inputHeight:
+          isPhone
+            ? scale(92, 78, 96)
+            : scale(105, 84, 110),
+
+        buttonText:
+          isPhone
+            ? scale(18, 15, 19)
+            : scale(22, 16, 22),
+
+        buttonPaddingV:
+          scale(14, 10, 14),
+
+        buttonPaddingH:
+          isPhone
+            ? scale(28, 22, 32)
+            : scale(44, 26, 44),
+
+        recommendationTitle:
+          isPhone
+            ? scale(18, 16, 19)
+            : scale(22, 17, 22),
+
+        recommendationWidth,
+
+        recommendationCircle:
+          isPhone
+            ? scale(56, 46, 58)
+            : scale(64, 50, 66),
+
+        recommendationName:
+          scale(16, 12, 16),
+
+        recommendationPrice:
+          scale(15, 12, 15),
+
+        sidebarPaddingH:
+          scale(14, 10, 16),
+
+        sidebarPaddingT:
+          isPhone
+            ? scale(9, 7, 10)
+            : scale(16, 9, 16),
+
+        cartIcon:
+          scale(24, 18, 24),
+
+        cartTitle:
+          scale(22, 16, 22),
+
+        cartItemName:
+          scale(15, 12, 15),
+
+        cartItemPrice:
+          scale(14, 12, 14),
+
+        cartRequest:
+          scale(13, 11, 13),
+
+        removeText:
+          scale(24, 18, 24),
+
+        qtyButton:
+          scale(30, 25, 32),
+
+        qtyButtonText:
+          scale(18, 14, 18),
+
+        qtyText:
+          scale(16, 13, 16),
+
+        totalLabel:
+          scale(18, 14, 18),
+
+        totalValue:
+          scale(22, 17, 22),
+
+        checkoutText:
+          scale(16, 13, 16),
+
+        checkoutPadding:
+          scale(14, 10, 14),
+
+        errorText:
+          scale(26, 18, 26),
+
+        backButtonText:
+          scale(18, 14, 18),
+
+        maxCardWidth:
+          useSideCart
+            ? clamp(longest * 0.7, 520, 950)
+            : clamp(width - 28, 300, 680),
+      };
+    }, [
+      width,
+      height,
+      insets.bottom,
+    ]);
 
   const { item: routeItem } =
     route.params || {};
@@ -72,7 +338,10 @@ export default function ItemDetailScreen({
     setSpecialRequest,
   ] = useState('');
 
-  const { tableNumber } = useAuth();
+  const {
+    tableNumber,
+    user,
+  } = useAuth();
 
   const [
     recommendations,
@@ -104,6 +373,10 @@ export default function ItemDetailScreen({
     tableResetRequired,
     acknowledgeTableReset,
   } = useTableStatus();
+
+  const finalTableNumber =
+    tableNumber ||
+    user?.table_number;
 
   const item =
     liveItem || routeItem;
@@ -311,8 +584,21 @@ export default function ItemDetailScreen({
   const mealType =
     getMealType(item);
 
-  const handleAddToCart = () => {
+  const handleAddToCart = async () => {
     if (!item) return;
+
+    const tableCheck =
+      await ensureCanOrder();
+
+    if (!tableCheck.allowed) {
+      Alert.alert(
+        'Table Not Assigned',
+        tableCheck.message ||
+          assignmentMessage
+      );
+
+      return;
+    }
 
     if (!isAvailable) {
       Alert.alert(
@@ -353,10 +639,23 @@ export default function ItemDetailScreen({
     addToCart(item);
   };
 
-  const handleAddRecommendedItem = (
+  const handleAddRecommendedItem = async (
     recommendedItem
   ) => {
     if (!recommendedItem) return;
+
+    const tableCheck =
+      await ensureCanOrder();
+
+    if (!tableCheck.allowed) {
+      Alert.alert(
+        'Table Not Assigned',
+        tableCheck.message ||
+          assignmentMessage
+      );
+
+      return;
+    }
 
     if (!isItemOrderable(recommendedItem)) {
       Alert.alert(
@@ -449,7 +748,7 @@ export default function ItemDetailScreen({
       return;
     }
 
-    if (!tableNumber) {
+    if (!finalTableNumber) {
       Alert.alert(
         'Table Error',
         'No table number found. Please login again using the assigned table account.'
@@ -463,7 +762,7 @@ export default function ItemDetailScreen({
       {
         cartItems,
         total: cartTotal,
-        tableNumber,
+        tableNumber: finalTableNumber,
       }
     );
   };
@@ -492,8 +791,12 @@ export default function ItemDetailScreen({
       <View
         style={[
           styles.recommendationCard,
-          isSmallScreen &&
-            styles.recommendationCardSmall,
+          {
+            width:
+              responsive.recommendationWidth,
+            minHeight:
+              responsive.recommendationCircle + 42,
+          },
           !recommendedAvailable &&
             styles.recommendationCardDisabled,
         ]}
@@ -510,8 +813,14 @@ export default function ItemDetailScreen({
           <View
             style={[
               styles.recommendationCircle,
-              isSmallScreen &&
-                styles.recommendationCircleSmall,
+              {
+                width:
+                  responsive.recommendationCircle,
+                height:
+                  responsive.recommendationCircle,
+                borderRadius:
+                  responsive.recommendationCircle / 2,
+              },
             ]}
           >
             {recommendedImage ? (
@@ -532,8 +841,10 @@ export default function ItemDetailScreen({
           <Text
             style={[
               styles.recommendationName,
-              isSmallScreen &&
-                styles.recommendationNameSmall,
+              {
+                fontSize:
+                  responsive.recommendationName,
+              },
             ]}
             numberOfLines={2}
           >
@@ -542,7 +853,16 @@ export default function ItemDetailScreen({
         </TouchableOpacity>
 
         <View style={styles.recommendationRight}>
-          <Text style={styles.recommendationPrice}>
+          <Text
+            style={[
+              styles.recommendationPrice,
+              {
+                fontSize:
+                  responsive.recommendationPrice,
+              },
+            ]}
+            numberOfLines={2}
+          >
             {recommendedCustom
               ? 'To be confirmed'
               : `₱${formatMoney(recommendedItem.price)}`}
@@ -553,8 +873,13 @@ export default function ItemDetailScreen({
               styles.recommendationAddButton,
               !recommendedAvailable &&
                 styles.recommendationAddButtonDisabled,
+              !canOrder &&
+                styles.recommendationAddButtonDisabled,
             ]}
-            disabled={!recommendedAvailable}
+            disabled={
+              !recommendedAvailable ||
+              !canOrder
+            }
             onPress={() =>
               recommendedCustom
                 ? handleOpenRecommendedItem(recommendedItem)
@@ -594,23 +919,33 @@ export default function ItemDetailScreen({
       <View
         style={[
           styles.cartItem,
-          !useSideCart &&
+          !responsive.useSideCart &&
             styles.cartItemStacked,
         ]}
       >
         <View style={styles.cartItemTop}>
-          <View
-            style={styles.cartItemInfo}
-          >
+          <View style={styles.cartItemInfo}>
             <Text
-              style={styles.cartItemName}
+              style={[
+                styles.cartItemName,
+                {
+                  fontSize:
+                    responsive.cartItemName,
+                },
+              ]}
               numberOfLines={2}
             >
               {cartItem.name}
             </Text>
 
             <Text
-              style={styles.cartItemPrice}
+              style={[
+                styles.cartItemPrice,
+                {
+                  fontSize:
+                    responsive.cartItemPrice,
+                },
+              ]}
             >
               {customCartItem
                 ? 'To be confirmed'
@@ -619,7 +954,15 @@ export default function ItemDetailScreen({
 
             {customCartItem &&
             cartItem.special_request ? (
-              <Text style={styles.cartRequestText}>
+              <Text
+                style={[
+                  styles.cartRequestText,
+                  {
+                    fontSize:
+                      responsive.cartRequest,
+                  },
+                ]}
+              >
                 Request: {cartItem.special_request}
               </Text>
             ) : null}
@@ -632,7 +975,15 @@ export default function ItemDetailScreen({
               )
             }
           >
-            <Text style={styles.removeText}>
+            <Text
+              style={[
+                styles.removeText,
+                {
+                  fontSize:
+                    responsive.removeText,
+                },
+              ]}
+            >
               ×
             </Text>
           </TouchableOpacity>
@@ -647,7 +998,17 @@ export default function ItemDetailScreen({
         ) : (
           <View style={styles.qtyRow}>
             <TouchableOpacity
-              style={styles.qtyButton}
+              style={[
+                styles.qtyButton,
+                {
+                  width:
+                    responsive.qtyButton,
+                  height:
+                    responsive.qtyButton,
+                  borderRadius:
+                    responsive.qtyButton / 3,
+                },
+              ]}
               onPress={() =>
                 handleDecreaseQuantity(
                   cartItem
@@ -655,19 +1016,41 @@ export default function ItemDetailScreen({
               }
             >
               <Text
-                style={styles.qtyButtonText}
+                style={[
+                  styles.qtyButtonText,
+                  {
+                    fontSize:
+                      responsive.qtyButtonText,
+                  },
+                ]}
               >
                 -
               </Text>
             </TouchableOpacity>
 
-            <Text style={styles.qtyText}>
+            <Text
+              style={[
+                styles.qtyText,
+                {
+                  fontSize:
+                    responsive.qtyText,
+                },
+              ]}
+            >
               {cartItem.quantity}
             </Text>
 
             <TouchableOpacity
               style={[
                 styles.qtyButton,
+                {
+                  width:
+                    responsive.qtyButton,
+                  height:
+                    responsive.qtyButton,
+                  borderRadius:
+                    responsive.qtyButton / 3,
+                },
                 (atMaxQuantity ||
                   isOutOfStock(enrichedItem)) &&
                   styles.qtyButtonDisabled,
@@ -690,7 +1073,13 @@ export default function ItemDetailScreen({
               }}
             >
               <Text
-                style={styles.qtyButtonText}
+                style={[
+                  styles.qtyButtonText,
+                  {
+                    fontSize:
+                      responsive.qtyButtonText,
+                  },
+                ]}
               >
                 +
               </Text>
@@ -704,373 +1093,614 @@ export default function ItemDetailScreen({
   if (!item) {
     return (
       <View style={styles.frame}>
-        <View style={styles.container}>
-          <Text style={styles.errorText}>
-            Item not found.
-          </Text>
+        <StatusBar
+          barStyle="dark-content"
+          backgroundColor="#efefef"
+          translucent={false}
+        />
 
-          <TouchableOpacity
-            style={styles.backButton}
-            onPress={() =>
-              navigation.goBack()
-            }
-          >
+        <SafeAreaView
+          style={styles.safeArea}
+          edges={[
+            'top',
+            'bottom',
+          ]}
+        >
+          <View style={styles.emptyState}>
             <Text
-              style={styles.backButtonText}
+              style={[
+                styles.errorText,
+                {
+                  fontSize:
+                    responsive.errorText,
+                },
+              ]}
             >
-              Go Back
+              Item not found.
             </Text>
-          </TouchableOpacity>
-        </View>
+
+            <TouchableOpacity
+              style={styles.backButton}
+              onPress={() =>
+                navigation.goBack()
+              }
+            >
+              <Text
+                style={[
+                  styles.backButtonText,
+                  {
+                    fontSize:
+                      responsive.backButtonText,
+                  },
+                ]}
+              >
+                Go Back
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </SafeAreaView>
       </View>
     );
   }
 
   return (
     <View style={styles.frame}>
-      <View style={styles.container}>
+      <StatusBar
+        barStyle="light-content"
+        backgroundColor="#b8b3b3"
+        translucent={false}
+      />
+
+      <SafeAreaView
+        style={styles.safeArea}
+        edges={[
+          'top',
+          'bottom',
+        ]}
+      >
         <View
           style={[
-            styles.topBar,
-            isSmallScreen &&
-              styles.topBarSmall,
-          ]}
-        >
-          <TouchableOpacity
-            onPress={() =>
-              navigation.goBack()
-            }
-          >
-            <Text
-              style={[
-                styles.topBarText,
-                isSmallScreen &&
-                  styles.topBarTextSmall,
-              ]}
-            >
-              {'<'} Go Back
-            </Text>
-          </TouchableOpacity>
-
-          <View style={styles.topIcons}>
-            <Text
-              style={[
-                styles.tableText,
-                isSmallScreen &&
-                  styles.tableTextSmall,
-              ]}
-            >
-              Table {tableNumber || '-'}
-            </Text>
-          </View>
-        </View>
-
-        <View
-          style={[
-            styles.contentArea,
-            !useSideCart &&
-              styles.contentAreaStacked,
+            styles.container,
+            {
+              paddingTop:
+                responsive.topSafeExtra,
+            },
           ]}
         >
           <View
             style={[
-              styles.detailSection,
-              !useSideCart &&
-                styles.detailSectionStacked,
+              styles.topBar,
+              {
+                minHeight:
+                  responsive.topBarHeight,
+                paddingHorizontal:
+                  responsive.topBarPaddingH,
+              },
+            ]}
+          >
+            <TouchableOpacity
+              onPress={() =>
+                navigation.goBack()
+              }
+            >
+              <Text
+                style={[
+                  styles.topBarText,
+                  {
+                    fontSize:
+                      responsive.topText,
+                  },
+                ]}
+                numberOfLines={1}
+              >
+                {'<'} Go Back
+              </Text>
+            </TouchableOpacity>
+
+            <View style={styles.topIcons}>
+              <Text
+                style={[
+                  styles.tableText,
+                  {
+                    fontSize:
+                      responsive.tableText,
+                  },
+                ]}
+                numberOfLines={1}
+              >
+                Table {finalTableNumber || '-'}
+              </Text>
+            </View>
+          </View>
+
+          {!canOrder ? (
+            <View style={styles.assignmentBanner}>
+              <Text style={styles.assignmentBannerText}>
+                {assignmentMessage}
+              </Text>
+            </View>
+          ) : null}
+
+          <View
+            style={[
+              styles.contentArea,
+              {
+                flexDirection:
+                  responsive.useSideCart
+                    ? 'row'
+                    : 'column',
+              },
             ]}
           >
             <View
               style={[
-                styles.detailCard,
-                !useSideCart &&
-                  styles.detailCardStacked,
+                styles.detailSection,
+                {
+                  padding:
+                    responsive.detailPadding,
+                },
               ]}
             >
-              <View
-                style={[
-                  styles.imageCircle,
-                  isSmallScreen &&
-                    styles.imageCircleSmall,
+              <ScrollView
+                style={styles.detailScroll}
+                contentContainerStyle={[
+                  styles.detailScrollContent,
+                  {
+                    paddingBottom:
+                      responsive.detailBottomPadding,
+                  },
                 ]}
+                showsVerticalScrollIndicator={false}
+                keyboardShouldPersistTaps="handled"
               >
-                {imageUri ? (
-                  <Image
-                    source={{
-                      uri: imageUri,
-                    }}
-                    style={styles.itemImage}
-                    resizeMode="cover"
-                  />
-                ) : (
-                  <Text
-                    style={styles.itemEmoji}
+                <View
+                  style={[
+                    styles.detailCard,
+                    {
+                      maxWidth:
+                        responsive.maxCardWidth,
+                      padding:
+                        responsive.cardPadding,
+                      borderRadius:
+                        responsive.cardRadius,
+                    },
+                  ]}
+                >
+                  <View
+                    style={[
+                      styles.imageCircle,
+                      {
+                        width:
+                          responsive.imageSize,
+                        height:
+                          responsive.imageSize,
+                        borderRadius:
+                          responsive.imageRadius,
+                      },
+                    ]}
                   >
-                    🍲
-                  </Text>
-                )}
-              </View>
-
-              <Text
-                style={[
-                  styles.itemName,
-                  isSmallScreen &&
-                    styles.itemNameSmall,
-                ]}
-              >
-                {item.name}
-              </Text>
-
-              <Text
-                style={[
-                  styles.itemPrice,
-                  isSmallScreen &&
-                    styles.itemPriceSmall,
-                ]}
-              >
-                {customItem
-                  ? 'To be confirmed by staff'
-                  : `₱${formatMoney(item.price)}`}
-              </Text>
-
-              <Text style={styles.itemCategory}>
-                {item.category || 'Uncategorized'}
-              </Text>
-
-              {flavorTags.length > 0 ? (
-                <View style={styles.flavorTagContainer}>
-                  {flavorTags.map((tag, index) => (
-                    <View
-                      key={`${tag}-${index}`}
-                      style={styles.flavorTag}
-                    >
-                      <Text style={styles.flavorTagText}>
-                        {tag}
+                    {imageUri ? (
+                      <Image
+                        source={{
+                          uri: imageUri,
+                        }}
+                        style={styles.itemImage}
+                        resizeMode="cover"
+                      />
+                    ) : (
+                      <Text
+                        style={[
+                          styles.itemEmoji,
+                          {
+                            fontSize:
+                              responsive.emoji,
+                          },
+                        ]}
+                      >
+                        🍲
                       </Text>
+                    )}
+                  </View>
+
+                  <Text
+                    style={[
+                      styles.itemName,
+                      {
+                        fontSize:
+                          responsive.itemName,
+                      },
+                    ]}
+                    numberOfLines={2}
+                    adjustsFontSizeToFit
+                  >
+                    {item.name}
+                  </Text>
+
+                  <Text
+                    style={[
+                      styles.itemPrice,
+                      {
+                        fontSize:
+                          responsive.itemPrice,
+                      },
+                    ]}
+                    numberOfLines={2}
+                    adjustsFontSizeToFit
+                  >
+                    {customItem
+                      ? 'To be confirmed by staff'
+                      : `₱${formatMoney(item.price)}`}
+                  </Text>
+
+                  <Text
+                    style={[
+                      styles.itemCategory,
+                      {
+                        fontSize:
+                          responsive.category,
+                      },
+                    ]}
+                    numberOfLines={1}
+                  >
+                    {item.category || 'Uncategorized'}
+                  </Text>
+
+                  {flavorTags.length > 0 ? (
+                    <View style={styles.flavorTagContainer}>
+                      {flavorTags.map((tag, index) => (
+                        <View
+                          key={`${tag}-${index}`}
+                          style={styles.flavorTag}
+                        >
+                          <Text
+                            style={[
+                              styles.flavorTagText,
+                              {
+                                fontSize:
+                                  responsive.tagText,
+                              },
+                            ]}
+                          >
+                            {tag}
+                          </Text>
+                        </View>
+                      ))}
                     </View>
-                  ))}
-                </View>
-              ) : null}
+                  ) : null}
 
-              {mealType ? (
-                <Text style={styles.mealTypeText}>
-                  {mealType}
-                </Text>
-              ) : null}
+                  {mealType ? (
+                    <Text style={styles.mealTypeText}>
+                      {mealType}
+                    </Text>
+                  ) : null}
 
-              <Text
-                style={[
-                  !isAvailable
-                    ? styles.notAvailableText
-                    : isLowStock
-                      ? styles.lowStockText
-                      : styles.availableText,
-                  isSmallScreen &&
-                    styles.stockTextSmall,
-                ]}
-              >
-                {availabilityText}
-              </Text>
-
-              <Text
-                style={[
-                  styles.description,
-                  isSmallScreen &&
-                    styles.descriptionSmall,
-                ]}
-              >
-                {customItem
-                  ? 'Price and availability will be confirmed by staff.'
-                  : itemDescription ||
-                    'No description available for this item.'}
-              </Text>
-
-              {customItem ? (
-                <View style={styles.specialRequestBox}>
-                  <Text style={styles.specialRequestLabel}>
-                    Tell us what you would like to order
+                  <Text
+                    style={[
+                      !canOrder
+                        ? styles.notAvailableText
+                        : !isAvailable
+                          ? styles.notAvailableText
+                          : isLowStock
+                            ? styles.lowStockText
+                            : styles.availableText,
+                      {
+                        fontSize:
+                          responsive.stockText,
+                      },
+                    ]}
+                  >
+                    {!canOrder
+                      ? 'Table not assigned'
+                      : availabilityText}
                   </Text>
 
-                  <TextInput
-                    style={styles.specialRequestInput}
-                    value={specialRequest}
-                    onChangeText={setSpecialRequest}
-                    placeholder="Example: Samgyupsal fried rice with extra cheese, less spicy"
-                    placeholderTextColor="#999"
-                    multiline
-                    textAlignVertical="top"
-                  />
-                </View>
-              ) : null}
+                  <Text
+                    style={[
+                      styles.description,
+                      {
+                        fontSize:
+                          responsive.description,
+                        lineHeight:
+                          responsive.descriptionLine,
+                      },
+                    ]}
+                  >
+                    {customItem
+                      ? 'Price and availability will be confirmed by staff.'
+                      : itemDescription ||
+                        'No description available for this item.'}
+                  </Text>
 
-              <TouchableOpacity
-                style={[
-                  styles.addToOrderButton,
-                  !isAvailable &&
-                    styles.addToOrderButtonDisabled,
-                ]}
-                disabled={!isAvailable}
-                onPress={handleAddToCart}
-              >
-                <Text
-                  style={[
-                    styles.addToOrderText,
-                    isSmallScreen &&
-                      styles.addToOrderTextSmall,
-                  ]}
-                >
-                  {customItem
-                    ? 'Add Request to Cart'
-                    : 'Add to Order'}
-                </Text>
-              </TouchableOpacity>
+                  {customItem ? (
+                    <View style={styles.specialRequestBox}>
+                      <Text
+                        style={[
+                          styles.specialRequestLabel,
+                          {
+                            fontSize:
+                              responsive.label,
+                          },
+                        ]}
+                      >
+                        Tell us what you would like to order
+                      </Text>
 
-              <View style={styles.recommendationSection}>
-                <Text
-                  style={[
-                    styles.recommendationTitle,
-                    isSmallScreen &&
-                      styles.recommendationTitleSmall,
-                  ]}
-                >
-                  Must try pairings!
-                </Text>
+                      <TextInput
+                        style={[
+                          styles.specialRequestInput,
+                          {
+                            minHeight:
+                              responsive.inputHeight,
+                            fontSize:
+                              responsive.inputFont,
+                          },
+                        ]}
+                        value={specialRequest}
+                        onChangeText={setSpecialRequest}
+                        placeholder="Example: Samgyupsal fried rice with extra cheese, less spicy"
+                        placeholderTextColor="#999"
+                        multiline
+                        textAlignVertical="top"
+                      />
+                    </View>
+                  ) : null}
 
-                {loadingRecommendations ? (
-                  <ActivityIndicator
-                    size="small"
-                    color="#f68c45"
-                  />
-                ) : recommendations.length > 0 ? (
-                  <FlatList
-                    horizontal
-                    data={recommendations}
-                    keyExtractor={(
-                      recommendedItem,
-                      index
-                    ) =>
-                      String(
-                        recommendedItem.id ||
+                  <TouchableOpacity
+                    style={[
+                      styles.addToOrderButton,
+                      {
+                        paddingVertical:
+                          responsive.buttonPaddingV,
+                        paddingHorizontal:
+                          responsive.buttonPaddingH,
+                      },
+                      (!isAvailable ||
+                        !canOrder) &&
+                        styles.addToOrderButtonDisabled,
+                    ]}
+                    disabled={
+                      !isAvailable ||
+                      !canOrder
+                    }
+                    onPress={handleAddToCart}
+                  >
+                    <Text
+                      style={[
+                        styles.addToOrderText,
+                        {
+                          fontSize:
+                            responsive.buttonText,
+                        },
+                      ]}
+                      numberOfLines={1}
+                      adjustsFontSizeToFit
+                    >
+                      {!canOrder
+                        ? 'Waiting for Staff'
+                        : customItem
+                          ? 'Add Request to Cart'
+                          : 'Add to Order'}
+                    </Text>
+                  </TouchableOpacity>
+
+                  <View style={styles.recommendationSection}>
+                    <Text
+                      style={[
+                        styles.recommendationTitle,
+                        {
+                          fontSize:
+                            responsive.recommendationTitle,
+                        },
+                      ]}
+                    >
+                      Must try pairings!
+                    </Text>
+
+                    {loadingRecommendations ? (
+                      <ActivityIndicator
+                        size="small"
+                        color="#f68c45"
+                      />
+                    ) : recommendations.length > 0 ? (
+                      <FlatList
+                        horizontal
+                        data={recommendations}
+                        keyExtractor={(
+                          recommendedItem,
                           index
-                      )
-                    }
-                    renderItem={
-                      renderRecommendation
-                    }
-                    showsHorizontalScrollIndicator={
-                      false
-                    }
-                    contentContainerStyle={{
-                      paddingHorizontal: 4,
-                    }}
-                  />
-                ) : (
-                  <Text style={styles.noRecommendationText}>
-                    No recommendations available yet.
-                  </Text>
-                )}
-              </View>
-            </View>
-          </View>
-
-          <View
-            style={[
-              styles.cartSidebar,
-              {
-                width: useSideCart
-                  ? cartWidth
-                  : '100%',
-              },
-              !useSideCart &&
-                styles.cartSidebarStacked,
-            ]}
-          >
-            <View style={styles.cartHeader}>
-              <Text style={styles.cartIcon}>
-                🛒
-              </Text>
-
-              <Text style={styles.cartTitle}>
-                Your Order
-              </Text>
+                        ) =>
+                          String(
+                            recommendedItem.id ||
+                              index
+                          )
+                        }
+                        renderItem={
+                          renderRecommendation
+                        }
+                        showsHorizontalScrollIndicator={
+                          false
+                        }
+                        contentContainerStyle={{
+                          paddingHorizontal: 4,
+                        }}
+                      />
+                    ) : (
+                      <Text style={styles.noRecommendationText}>
+                        No recommendations available yet.
+                      </Text>
+                    )}
+                  </View>
+                </View>
+              </ScrollView>
             </View>
 
-            {cartItems.length === 0 ? (
-              <Text
-                style={styles.emptyCartText}
-              >
-                No items added yet.
-              </Text>
-            ) : (
-              <FlatList
-                data={cartItems}
-                keyExtractor={(cartItem) =>
-                  String(
-                    getItemId(cartItem)
-                  )
-                }
-                renderItem={renderCartItem}
-                horizontal={!useSideCart}
-                showsHorizontalScrollIndicator={
-                  false
-                }
-                showsVerticalScrollIndicator={
-                  false
-                }
-                contentContainerStyle={{
+            <View
+              style={[
+                styles.cartSidebar,
+                {
+                  width:
+                    responsive.useSideCart
+                      ? responsive.cartWidth
+                      : '100%',
+                  maxHeight:
+                    responsive.cartMaxHeight,
+                  paddingHorizontal:
+                    responsive.sidebarPaddingH,
+                  paddingTop:
+                    responsive.sidebarPaddingT,
                   paddingBottom:
-                    useSideCart
-                      ? 20
-                      : 8,
-                  gap:
-                    useSideCart
+                    responsive.bottomSafeExtra,
+                  borderLeftWidth:
+                    responsive.useSideCart
+                      ? 1
+                      : 0,
+                  borderTopWidth:
+                    responsive.useSideCart
                       ? 0
-                      : 12,
-                }}
-              />
-            )}
-
-            <View style={styles.cartFooter}>
-              <View style={styles.totalRow}>
-                <Text style={styles.totalLabel}>
-                  Total:
+                      : 1,
+                },
+              ]}
+            >
+              <View style={styles.cartHeader}>
+                <Text
+                  style={[
+                    styles.cartIcon,
+                    {
+                      fontSize:
+                        responsive.cartIcon,
+                    },
+                  ]}
+                >
+                  🛒
                 </Text>
 
-                <Text style={styles.totalValue}>
-                  ₱{formatMoney(cartTotal)}
+                <Text
+                  style={[
+                    styles.cartTitle,
+                    {
+                      fontSize:
+                        responsive.cartTitle,
+                    },
+                  ]}
+                >
+                  Your Order
                 </Text>
               </View>
 
-              {cartItems.some(isCustomItem) ? (
-                <Text style={styles.cartWarningText}>
-                  Chef Oppa Special requests require staff confirmation for final price and availability.
-                </Text>
-              ) : null}
-
-              <TouchableOpacity
-                style={[
-                  styles.checkoutButton,
-                  (cartItems.length === 0 ||
-                    !canOrder) &&
-                    styles.checkoutButtonDisabled,
-                ]}
-                disabled={
-                  cartItems.length === 0 ||
-                  !canOrder
-                }
-                onPress={handleCheckout}
-              >
+              {cartItems.length === 0 ? (
                 <Text
-                  style={
-                    styles.checkoutButtonText
-                  }
+                  style={[
+                    styles.emptyCartText,
+                    {
+                      fontSize:
+                        responsive.cartItemName,
+                    },
+                  ]}
                 >
-                  Confirm Order ({totalQuantity})
+                  No items added yet.
                 </Text>
-              </TouchableOpacity>
+              ) : (
+                <FlatList
+                  data={cartItems}
+                  keyExtractor={(cartItem) =>
+                    String(
+                      getItemId(cartItem)
+                    )
+                  }
+                  renderItem={renderCartItem}
+                  horizontal={
+                    !responsive.useSideCart
+                  }
+                  showsHorizontalScrollIndicator={
+                    false
+                  }
+                  showsVerticalScrollIndicator={
+                    false
+                  }
+                  contentContainerStyle={{
+                    paddingBottom:
+                      responsive.useSideCart
+                        ? 20
+                        : 8,
+                    gap:
+                      responsive.useSideCart
+                        ? 0
+                        : 12,
+                  }}
+                />
+              )}
+
+              <View style={styles.cartFooter}>
+                <View style={styles.totalRow}>
+                  <Text
+                    style={[
+                      styles.totalLabel,
+                      {
+                        fontSize:
+                          responsive.totalLabel,
+                      },
+                    ]}
+                  >
+                    Total:
+                  </Text>
+
+                  <Text
+                    style={[
+                      styles.totalValue,
+                      {
+                        fontSize:
+                          responsive.totalValue,
+                      },
+                    ]}
+                    numberOfLines={1}
+                    adjustsFontSizeToFit
+                  >
+                    ₱{formatMoney(cartTotal)}
+                  </Text>
+                </View>
+
+                {cartItems.some(isCustomItem) ? (
+                  <Text style={styles.cartWarningText}>
+                    Chef Oppa Special requests require staff confirmation for final price and availability.
+                  </Text>
+                ) : null}
+
+                <TouchableOpacity
+                  style={[
+                    styles.checkoutButton,
+                    {
+                      paddingVertical:
+                        responsive.checkoutPadding,
+                    },
+                    (cartItems.length === 0 ||
+                      !canOrder) &&
+                      styles.checkoutButtonDisabled,
+                  ]}
+                  disabled={
+                    cartItems.length === 0 ||
+                    !canOrder
+                  }
+                  onPress={handleCheckout}
+                >
+                  <Text
+                    style={[
+                      styles.checkoutButtonText,
+                      {
+                        fontSize:
+                          responsive.checkoutText,
+                      },
+                    ]}
+                    numberOfLines={1}
+                    adjustsFontSizeToFit
+                  >
+                    Confirm Order ({totalQuantity})
+                  </Text>
+                </TouchableOpacity>
+              </View>
             </View>
           </View>
         </View>
-      </View>
+      </SafeAreaView>
     </View>
   );
 }
@@ -1079,7 +1709,12 @@ const styles =
   StyleSheet.create({
     frame: {
       flex: 1,
-      backgroundColor: '#171717',
+      backgroundColor: '#b8b3b3',
+    },
+
+    safeArea: {
+      flex: 1,
+      backgroundColor: '#b8b3b3',
     },
 
     container: {
@@ -1088,29 +1723,18 @@ const styles =
     },
 
     topBar: {
-      minHeight: 70,
       backgroundColor: '#b8b3b3',
       flexDirection: 'row',
       justifyContent:
         'space-between',
       alignItems: 'center',
-      paddingHorizontal: 24,
       paddingVertical: 8,
-    },
-
-    topBarSmall: {
-      minHeight: 58,
-      paddingHorizontal: 16,
+      gap: 12,
     },
 
     topBarText: {
       color: '#fff',
-      fontWeight: '700',
-      fontSize: 28,
-    },
-
-    topBarTextSmall: {
-      fontSize: 22,
+      fontWeight: '800',
     },
 
     topIcons: {
@@ -1121,60 +1745,60 @@ const styles =
     tableText: {
       color: '#fff',
       fontWeight: '900',
-      fontSize: 22,
     },
 
-    tableTextSmall: {
-      fontSize: 17,
+    assignmentBanner: {
+      backgroundColor: '#fff4e8',
+      borderWidth: 1,
+      borderColor: '#f68c45',
+      borderRadius: 12,
+      paddingVertical: 12,
+      paddingHorizontal: 16,
+      marginHorizontal: 12,
+      marginTop: 10,
+      marginBottom: 4,
+    },
+
+    assignmentBannerText: {
+      color: '#8a4b12',
+      fontWeight: '800',
+      textAlign: 'center',
+      lineHeight: 22,
     },
 
     contentArea: {
       flex: 1,
-      flexDirection: 'row',
-    },
-
-    contentAreaStacked: {
-      flexDirection: 'column',
     },
 
     detailSection: {
       flex: 1,
-      justifyContent: 'center',
-      alignItems: 'center',
-      padding: 28,
     },
 
-    detailSectionStacked: {
-      padding: 14,
-      justifyContent: 'flex-start',
+    detailScroll: {
+      flex: 1,
+      width: '100%',
+    },
+
+    detailScrollContent: {
+      flexGrow: 1,
+      justifyContent: 'center',
+      alignItems: 'center',
     },
 
     detailCard: {
-      width: '86%',
-      minHeight: 650,
+      width: '100%',
       backgroundColor: '#fff',
-      borderRadius: 24,
       borderWidth: 1.5,
       borderColor: '#f0b287',
       alignItems: 'center',
       justifyContent: 'center',
-      padding: 28,
       shadowColor: '#000',
       shadowOpacity: 0.08,
       shadowRadius: 8,
       elevation: 4,
     },
 
-    detailCardStacked: {
-      width: '100%',
-      minHeight: 0,
-      padding: 18,
-    },
-
     imageCircle: {
-      width: 150,
-      height: 150,
-      borderRadius: 75,
       backgroundColor: '#ececec',
       justifyContent: 'center',
       alignItems: 'center',
@@ -1182,49 +1806,33 @@ const styles =
       marginBottom: 14,
     },
 
-    imageCircleSmall: {
-      width: 110,
-      height: 110,
-      borderRadius: 55,
-    },
-
     itemImage: {
       width: '100%',
       height: '100%',
     },
 
-    itemEmoji: {
-      fontSize: 68,
-    },
+    itemEmoji: {},
 
     itemName: {
-      fontSize: 38,
       fontWeight: '900',
       color: '#333',
       textAlign: 'center',
-    },
-
-    itemNameSmall: {
-      fontSize: 27,
+      width: '100%',
     },
 
     itemPrice: {
       color: '#f68c45',
       marginTop: 8,
-      fontSize: 30,
       fontWeight: '800',
       textAlign: 'center',
-    },
-
-    itemPriceSmall: {
-      fontSize: 24,
+      width: '100%',
     },
 
     itemCategory: {
       marginTop: 6,
-      fontSize: 17,
       fontWeight: '800',
       color: '#777',
+      textAlign: 'center',
     },
 
     flavorTagContainer: {
@@ -1246,7 +1854,6 @@ const styles =
 
     flavorTagText: {
       color: '#f68c45',
-      fontSize: 12,
       fontWeight: '900',
       textTransform: 'capitalize',
     },
@@ -1261,7 +1868,6 @@ const styles =
 
     availableText: {
       color: '#4CAF50',
-      fontSize: 19,
       fontWeight: '800',
       marginTop: 8,
       textAlign: 'center',
@@ -1269,7 +1875,6 @@ const styles =
 
     notAvailableText: {
       color: 'red',
-      fontSize: 19,
       fontWeight: '800',
       marginTop: 8,
       textAlign: 'center',
@@ -1277,27 +1882,16 @@ const styles =
 
     lowStockText: {
       color: '#e67e22',
-      fontSize: 19,
       fontWeight: '800',
       marginTop: 8,
       textAlign: 'center',
     },
 
-    stockTextSmall: {
-      fontSize: 16,
-    },
-
     description: {
       marginTop: 14,
-      fontSize: 18,
       color: '#666',
       textAlign: 'center',
-      lineHeight: 26,
-    },
-
-    descriptionSmall: {
-      fontSize: 15,
-      lineHeight: 22,
+      width: '100%',
     },
 
     specialRequestBox: {
@@ -1306,7 +1900,6 @@ const styles =
     },
 
     specialRequestLabel: {
-      fontSize: 17,
       fontWeight: '900',
       color: '#333',
       marginBottom: 8,
@@ -1315,14 +1908,12 @@ const styles =
 
     specialRequestInput: {
       width: '100%',
-      minHeight: 105,
       backgroundColor: '#fafafa',
       borderWidth: 1.5,
       borderColor: '#f0b287',
       borderRadius: 14,
       paddingHorizontal: 14,
       paddingVertical: 12,
-      fontSize: 16,
       color: '#333',
       fontWeight: '600',
       lineHeight: 22,
@@ -1331,8 +1922,6 @@ const styles =
     addToOrderButton: {
       marginTop: 20,
       backgroundColor: '#f68c45',
-      paddingVertical: 14,
-      paddingHorizontal: 44,
       borderRadius: 18,
     },
 
@@ -1342,13 +1931,8 @@ const styles =
 
     addToOrderText: {
       color: '#fff',
-      fontSize: 22,
       fontWeight: '900',
       textAlign: 'center',
-    },
-
-    addToOrderTextSmall: {
-      fontSize: 18,
     },
 
     recommendationSection: {
@@ -1357,20 +1941,13 @@ const styles =
     },
 
     recommendationTitle: {
-      fontSize: 22,
       fontWeight: '900',
       color: '#333',
       marginBottom: 12,
       textAlign: 'center',
     },
 
-    recommendationTitleSmall: {
-      fontSize: 18,
-    },
-
     recommendationCard: {
-      width: 285,
-      minHeight: 105,
       backgroundColor: '#fff7ef',
       borderWidth: 1,
       borderColor: '#f0b287',
@@ -1382,10 +1959,6 @@ const styles =
       alignItems: 'center',
       justifyContent:
         'space-between',
-    },
-
-    recommendationCardSmall: {
-      width: 245,
     },
 
     recommendationCardDisabled: {
@@ -1400,20 +1973,11 @@ const styles =
     },
 
     recommendationCircle: {
-      width: 64,
-      height: 64,
-      borderRadius: 32,
       backgroundColor: '#ffe1ca',
       justifyContent: 'center',
       alignItems: 'center',
       overflow: 'hidden',
       marginRight: 12,
-    },
-
-    recommendationCircleSmall: {
-      width: 54,
-      height: 54,
-      borderRadius: 27,
     },
 
     recommendationImage: {
@@ -1427,13 +1991,8 @@ const styles =
 
     recommendationName: {
       flex: 1,
-      fontSize: 16,
       fontWeight: '900',
       color: '#333',
-    },
-
-    recommendationNameSmall: {
-      fontSize: 14,
     },
 
     recommendationRight: {
@@ -1442,7 +2001,6 @@ const styles =
     },
 
     recommendationPrice: {
-      fontSize: 15,
       fontWeight: '900',
       color: '#f68c45',
       marginBottom: 8,
@@ -1474,19 +2032,8 @@ const styles =
 
     cartSidebar: {
       backgroundColor: '#fff',
-      borderLeftWidth: 1,
       borderLeftColor: '#ddd',
-      paddingHorizontal: 14,
-      paddingTop: 16,
-    },
-
-    cartSidebarStacked: {
-      width: '100%',
-      maxHeight: 235,
-      borderLeftWidth: 0,
-      borderTopWidth: 1,
       borderTopColor: '#ddd',
-      paddingTop: 10,
     },
 
     cartHeader: {
@@ -1496,18 +2043,15 @@ const styles =
     },
 
     cartIcon: {
-      fontSize: 24,
       marginRight: 8,
     },
 
     cartTitle: {
-      fontSize: 22,
       fontWeight: '800',
       color: '#222',
     },
 
     emptyCartText: {
-      fontSize: 16,
       color: '#777',
       marginTop: 10,
     },
@@ -1520,7 +2064,7 @@ const styles =
 
     cartItemStacked: {
       minWidth: 170,
-      maxWidth: 220,
+      maxWidth: 230,
     },
 
     cartItemTop: {
@@ -1536,13 +2080,11 @@ const styles =
     },
 
     cartItemName: {
-      fontSize: 15,
       fontWeight: '800',
       color: '#222',
     },
 
     cartItemPrice: {
-      fontSize: 14,
       fontWeight: '700',
       color: '#f68c45',
       marginTop: 4,
@@ -1550,7 +2092,6 @@ const styles =
 
     cartRequestText: {
       marginTop: 5,
-      fontSize: 13,
       color: '#666',
       fontWeight: '700',
       lineHeight: 18,
@@ -1586,7 +2127,6 @@ const styles =
     },
 
     removeText: {
-      fontSize: 24,
       fontWeight: '800',
       color: '#999',
     },
@@ -1598,9 +2138,6 @@ const styles =
     },
 
     qtyButton: {
-      width: 30,
-      height: 30,
-      borderRadius: 8,
       backgroundColor: '#f68c45',
       justifyContent: 'center',
       alignItems: 'center',
@@ -1613,11 +2150,9 @@ const styles =
     qtyButtonText: {
       color: '#fff',
       fontWeight: '800',
-      fontSize: 18,
     },
 
     qtyText: {
-      fontSize: 16,
       fontWeight: '800',
       marginHorizontal: 12,
     },
@@ -1635,24 +2170,24 @@ const styles =
         'space-between',
       alignItems: 'center',
       marginBottom: 12,
+      gap: 10,
     },
 
     totalLabel: {
-      fontSize: 18,
       fontWeight: '800',
       color: '#333',
     },
 
     totalValue: {
-      fontSize: 22,
       fontWeight: '900',
       color: '#f68c45',
+      flexShrink: 1,
+      textAlign: 'right',
     },
 
     checkoutButton: {
       backgroundColor: '#f68c45',
       borderRadius: 10,
-      paddingVertical: 14,
       alignItems: 'center',
     },
 
@@ -1662,12 +2197,18 @@ const styles =
 
     checkoutButtonText: {
       color: '#fff',
-      fontSize: 16,
       fontWeight: '800',
     },
 
+    emptyState: {
+      flex: 1,
+      backgroundColor: '#efefef',
+      justifyContent: 'center',
+      alignItems: 'center',
+      padding: 24,
+    },
+
     errorText: {
-      fontSize: 26,
       fontWeight: '800',
       color: '#333',
       textAlign: 'center',
@@ -1683,7 +2224,6 @@ const styles =
 
     backButtonText: {
       color: '#fff',
-      fontSize: 18,
       fontWeight: '800',
     },
   });
