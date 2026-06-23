@@ -22,6 +22,7 @@ import {
   pickInventoryFields,
   buildInventoryMap,
   enrichCartItem,
+  isCustomItem,
 } from '../utils/inventory';
 
 const CartContext = createContext();
@@ -45,8 +46,26 @@ const mergeAndClampCartItem = (
       getMaxOrderQuantity(cartItem),
   };
 
+  if (isCustomItem(merged)) {
+    return {
+      ...merged,
+      quantity: 1,
+      price: 0,
+      notes:
+        cartItem.notes ||
+        cartItem.special_request ||
+        '',
+      special_request:
+        cartItem.special_request ||
+        cartItem.notes ||
+        '',
+      inventory_type: 'custom',
+    };
+  }
+
   const max =
     getMaxOrderQuantity(merged);
+
   const quantity =
     Number(cartItem.quantity) || 0;
 
@@ -81,6 +100,7 @@ export const CartProvider = ({
 
   const cartItemsRef =
     useRef(cartItems);
+
   const inventoryRef =
     useRef(inventoryByItemId);
 
@@ -113,17 +133,21 @@ export const CartProvider = ({
             (cartItem) => {
               const id =
                 getItemId(cartItem);
+
               const menuInventory =
                 inventoryMap[id];
+
               const beforeQty =
                 Number(
                   cartItem.quantity
                 ) || 0;
+
               const updated =
                 mergeAndClampCartItem(
                   cartItem,
                   menuInventory
                 );
+
               const afterQty =
                 Number(
                   updated.quantity
@@ -187,7 +211,9 @@ export const CartProvider = ({
       inventoryRef.current =
         mergedMap;
 
-      setInventoryByItemId(mergedMap);
+      setInventoryByItemId(
+        mergedMap
+      );
 
       let clamped = false;
 
@@ -197,17 +223,21 @@ export const CartProvider = ({
             (cartItem) => {
               const id =
                 getItemId(cartItem);
+
               const menuInventory =
                 mergedMap[id];
+
               const beforeQty =
                 Number(
                   cartItem.quantity
                 ) || 0;
+
               const updated =
                 mergeAndClampCartItem(
                   cartItem,
                   menuInventory
                 );
+
               const afterQty =
                 Number(
                   updated.quantity
@@ -313,10 +343,13 @@ export const CartProvider = ({
   ) => {
     const liveItem =
       resolveLiveItem(item);
+
     const itemId =
       getItemId(liveItem);
+
     const addQty =
       Number(quantityToAdd) || 1;
+
     const inventoryFields =
       pickInventoryFields(
         liveItem
@@ -336,6 +369,9 @@ export const CartProvider = ({
       ...inventoryFields,
     };
 
+    const customItem =
+      isCustomItem(orderableItem);
+
     if (
       isOutOfStock(orderableItem) ||
       !isItemOrderable(orderableItem)
@@ -353,7 +389,10 @@ export const CartProvider = ({
         orderableItem
       );
 
-    if (max === null) {
+    if (
+      max === null &&
+      !customItem
+    ) {
       Alert.alert(
         'Inventory Error',
         'Unable to verify inventory for this item.'
@@ -361,6 +400,11 @@ export const CartProvider = ({
 
       return false;
     }
+
+    const requestText =
+      liveItem.special_request ||
+      liveItem.notes ||
+      '';
 
     let limitReached = false;
 
@@ -385,6 +429,7 @@ export const CartProvider = ({
           : orderableItem;
 
       if (
+        !customItem &&
         !canIncreaseQuantity(
           enrichedExisting,
           currentQty,
@@ -396,7 +441,9 @@ export const CartProvider = ({
       }
 
       const nextQty =
-        currentQty + addQty;
+        customItem
+          ? 1
+          : currentQty + addQty;
 
       let nextItems;
 
@@ -407,10 +454,23 @@ export const CartProvider = ({
             itemId
               ? {
                   ...cartItem,
+                  ...liveItem,
                   ...inventoryFields,
                   id: itemId,
                   menu_item_id: itemId,
                   quantity: nextQty,
+                  price: customItem
+                    ? 0
+                    : Number(liveItem.price) || 0,
+                  notes: customItem
+                    ? requestText
+                    : cartItem.notes,
+                  special_request: customItem
+                    ? requestText
+                    : cartItem.special_request,
+                  inventory_type: customItem
+                    ? 'custom'
+                    : liveItem.inventory_type,
                 }
               : cartItem
         );
@@ -422,7 +482,21 @@ export const CartProvider = ({
             ...inventoryFields,
             id: itemId,
             menu_item_id: itemId,
-            quantity: addQty,
+            quantity: customItem
+              ? 1
+              : addQty,
+            price: customItem
+              ? 0
+              : Number(liveItem.price) || 0,
+            notes: customItem
+              ? requestText
+              : liveItem.notes || '',
+            special_request: customItem
+              ? requestText
+              : liveItem.special_request || '',
+            inventory_type: customItem
+              ? 'custom'
+              : liveItem.inventory_type,
           },
         ];
       }
@@ -474,6 +548,10 @@ export const CartProvider = ({
         resolveLiveItem(
           existingItem
         );
+
+      if (isCustomItem(enrichedItem)) {
+        return prevItems;
+      }
 
       const currentQty =
         Number(
@@ -594,6 +672,26 @@ export const CartProvider = ({
           existingItem
         );
 
+      if (isCustomItem(enrichedItem)) {
+        const nextItems =
+          prevItems.map((item) =>
+            getItemId(item) ===
+            normalizedId
+              ? {
+                  ...enrichedItem,
+                  quantity: 1,
+                  price: 0,
+                  inventory_type: 'custom',
+                }
+              : item
+          );
+
+        cartItemsRef.current =
+          nextItems;
+
+        return nextItems;
+      }
+
       if (isOutOfStock(enrichedItem)) {
         limitReached = true;
         limitItem = enrichedItem;
@@ -666,6 +764,10 @@ export const CartProvider = ({
   const cartTotal =
     cartItems.reduce(
       (total, item) => {
+        if (isCustomItem(item)) {
+          return total;
+        }
+
         const price =
           Number(item.price);
 

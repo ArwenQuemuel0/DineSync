@@ -100,31 +100,76 @@ const parseNumeric = (value) => {
 };
 
 const normalizeMenuItem = (item) => {
-  // Trust API/web-provided inventory fields only.
+  const inventoryType =
+    item?.inventory_type
+      ? String(item.inventory_type)
+          .trim()
+          .toLowerCase()
+      : null;
+
   const maxOrderQuantity =
     parseNumeric(
       item?.max_order_quantity
-    ) ??
+    );
+
+  const remainingToday =
     parseNumeric(
-      item?.available_quantity
+      item?.remaining_today
     );
 
   return {
     ...item,
 
+    image:
+      item?.image_url ||
+      item?.image ||
+      null,
+
+    image_url:
+      item?.image_url ||
+      item?.image ||
+      null,
+
+    inventory_type:
+      inventoryType,
+
+    daily_limit:
+      parseNumeric(
+        item?.daily_limit
+      ),
+
+    sold_today:
+      parseNumeric(
+        item?.sold_today
+      ),
+
+    remaining_today:
+      remainingToday,
+
     max_order_quantity:
       maxOrderQuantity,
 
     available_quantity:
+      remainingToday ??
+      maxOrderQuantity ??
       parseNumeric(
         item?.available_quantity
-      ) ?? maxOrderQuantity,
+      ),
 
-    is_available: item?.is_available,
+    daily_inventory_label:
+      item?.daily_inventory_label
+        ? String(
+            item.daily_inventory_label
+          ).trim()
+        : null,
 
-    stock_label: item?.stock_label
-      ? String(item.stock_label).trim()
-      : null,
+    stock_label:
+      item?.stock_label
+        ? String(item.stock_label).trim()
+        : null,
+
+    is_available:
+      item?.is_available,
 
     flavor_tags: Array.isArray(item?.flavor_tags)
       ? item.flavor_tags
@@ -310,6 +355,23 @@ export const getTable = async (
   return response.data;
 };
 
+const isCustomCartItem = (item) => {
+  const category =
+    String(item?.category || '')
+      .trim()
+      .toLowerCase();
+
+  const inventoryType =
+    String(item?.inventory_type || '')
+      .trim()
+      .toLowerCase();
+
+  return (
+    category === 'chef oppa special' ||
+    inventoryType === 'custom'
+  );
+};
+
 // =========================
 // PLACE ORDER
 // =========================
@@ -325,25 +387,71 @@ export const placeOrder = async (
     );
   }
 
-  const payload = {
-    table_number: tableNumber,
-    payment_method: paymentMethod,
-    items: cartItems.map(
-      (item) => ({
+  const items =
+    cartItems.map((item) => {
+      const custom =
+        isCustomCartItem(item);
+
+      const specialRequest =
+        item.special_request ||
+        item.notes ||
+        '';
+
+      if (custom) {
+        return {
+          menu_item_id:
+            item.menu_item_id ||
+            item.id,
+
+          quantity: 1,
+
+          price: 0,
+
+          notes:
+            specialRequest,
+
+          special_request:
+            specialRequest,
+        };
+      }
+
+      return {
         menu_item_id:
           item.menu_item_id ||
           item.id,
 
         quantity:
-          item.quantity,
+          Number(item.quantity) || 1,
 
         price:
           Number(item.price) || 0,
-      })
-    ),
+      };
+    });
 
-    // Mobile can send this,
-    // but backend should still force pending.
+  const totalAmount =
+    cartItems.reduce(
+      (sum, item) => {
+        if (isCustomCartItem(item)) {
+          return sum;
+        }
+
+        const price =
+          Number(item.price) || 0;
+
+        const quantity =
+          Number(item.quantity) || 0;
+
+        return sum + price * quantity;
+      },
+      0
+    );
+
+  const payload = {
+    table_number: tableNumber,
+    items,
+    total_amount: totalAmount,
+    payment_method: paymentMethod,
+    payment_status: 'pending',
     status: 'pending',
   };
 

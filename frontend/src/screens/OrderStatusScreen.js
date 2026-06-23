@@ -232,6 +232,58 @@ export default function OrderStatusScreen({
     return 'Pay at Counter';
   };
 
+  const isCustomOrderItem = (
+    orderItem
+  ) => {
+    const category =
+      String(
+        orderItem?.category ||
+          orderItem?.menu_item?.category ||
+          ''
+      )
+        .trim()
+        .toLowerCase();
+
+    const inventoryType =
+      String(
+        orderItem?.inventory_type ||
+          orderItem?.menu_item?.inventory_type ||
+          ''
+      )
+        .trim()
+        .toLowerCase();
+
+    const name =
+      String(
+        orderItem?.name ||
+          orderItem?.menu_name ||
+          orderItem?.menu_item?.name ||
+          ''
+      )
+        .trim()
+        .toLowerCase();
+
+    return (
+      category === 'chef oppa special' ||
+      inventoryType === 'custom' ||
+      name.includes(
+        'custom chef oppa special'
+      )
+    );
+  };
+
+  const getRequestText = (
+    orderItem
+  ) => {
+    return (
+      orderItem?.special_request ||
+      orderItem?.notes ||
+      orderItem?.note ||
+      orderItem?.request ||
+      ''
+    );
+  };
+
   const getStatusStyle = (
     status
   ) => {
@@ -389,6 +441,10 @@ export default function OrderStatusScreen({
 
     return items.reduce(
       (sum, item) => {
+        if (isCustomOrderItem(item)) {
+          return sum;
+        }
+
         const price =
           Number(
             item.price ||
@@ -420,6 +476,11 @@ export default function OrderStatusScreen({
     const paymentMessage =
       getPaymentMessage(item);
 
+    const paymentMethod =
+      normalizePaymentMethod(
+        item.payment_method
+      );
+
     return (
       <View style={styles.orderCard}>
         <View style={styles.orderHeader}>
@@ -434,6 +495,14 @@ export default function OrderStatusScreen({
               {formatDateTime(
                 item.created_at
               )}
+            </Text>
+
+            <Text style={styles.tableNumberText}>
+              Table {item.table_number || finalTableNumber || '-'}
+            </Text>
+
+            <Text style={styles.paymentMethodText}>
+              Payment Method: {paymentMethod}
             </Text>
           </View>
 
@@ -501,18 +570,32 @@ export default function OrderStatusScreen({
                   ?.name ||
                 'Menu Item';
 
-              const quantity =
-                Number(
-                  orderItem.quantity ||
-                    0
+              const customItem =
+                isCustomOrderItem(
+                  orderItem
                 );
 
+              const quantity =
+                customItem
+                  ? 1
+                  : Number(
+                      orderItem.quantity ||
+                        0
+                    );
+
               const price =
-                Number(
-                  orderItem.price ||
-                    orderItem.menu_item
-                      ?.price ||
-                    0
+                customItem
+                  ? 0
+                  : Number(
+                      orderItem.price ||
+                        orderItem.menu_item
+                          ?.price ||
+                        0
+                    );
+
+              const requestText =
+                getRequestText(
+                  orderItem
                 );
 
               return (
@@ -537,6 +620,20 @@ export default function OrderStatusScreen({
                     >
                       Qty: {quantity}
                     </Text>
+
+                    {customItem ? (
+                      <>
+                        <Text style={styles.customPriceText}>
+                          Price: To be confirmed
+                        </Text>
+
+                        {requestText ? (
+                          <Text style={styles.requestText}>
+                            Request: {requestText}
+                          </Text>
+                        ) : null}
+                      </>
+                    ) : null}
                   </View>
 
                   <Text
@@ -544,11 +641,12 @@ export default function OrderStatusScreen({
                       styles.itemPrice
                     }
                   >
-                    ₱
-                    {formatMoney(
-                      price *
-                        quantity
-                    )}
+                    {customItem
+                      ? 'To be confirmed'
+                      : `₱${formatMoney(
+                          price *
+                            quantity
+                        )}`}
                   </Text>
                 </View>
               );
@@ -802,6 +900,20 @@ const styles =
       color: '#888',
     },
 
+    tableNumberText: {
+      marginTop: 5,
+      fontSize: 15,
+      fontWeight: '800',
+      color: '#666',
+    },
+
+    paymentMethodText: {
+      marginTop: 3,
+      fontSize: 15,
+      fontWeight: '800',
+      color: '#666',
+    },
+
     statusBadge: {
       paddingVertical: 8,
       paddingHorizontal: 18,
@@ -891,10 +1003,11 @@ const styles =
       flexDirection: 'row',
       justifyContent:
         'space-between',
-      alignItems: 'center',
+      alignItems: 'flex-start',
       paddingVertical: 10,
       borderBottomWidth: 1,
       borderBottomColor: '#f2f2f2',
+      gap: 12,
     },
 
     itemLeft: {
@@ -915,10 +1028,27 @@ const styles =
       marginTop: 3,
     },
 
+    customPriceText: {
+      fontSize: 14,
+      fontWeight: '900',
+      color: '#f68c45',
+      marginTop: 4,
+    },
+
+    requestText: {
+      marginTop: 5,
+      fontSize: 14,
+      fontWeight: '700',
+      color: '#666',
+      lineHeight: 20,
+    },
+
     itemPrice: {
       fontSize: 18,
       fontWeight: '900',
       color: '#f68c45',
+      textAlign: 'right',
+      maxWidth: 160,
     },
 
     totalRow: {

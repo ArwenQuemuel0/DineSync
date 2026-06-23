@@ -38,6 +38,7 @@ import {
   canIncreaseQuantity,
   getAvailabilityDisplayText,
   shouldShowLowStockWarning,
+  isCustomItem,
 } from '../utils/inventory';
 
 export default function MenuScreen({
@@ -127,7 +128,6 @@ export default function MenuScreen({
   } = useAuth();
 
   const {
-    addToCart,
     cartItems,
     updateQuantity,
     incrementQuantity,
@@ -216,11 +216,11 @@ export default function MenuScreen({
 
       if (response.success) {
         setMenuItems(
-          response.data
+          response.data || []
         );
 
         syncMenuInventory(
-          response.data
+          response.data || []
         );
       } else {
         Alert.alert(
@@ -284,9 +284,11 @@ export default function MenuScreen({
 
   const getItemImage = (item) => {
     const image =
-      item?.image
-        ? String(item.image).trim()
-        : '';
+      item?.image_url
+        ? String(item.image_url).trim()
+        : item?.image
+          ? String(item.image).trim()
+          : '';
 
     return image;
   };
@@ -300,22 +302,30 @@ export default function MenuScreen({
     );
   };
 
-  const handleAddToCart = (item) => {
+  const handleOpenItem = (item) => {
     if (!isItemOrderable(item)) {
       Alert.alert(
-        'Out of Stock',
-        'This item is currently out of stock.'
+        'Unavailable',
+        getAvailabilityDisplayText(item) ||
+          'This item is currently unavailable.'
       );
 
       return;
     }
 
-    addToCart(item);
+    navigation.navigate(
+      'ItemDetail',
+      { item }
+    );
   };
 
   const handleIncreaseQuantity = (
     item
   ) => {
+    if (isCustomItem(item)) {
+      return;
+    }
+
     incrementQuantity(
       getItemId(item)
     );
@@ -427,24 +437,24 @@ export default function MenuScreen({
       .sort((a, b) => {
         const aPopular =
           isBestSeller(a);
-      
+
         const bPopular =
           isBestSeller(b);
-      
+
         const aAvailable =
           isItemOrderable(a);
-      
+
         const bAvailable =
           isItemOrderable(b);
-      
+
         if (aPopular !== bPopular) {
           return Number(bPopular) - Number(aPopular);
         }
-      
+
         if (aAvailable !== bAvailable) {
           return Number(bAvailable) - Number(aAvailable);
         }
-      
+
         return String(a.name || '').localeCompare(
           String(b.name || '')
         );
@@ -458,11 +468,17 @@ export default function MenuScreen({
       0
     );
 
+  const hasCustomRequest =
+    cartItems.some(isCustomItem);
+
   const renderMenuItem = ({
     item,
   }) => {
     const imageUri =
       getItemImage(item);
+
+    const customItem =
+      isCustomItem(item);
 
     const isAvailable =
       isItemOrderable(item);
@@ -486,13 +502,12 @@ export default function MenuScreen({
           },
           !isAvailable &&
             styles.unavailableItem,
+          customItem &&
+            styles.customMenuItem,
         ]}
         disabled={!isAvailable}
         onPress={() =>
-          navigation.navigate(
-            'ItemDetail',
-            { item }
-          )
+          handleOpenItem(item)
         }
       >
         {bestSeller ? (
@@ -507,6 +522,14 @@ export default function MenuScreen({
               }
             >
               🔥 Popular
+            </Text>
+          </View>
+        ) : null}
+
+        {customItem ? (
+          <View style={styles.customBadge}>
+            <Text style={styles.customBadgeText}>
+              Chef Oppa Special
             </Text>
           </View>
         ) : null}
@@ -549,12 +572,27 @@ export default function MenuScreen({
 
           <Text
             style={[
+              styles.itemCategoryText,
+              isSmallScreen &&
+                styles.itemCategoryTextSmall,
+            ]}
+            numberOfLines={1}
+          >
+            {item.category || 'Uncategorized'}
+          </Text>
+
+          <Text
+            style={[
               styles.itemPrice,
               isSmallScreen &&
                 styles.itemPriceSmall,
+              customItem &&
+                styles.customPrice,
             ]}
           >
-            ₱{formatMoney(item.price)}
+            {customItem
+              ? 'To be confirmed'
+              : `₱${formatMoney(item.price)}`}
           </Text>
 
           <Text
@@ -585,12 +623,17 @@ export default function MenuScreen({
     const enrichedItem =
       getEnrichedItem(item);
 
+    const customCartItem =
+      isCustomItem(enrichedItem);
+
     const atMaxQuantity =
-      !canIncreaseQuantity(
-        enrichedItem,
-        item.quantity,
-        1
-      );
+      customCartItem
+        ? true
+        : !canIncreaseQuantity(
+            enrichedItem,
+            item.quantity,
+            1
+          );
 
     return (
       <View style={styles.cartItem}>
@@ -608,8 +651,17 @@ export default function MenuScreen({
             <Text
               style={styles.cartItemPrice}
             >
-              ₱{formatMoney(item.price)}
+              {customCartItem
+                ? 'To be confirmed'
+                : `₱${formatMoney(item.price)}`}
             </Text>
+
+            {customCartItem &&
+            item.special_request ? (
+              <Text style={styles.cartRequestText}>
+                Request: {item.special_request}
+              </Text>
+            ) : null}
           </View>
 
           <TouchableOpacity
@@ -625,57 +677,65 @@ export default function MenuScreen({
           </TouchableOpacity>
         </View>
 
-        <View style={styles.qtyRow}>
-          <TouchableOpacity
-            style={styles.qtyButton}
-            onPress={() =>
-              handleDecreaseQuantity(
-                item
-              )
-            }
-          >
-            <Text
-              style={styles.qtyButtonText}
-            >
-              -
+        {customCartItem ? (
+          <View style={styles.customQtyBox}>
+            <Text style={styles.customQtyText}>
+              Qty: 1
             </Text>
-          </TouchableOpacity>
-
-          <Text style={styles.qtyText}>
-            {item.quantity}
-          </Text>
-
-          <TouchableOpacity
-            style={[
-              styles.qtyButton,
-              (atMaxQuantity ||
-                isOutOfStock(enrichedItem)) &&
-                styles.qtyButtonDisabled,
-            ]}
-            disabled={
-              atMaxQuantity ||
-              isOutOfStock(enrichedItem)
-            }
-            onPress={() => {
-              if (
-                !atMaxQuantity &&
-                !isOutOfStock(
-                  enrichedItem
-                )
-              ) {
-                handleIncreaseQuantity(
+          </View>
+        ) : (
+          <View style={styles.qtyRow}>
+            <TouchableOpacity
+              style={styles.qtyButton}
+              onPress={() =>
+                handleDecreaseQuantity(
                   item
-                );
+                )
               }
-            }}
-          >
-            <Text
-              style={styles.qtyButtonText}
             >
-              +
+              <Text
+                style={styles.qtyButtonText}
+              >
+                -
+              </Text>
+            </TouchableOpacity>
+
+            <Text style={styles.qtyText}>
+              {item.quantity}
             </Text>
-          </TouchableOpacity>
-        </View>
+
+            <TouchableOpacity
+              style={[
+                styles.qtyButton,
+                (atMaxQuantity ||
+                  isOutOfStock(enrichedItem)) &&
+                  styles.qtyButtonDisabled,
+              ]}
+              disabled={
+                atMaxQuantity ||
+                isOutOfStock(enrichedItem)
+              }
+              onPress={() => {
+                if (
+                  !atMaxQuantity &&
+                  !isOutOfStock(
+                    enrichedItem
+                  )
+                ) {
+                  handleIncreaseQuantity(
+                    item
+                  );
+                }
+              }}
+            >
+              <Text
+                style={styles.qtyButtonText}
+              >
+                +
+              </Text>
+            </TouchableOpacity>
+          </View>
+        )}
       </View>
     );
   };
@@ -980,6 +1040,12 @@ export default function MenuScreen({
                   ₱{formatMoney(cartTotal)}
                 </Text>
               </View>
+
+              {hasCustomRequest ? (
+                <Text style={styles.cartWarningText}>
+                  Chef Oppa Special requests require staff confirmation for final price and availability.
+                </Text>
+              ) : null}
 
               <TouchableOpacity
                 style={[
@@ -1300,6 +1366,11 @@ const styles =
       elevation: 3,
     },
 
+    customMenuItem: {
+      borderColor: '#f68c45',
+      backgroundColor: '#fffaf5',
+    },
+
     unavailableItem: {
       opacity: 0.45,
     },
@@ -1320,6 +1391,23 @@ const styles =
     bestSellerBadgeText: {
       color: '#f68c45',
       fontSize: 12,
+      fontWeight: '900',
+    },
+
+    customBadge: {
+      position: 'absolute',
+      top: 10,
+      right: 10,
+      backgroundColor: '#f68c45',
+      borderRadius: 999,
+      paddingVertical: 5,
+      paddingHorizontal: 10,
+      zIndex: 10,
+    },
+
+    customBadgeText: {
+      color: '#fff',
+      fontSize: 11,
       fontWeight: '900',
     },
 
@@ -1371,11 +1459,29 @@ const styles =
       fontSize: 17,
     },
 
+    itemCategoryText: {
+      marginTop: 4,
+      color: '#999',
+      fontSize: 12,
+      fontWeight: '800',
+      textAlign: 'center',
+    },
+
+    itemCategoryTextSmall: {
+      fontSize: 11,
+    },
+
     itemPrice: {
       color: '#777',
       marginTop: 6,
       fontSize: 18,
       fontWeight: '700',
+      textAlign: 'center',
+    },
+
+    customPrice: {
+      color: '#f68c45',
+      fontWeight: '900',
     },
 
     itemPriceSmall: {
@@ -1387,6 +1493,7 @@ const styles =
       fontSize: 15,
       fontWeight: '700',
       marginTop: 8,
+      textAlign: 'center',
     },
 
     notAvailableText: {
@@ -1394,6 +1501,7 @@ const styles =
       fontSize: 15,
       fontWeight: '700',
       marginTop: 8,
+      textAlign: 'center',
     },
 
     lowStockText: {
@@ -1401,6 +1509,7 @@ const styles =
       fontSize: 15,
       fontWeight: '700',
       marginTop: 8,
+      textAlign: 'center',
     },
 
     stockTextSmall: {
@@ -1459,7 +1568,7 @@ const styles =
       borderBottomWidth: 1,
       borderBottomColor: '#eeeeee',
       minWidth: 170,
-      maxWidth: 220,
+      maxWidth: 230,
     },
 
     cartItemTop: {
@@ -1485,6 +1594,43 @@ const styles =
       fontWeight: '700',
       color: '#f68c45',
       marginTop: 4,
+    },
+
+    cartRequestText: {
+      marginTop: 5,
+      fontSize: 13,
+      color: '#666',
+      fontWeight: '700',
+      lineHeight: 18,
+    },
+
+    customQtyBox: {
+      marginTop: 10,
+      alignSelf: 'flex-start',
+      backgroundColor: '#fff4eb',
+      borderWidth: 1,
+      borderColor: '#f0b287',
+      borderRadius: 10,
+      paddingVertical: 6,
+      paddingHorizontal: 10,
+    },
+
+    customQtyText: {
+      fontSize: 13,
+      color: '#f68c45',
+      fontWeight: '900',
+    },
+
+    cartWarningText: {
+      backgroundColor: '#fff4eb',
+      color: '#7a3f09',
+      borderRadius: 10,
+      paddingVertical: 8,
+      paddingHorizontal: 10,
+      fontSize: 13,
+      fontWeight: '800',
+      lineHeight: 18,
+      marginBottom: 10,
     },
 
     removeText: {

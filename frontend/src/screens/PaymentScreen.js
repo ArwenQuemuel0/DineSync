@@ -1,4 +1,5 @@
 import React, {
+  useMemo,
   useState,
 } from 'react';
 
@@ -71,11 +72,47 @@ export default function PaymentScreen({
   const [
     selectedMethod,
     setSelectedMethod,
-  ] = useState('Cash');
+  ] = useState('Pay at Counter');
 
-  const handlePayment = async (
+  const hasCustomRequest =
+    useMemo(() => {
+      return cartItems.some((item) => {
+        const category =
+          String(item?.category || '')
+            .trim()
+            .toLowerCase();
+
+        const inventoryType =
+          String(item?.inventory_type || '')
+            .trim()
+            .toLowerCase();
+
+        return (
+          category === 'chef oppa special' ||
+          inventoryType === 'custom'
+        );
+      });
+    }, [cartItems]);
+
+  const handleSelectMethod = (
     method
   ) => {
+    if (
+      method === 'QR PH' &&
+      hasCustomRequest
+    ) {
+      Alert.alert(
+        'QR PH Not Available',
+        'Chef Oppa Special requests must be confirmed by staff. QR PH payment is not available for custom requests.'
+      );
+
+      return;
+    }
+
+    setSelectedMethod(method);
+  };
+
+  const handlePayment = async () => {
     if (
       !cartItems ||
       cartItems.length === 0
@@ -94,6 +131,18 @@ export default function PaymentScreen({
       Alert.alert(
         'Table Error',
         'No table number found. Please login again using the assigned table account.'
+      );
+
+      return;
+    }
+
+    if (
+      selectedMethod === 'QR PH' &&
+      hasCustomRequest
+    ) {
+      Alert.alert(
+        'QR PH Not Available',
+        'Chef Oppa Special requests must be confirmed by staff. QR PH payment is not available for custom requests.'
       );
 
       return;
@@ -127,17 +176,11 @@ export default function PaymentScreen({
         return;
       }
 
-      // =========================
-      // CREATE ORDER FIRST
-      // Backend creates Xendit invoice.
-      // Mobile only receives invoice URL.
-      // =========================
-
       const orderResponse =
         await placeOrder(
           cartItems,
           finalTableNumber,
-          method
+          selectedMethod
         );
 
       if (
@@ -158,7 +201,9 @@ export default function PaymentScreen({
         orderResponse.data.id;
 
       const invoiceUrl =
+        orderResponse.invoice_url ||
         orderResponse.xendit_invoice_url ||
+        orderResponse.data.invoice_url ||
         orderResponse.data.xendit_invoice_url;
 
       if (!orderId) {
@@ -171,22 +216,16 @@ export default function PaymentScreen({
       }
 
       clearCart();
-
       setActiveOrderId(orderId);
 
-      // =========================
-      // QR PH / XENDIT PAYMENT
-      // Open invoice inside WebView.
-      // =========================
-
-      if (method === 'QR PH') {
+      if (selectedMethod === 'QR PH') {
         if (!invoiceUrl) {
           Alert.alert(
             'Payment Error',
             'No Xendit invoice URL was returned. Please contact restaurant staff.'
           );
 
-          navigation.navigate(
+          navigation.replace(
             'OrderStatus',
             { orderId }
           );
@@ -205,12 +244,6 @@ export default function PaymentScreen({
         return;
       }
 
-      // =========================
-      // CASH PAYMENT
-      // Order remains pending.
-      // Staff/KDS will handle order flow.
-      // =========================
-
       navigation.replace(
         'OrderStatus',
         { orderId }
@@ -224,7 +257,7 @@ export default function PaymentScreen({
       const errorMessage =
         extractApiErrorMessage(
           error,
-          'Payment failed. Please try again.'
+          'Order failed. Please try again.'
         );
 
       const statusCode =
@@ -244,7 +277,7 @@ export default function PaymentScreen({
           ? 'Table Not Assigned'
           : isInventoryError
             ? 'Limited Stock'
-            : 'Payment Failed',
+            : 'Order Failed',
         errorMessage
       );
     } finally {
@@ -252,19 +285,48 @@ export default function PaymentScreen({
     }
   };
 
+  const renderMethod = ({
+    method,
+    icon,
+    disabled = false,
+  }) => {
+    const active =
+      selectedMethod === method;
+
+    return (
+      <TouchableOpacity
+        style={[
+          styles.methodCard,
+          active &&
+            styles.methodCardActive,
+          disabled &&
+            styles.methodCardDisabled,
+        ]}
+        disabled={disabled}
+        onPress={() =>
+          handleSelectMethod(method)
+        }
+      >
+        <Text style={styles.methodIcon}>
+          {icon}
+        </Text>
+
+        <Text style={styles.methodText}>
+          {method}
+        </Text>
+      </TouchableOpacity>
+    );
+  };
+
   if (loading) {
     return (
-      <View
-        style={styles.loadingContainer}
-      >
+      <View style={styles.loadingContainer}>
         <ActivityIndicator
           size="large"
-          color="#FF6347"
+          color="#f68c45"
         />
 
-        <Text
-          style={styles.loadingText}
-        >
+        <Text style={styles.loadingText}>
           Processing Order...
         </Text>
       </View>
@@ -301,61 +363,33 @@ export default function PaymentScreen({
         </Text>
 
         <Text style={styles.subHeader}>
-          Payment Methods
+          Select Payment Method
         </Text>
 
+        {hasCustomRequest ? (
+          <View style={styles.warningBox}>
+            <Text style={styles.warningText}>
+              Chef Oppa Special requests must be confirmed by staff. QR PH payment is not available for custom requests.
+            </Text>
+          </View>
+        ) : null}
+
         <View style={styles.methodRow}>
-          <TouchableOpacity
-            style={[
-              styles.methodCard,
-              selectedMethod ===
-                'Cash' &&
-                styles.methodCardActive,
-            ]}
-            onPress={() =>
-              setSelectedMethod(
-                'Cash'
-              )
-            }
-          >
-            <Text
-              style={styles.methodIcon}
-            >
-              💵
-            </Text>
+          {renderMethod({
+            method: 'Pay at Counter',
+            icon: '💵',
+          })}
 
-            <Text
-              style={styles.methodText}
-            >
-              Cash
-            </Text>
-          </TouchableOpacity>
+          {renderMethod({
+            method: 'Pay Later',
+            icon: '🧾',
+          })}
 
-          <TouchableOpacity
-            style={[
-              styles.methodCard,
-              selectedMethod ===
-                'QR PH' &&
-                styles.methodCardActive,
-            ]}
-            onPress={() =>
-              setSelectedMethod(
-                'QR PH'
-              )
-            }
-          >
-            <Text
-              style={styles.methodIcon}
-            >
-              📱
-            </Text>
-
-            <Text
-              style={styles.methodText}
-            >
-              QR PH
-            </Text>
-          </TouchableOpacity>
+          {renderMethod({
+            method: 'QR PH',
+            icon: '📱',
+            disabled: hasCustomRequest,
+          })}
         </View>
 
         <View style={styles.footer}>
@@ -366,19 +400,17 @@ export default function PaymentScreen({
 
           <TouchableOpacity
             style={styles.payNowBtn}
-            onPress={() =>
-              handlePayment(
-                selectedMethod
-              )
-            }
+            onPress={handlePayment}
           >
-            <Text
-              style={styles.payNowText}
-            >
-              Pay Now
+            <Text style={styles.payNowText}>
+              Confirm Order
             </Text>
           </TouchableOpacity>
         </View>
+
+        <Text style={styles.disclaimer}>
+          Once confirmed, the order cannot be cancelled or changed.
+        </Text>
       </View>
     </View>
   );
@@ -388,21 +420,18 @@ const styles =
   StyleSheet.create({
     frame: {
       flex: 1,
-      backgroundColor:
-        '#171717',
+      backgroundColor: '#171717',
     },
 
     container: {
       flex: 1,
-      backgroundColor:
-        '#efefef',
+      backgroundColor: '#efefef',
       padding: 32,
     },
 
     topRow: {
       flexDirection: 'row',
-      justifyContent:
-        'space-between',
+      justifyContent: 'space-between',
       alignItems: 'center',
     },
 
@@ -427,13 +456,13 @@ const styles =
       flex: 1,
       justifyContent: 'center',
       alignItems: 'center',
-      backgroundColor:
-        '#efefef',
+      backgroundColor: '#efefef',
     },
 
     loadingText: {
       marginTop: 10,
       fontSize: 20,
+      fontWeight: '700',
     },
 
     header: {
@@ -448,75 +477,100 @@ const styles =
       fontSize: 34,
       textAlign: 'center',
       marginTop: 8,
-      marginBottom: 34,
+      marginBottom: 22,
       fontWeight: '700',
       color: '#444',
+    },
+
+    warningBox: {
+      alignSelf: 'center',
+      width: '86%',
+      maxWidth: 980,
+      backgroundColor: '#fff3e8',
+      borderWidth: 1,
+      borderColor: '#f68c45',
+      borderRadius: 16,
+      paddingVertical: 14,
+      paddingHorizontal: 18,
+      marginBottom: 22,
+    },
+
+    warningText: {
+      fontSize: 18,
+      fontWeight: '800',
+      color: '#7a3f09',
+      textAlign: 'center',
+      lineHeight: 25,
     },
 
     methodRow: {
       flexDirection: 'row',
       justifyContent: 'center',
+      alignItems: 'center',
       marginTop: 10,
+      flexWrap: 'wrap',
+      gap: 20,
     },
 
     methodCard: {
       borderWidth: 1.5,
       borderColor: '#f0b287',
       borderRadius: 22,
-      width: 300,
-      height: 300,
-      backgroundColor:
-        '#f8f8f8',
+      width: 260,
+      height: 245,
+      backgroundColor: '#f8f8f8',
       justifyContent: 'center',
       alignItems: 'center',
-      marginHorizontal: 20,
+      marginHorizontal: 8,
     },
 
     methodCardActive: {
-      backgroundColor:
-        '#fff3e8',
+      backgroundColor: '#fff3e8',
       borderColor: '#f68c45',
       borderWidth: 2,
     },
 
+    methodCardDisabled: {
+      opacity: 0.4,
+      backgroundColor: '#dddddd',
+    },
+
     methodIcon: {
-      fontSize: 100,
+      fontSize: 82,
       marginBottom: 18,
     },
 
     methodText: {
-      fontSize: 42,
+      fontSize: 30,
       color: '#373737',
-      fontWeight: '700',
+      fontWeight: '800',
+      textAlign: 'center',
     },
 
     footer: {
       alignSelf: 'center',
       width: '82%',
       maxWidth: 920,
-      marginTop: 42,
+      marginTop: 38,
       borderWidth: 1,
       borderColor: '#d0d0d0',
       paddingVertical: 24,
       paddingHorizontal: 32,
       flexDirection: 'row',
-      justifyContent:
-        'space-between',
+      justifyContent: 'space-between',
       alignItems: 'center',
       borderRadius: 18,
-      backgroundColor:
-        '#fafafa',
+      backgroundColor: '#fafafa',
     },
 
     totalText: {
       fontWeight: '800',
-      fontSize: 42,
+      fontSize: 38,
       color: '#333',
     },
 
     payNowBtn: {
-      backgroundColor:
-        '#f68c45',
+      backgroundColor: '#f68c45',
       paddingVertical: 18,
       paddingHorizontal: 40,
       borderRadius: 20,
@@ -524,7 +578,15 @@ const styles =
 
     payNowText: {
       color: '#fff',
-      fontSize: 26,
+      fontSize: 24,
       fontWeight: '800',
+    },
+
+    disclaimer: {
+      marginTop: 18,
+      textAlign: 'center',
+      fontSize: 17,
+      fontWeight: '800',
+      color: '#666',
     },
   });

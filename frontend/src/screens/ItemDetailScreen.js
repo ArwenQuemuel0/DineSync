@@ -13,6 +13,7 @@ import {
   FlatList,
   ActivityIndicator,
   useWindowDimensions,
+  TextInput,
 } from 'react-native';
 
 import {
@@ -36,6 +37,7 @@ import {
   canIncreaseQuantity,
   getAvailabilityDisplayText,
   shouldShowLowStockWarning,
+  isCustomItem,
 } from '../utils/inventory';
 
 export default function ItemDetailScreen({
@@ -64,6 +66,11 @@ export default function ItemDetailScreen({
 
   const [liveItem, setLiveItem] =
     useState(routeItem);
+
+  const [
+    specialRequest,
+    setSpecialRequest,
+  ] = useState('');
 
   const { tableNumber } = useAuth();
 
@@ -235,10 +242,10 @@ export default function ItemDetailScreen({
 
   const getItemImage = (data) => {
     const image =
-      data?.image
-        ? String(data.image).trim()
-        : data?.image_url
-          ? String(data.image_url).trim()
+      data?.image_url
+        ? String(data.image_url).trim()
+        : data?.image
+          ? String(data.image).trim()
           : '';
 
     return image;
@@ -283,6 +290,9 @@ export default function ItemDetailScreen({
   const imageUri =
     getItemImage(item);
 
+  const customItem =
+    isCustomItem(item);
+
   const isAvailable =
     isItemOrderable(item);
 
@@ -309,6 +319,33 @@ export default function ItemDetailScreen({
         'Out of Stock',
         'This item is currently out of stock.'
       );
+
+      return;
+    }
+
+    if (customItem) {
+      const requestText =
+        specialRequest.trim();
+
+      if (!requestText) {
+        Alert.alert(
+          'Chef Oppa Special Request',
+          'Please describe your Chef Oppa Special request before adding it to cart.'
+        );
+
+        return;
+      }
+
+      addToCart({
+        ...item,
+        quantity: 1,
+        price: 0,
+        notes: requestText,
+        special_request: requestText,
+        inventory_type: 'custom',
+      });
+
+      setSpecialRequest('');
 
       return;
     }
@@ -347,6 +384,10 @@ export default function ItemDetailScreen({
   const handleIncreaseQuantity = (
     cartItem
   ) => {
+    if (isCustomItem(cartItem)) {
+      return;
+    }
+
     incrementQuantity(
       getItemId(cartItem)
     );
@@ -444,6 +485,9 @@ export default function ItemDetailScreen({
     const recommendedAvailable =
       isItemOrderable(recommendedItem);
 
+    const recommendedCustom =
+      isCustomItem(recommendedItem);
+
     return (
       <View
         style={[
@@ -499,7 +543,9 @@ export default function ItemDetailScreen({
 
         <View style={styles.recommendationRight}>
           <Text style={styles.recommendationPrice}>
-            ₱{formatMoney(recommendedItem.price)}
+            {recommendedCustom
+              ? 'To be confirmed'
+              : `₱${formatMoney(recommendedItem.price)}`}
           </Text>
 
           <TouchableOpacity
@@ -510,13 +556,15 @@ export default function ItemDetailScreen({
             ]}
             disabled={!recommendedAvailable}
             onPress={() =>
-              handleAddRecommendedItem(
-                recommendedItem
-              )
+              recommendedCustom
+                ? handleOpenRecommendedItem(recommendedItem)
+                : handleAddRecommendedItem(recommendedItem)
             }
           >
             <Text style={styles.recommendationAddText}>
-              Add
+              {recommendedCustom
+                ? 'Request'
+                : 'Add'}
             </Text>
           </TouchableOpacity>
         </View>
@@ -530,12 +578,17 @@ export default function ItemDetailScreen({
     const enrichedItem =
       getEnrichedItem(cartItem);
 
+    const customCartItem =
+      isCustomItem(enrichedItem);
+
     const atMaxQuantity =
-      !canIncreaseQuantity(
-        enrichedItem,
-        cartItem.quantity,
-        1
-      );
+      customCartItem
+        ? true
+        : !canIncreaseQuantity(
+            enrichedItem,
+            cartItem.quantity,
+            1
+          );
 
     return (
       <View
@@ -559,11 +612,17 @@ export default function ItemDetailScreen({
             <Text
               style={styles.cartItemPrice}
             >
-              ₱
-              {formatMoney(
-                cartItem.price
-              )}
+              {customCartItem
+                ? 'To be confirmed'
+                : `₱${formatMoney(cartItem.price)}`}
             </Text>
+
+            {customCartItem &&
+            cartItem.special_request ? (
+              <Text style={styles.cartRequestText}>
+                Request: {cartItem.special_request}
+              </Text>
+            ) : null}
           </View>
 
           <TouchableOpacity
@@ -579,57 +638,65 @@ export default function ItemDetailScreen({
           </TouchableOpacity>
         </View>
 
-        <View style={styles.qtyRow}>
-          <TouchableOpacity
-            style={styles.qtyButton}
-            onPress={() =>
-              handleDecreaseQuantity(
-                cartItem
-              )
-            }
-          >
-            <Text
-              style={styles.qtyButtonText}
-            >
-              -
+        {customCartItem ? (
+          <View style={styles.customQtyBox}>
+            <Text style={styles.customQtyText}>
+              Qty: 1
             </Text>
-          </TouchableOpacity>
-
-          <Text style={styles.qtyText}>
-            {cartItem.quantity}
-          </Text>
-
-          <TouchableOpacity
-            style={[
-              styles.qtyButton,
-              (atMaxQuantity ||
-                isOutOfStock(enrichedItem)) &&
-                styles.qtyButtonDisabled,
-            ]}
-            disabled={
-              atMaxQuantity ||
-              isOutOfStock(enrichedItem)
-            }
-            onPress={() => {
-              if (
-                !atMaxQuantity &&
-                !isOutOfStock(
-                  enrichedItem
-                )
-              ) {
-                handleIncreaseQuantity(
+          </View>
+        ) : (
+          <View style={styles.qtyRow}>
+            <TouchableOpacity
+              style={styles.qtyButton}
+              onPress={() =>
+                handleDecreaseQuantity(
                   cartItem
-                );
+                )
               }
-            }}
-          >
-            <Text
-              style={styles.qtyButtonText}
             >
-              +
+              <Text
+                style={styles.qtyButtonText}
+              >
+                -
+              </Text>
+            </TouchableOpacity>
+
+            <Text style={styles.qtyText}>
+              {cartItem.quantity}
             </Text>
-          </TouchableOpacity>
-        </View>
+
+            <TouchableOpacity
+              style={[
+                styles.qtyButton,
+                (atMaxQuantity ||
+                  isOutOfStock(enrichedItem)) &&
+                  styles.qtyButtonDisabled,
+              ]}
+              disabled={
+                atMaxQuantity ||
+                isOutOfStock(enrichedItem)
+              }
+              onPress={() => {
+                if (
+                  !atMaxQuantity &&
+                  !isOutOfStock(
+                    enrichedItem
+                  )
+                ) {
+                  handleIncreaseQuantity(
+                    cartItem
+                  );
+                }
+              }}
+            >
+              <Text
+                style={styles.qtyButtonText}
+              >
+                +
+              </Text>
+            </TouchableOpacity>
+          </View>
+        )}
       </View>
     );
   };
@@ -760,7 +827,9 @@ export default function ItemDetailScreen({
                     styles.itemPriceSmall,
                 ]}
               >
-                ₱{formatMoney(item.price)}
+                {customItem
+                  ? 'To be confirmed by staff'
+                  : `₱${formatMoney(item.price)}`}
               </Text>
 
               <Text style={styles.itemCategory}>
@@ -809,9 +878,29 @@ export default function ItemDetailScreen({
                     styles.descriptionSmall,
                 ]}
               >
-                {itemDescription ||
-                  'No description available for this item.'}
+                {customItem
+                  ? 'Price and availability will be confirmed by staff.'
+                  : itemDescription ||
+                    'No description available for this item.'}
               </Text>
+
+              {customItem ? (
+                <View style={styles.specialRequestBox}>
+                  <Text style={styles.specialRequestLabel}>
+                    Tell us what you would like to order
+                  </Text>
+
+                  <TextInput
+                    style={styles.specialRequestInput}
+                    value={specialRequest}
+                    onChangeText={setSpecialRequest}
+                    placeholder="Example: Samgyupsal fried rice with extra cheese, less spicy"
+                    placeholderTextColor="#999"
+                    multiline
+                    textAlignVertical="top"
+                  />
+                </View>
+              ) : null}
 
               <TouchableOpacity
                 style={[
@@ -829,7 +918,9 @@ export default function ItemDetailScreen({
                       styles.addToOrderTextSmall,
                   ]}
                 >
-                  Add to Order
+                  {customItem
+                    ? 'Add Request to Cart'
+                    : 'Add to Order'}
                 </Text>
               </TouchableOpacity>
 
@@ -948,6 +1039,12 @@ export default function ItemDetailScreen({
                   ₱{formatMoney(cartTotal)}
                 </Text>
               </View>
+
+              {cartItems.some(isCustomItem) ? (
+                <Text style={styles.cartWarningText}>
+                  Chef Oppa Special requests require staff confirmation for final price and availability.
+                </Text>
+              ) : null}
 
               <TouchableOpacity
                 style={[
@@ -1116,6 +1213,7 @@ const styles =
       marginTop: 8,
       fontSize: 30,
       fontWeight: '800',
+      textAlign: 'center',
     },
 
     itemPriceSmall: {
@@ -1166,6 +1264,7 @@ const styles =
       fontSize: 19,
       fontWeight: '800',
       marginTop: 8,
+      textAlign: 'center',
     },
 
     notAvailableText: {
@@ -1173,6 +1272,7 @@ const styles =
       fontSize: 19,
       fontWeight: '800',
       marginTop: 8,
+      textAlign: 'center',
     },
 
     lowStockText: {
@@ -1180,6 +1280,7 @@ const styles =
       fontSize: 19,
       fontWeight: '800',
       marginTop: 8,
+      textAlign: 'center',
     },
 
     stockTextSmall: {
@@ -1199,6 +1300,34 @@ const styles =
       lineHeight: 22,
     },
 
+    specialRequestBox: {
+      width: '100%',
+      marginTop: 18,
+    },
+
+    specialRequestLabel: {
+      fontSize: 17,
+      fontWeight: '900',
+      color: '#333',
+      marginBottom: 8,
+      textAlign: 'left',
+    },
+
+    specialRequestInput: {
+      width: '100%',
+      minHeight: 105,
+      backgroundColor: '#fafafa',
+      borderWidth: 1.5,
+      borderColor: '#f0b287',
+      borderRadius: 14,
+      paddingHorizontal: 14,
+      paddingVertical: 12,
+      fontSize: 16,
+      color: '#333',
+      fontWeight: '600',
+      lineHeight: 22,
+    },
+
     addToOrderButton: {
       marginTop: 20,
       backgroundColor: '#f68c45',
@@ -1215,6 +1344,7 @@ const styles =
       color: '#fff',
       fontSize: 22,
       fontWeight: '900',
+      textAlign: 'center',
     },
 
     addToOrderTextSmall: {
@@ -1312,10 +1442,11 @@ const styles =
     },
 
     recommendationPrice: {
-      fontSize: 17,
+      fontSize: 15,
       fontWeight: '900',
       color: '#f68c45',
       marginBottom: 8,
+      textAlign: 'center',
     },
 
     recommendationAddButton: {
@@ -1415,6 +1546,43 @@ const styles =
       fontWeight: '700',
       color: '#f68c45',
       marginTop: 4,
+    },
+
+    cartRequestText: {
+      marginTop: 5,
+      fontSize: 13,
+      color: '#666',
+      fontWeight: '700',
+      lineHeight: 18,
+    },
+
+    customQtyBox: {
+      marginTop: 10,
+      alignSelf: 'flex-start',
+      backgroundColor: '#fff4eb',
+      borderWidth: 1,
+      borderColor: '#f0b287',
+      borderRadius: 10,
+      paddingVertical: 6,
+      paddingHorizontal: 10,
+    },
+
+    customQtyText: {
+      fontSize: 13,
+      color: '#f68c45',
+      fontWeight: '900',
+    },
+
+    cartWarningText: {
+      backgroundColor: '#fff4eb',
+      color: '#7a3f09',
+      borderRadius: 10,
+      paddingVertical: 8,
+      paddingHorizontal: 10,
+      fontSize: 13,
+      fontWeight: '800',
+      lineHeight: 18,
+      marginBottom: 10,
     },
 
     removeText: {
