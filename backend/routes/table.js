@@ -10,6 +10,35 @@ const {
 } = require('../utils/tableStatus');
 
 // =========================
+// PAYMENT DISPLAY SAFETY
+// If an order has Xendit fields, it is QR PH / Digital Payment.
+// This prevents old/missing payment_method rows from showing Pay Later.
+// =========================
+
+const hasXenditInvoice = (order) => {
+  return Boolean(
+    order?.xendit_invoice_id ||
+      order?.xendit_external_id ||
+      order?.xendit_invoice_url
+  );
+};
+
+const forceDigitalPaymentIfXendit = (order) => {
+  if (!order) {
+    return order;
+  }
+
+  if (hasXenditInvoice(order)) {
+    return {
+      ...order,
+      payment_method: 'Digital Payment',
+    };
+  }
+
+  return order;
+};
+
+// =========================
 // GET LOGGED-IN TABLE USER
 // Token format:
 // Bearer table-token-1
@@ -558,10 +587,6 @@ router.post('/offline', async (req, res) => {
       throw error;
     }
 
-    // Keep the active table session open so order history
-    // survives staff logout / tablet re-login. Sessions are
-    // only closed when staff marks the table clean on the web.
-
     return res.json({
       success: true,
       message:
@@ -715,7 +740,7 @@ router.get('/order-history', async (req, res) => {
     } = await supabase
       .from('orders')
       .select(
-        'id, order_number, table_number, table_session_id, status, payment_status, total_amount, created_at, updated_at, xendit_invoice_id, xendit_external_id, xendit_invoice_url, xendit_expiry_date'
+        'id, order_number, table_number, table_session_id, status, payment_status, payment_method, total_amount, created_at, updated_at, paid_at, xendit_invoice_id, xendit_external_id, xendit_invoice_url, xendit_expiry_date'
       )
       .eq(
         'table_session_id',
@@ -795,6 +820,11 @@ router.get('/order-history', async (req, res) => {
 
     const enrichedOrders =
       (orders || []).map((order) => {
+        const fixedOrder =
+          forceDigitalPaymentIfXendit(
+            order
+          );
+
         const items =
           (orderItems || [])
             .filter(
@@ -840,7 +870,7 @@ router.get('/order-history', async (req, res) => {
             });
 
         return {
-          ...order,
+          ...fixedOrder,
           items,
         };
       });

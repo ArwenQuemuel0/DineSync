@@ -31,20 +31,22 @@ const DEFAULT_TABLE_NUMBER = 1;
 // =========================
 
 const normalizePaymentMethod = (value) => {
-  const normalized = String(value || 'Pay at Counter')
-    .trim()
-    .toLowerCase()
-    .replace(/[_-]+/g, ' ')
-    .replace(/\s+/g, ' ');
+  const normalized =
+    String(value || '')
+      .trim()
+      .toLowerCase()
+      .replace(/[_-]+/g, ' ')
+      .replace(/\s+/g, ' ');
 
   if (
     normalized === 'qr ph' ||
     normalized === 'qrph' ||
     normalized === 'xendit' ||
     normalized === 'online payment' ||
-    normalized === 'electronic payment'
+    normalized === 'electronic payment' ||
+    normalized === 'digital payment'
   ) {
-    return 'QR PH';
+    return 'Digital Payment';
   }
 
   if (
@@ -58,17 +60,83 @@ const normalizePaymentMethod = (value) => {
     normalized === 'pay at counter' ||
     normalized === 'pay counter' ||
     normalized === 'counter' ||
-    normalized === 'cash' ||
     normalized === 'cashier'
   ) {
     return 'Pay at Counter';
   }
 
-  return 'Pay at Counter';
+  if (normalized === 'cash') {
+    return 'Cash';
+  }
+
+  return 'Pay Later';
+};
+
+const hasXenditInvoice = (order) => {
+  return Boolean(
+    order?.xendit_invoice_id ||
+      order?.xendit_external_id ||
+      order?.xendit_invoice_url
+  );
+};
+
+const forceDigitalPaymentIfXendit = (order) => {
+  if (!order) {
+    return order;
+  }
+
+  if (hasXenditInvoice(order)) {
+    return {
+      ...order,
+      payment_method: 'Digital Payment',
+    };
+  }
+
+  return order;
 };
 
 const shouldCreateXenditInvoice = (paymentMethod) => {
-  return paymentMethod === 'QR PH';
+  return paymentMethod === 'Digital Payment';
+};
+
+const getInitialOrderStatus = (paymentMethod) => {
+  if (paymentMethod === 'Pay Later') {
+    return 'pending';
+  }
+
+  if (
+    paymentMethod === 'Pay at Counter' ||
+    paymentMethod === 'Digital Payment'
+  ) {
+    return 'awaiting_payment';
+  }
+
+  return 'pending';
+};
+
+const buildMockExternalId = (orderId) => {
+  const now = new Date();
+
+  const year =
+    now.getFullYear();
+
+  const month =
+    String(now.getMonth() + 1)
+      .padStart(2, '0');
+
+  const day =
+    String(now.getDate())
+      .padStart(2, '0');
+
+  const hour =
+    String(now.getHours())
+      .padStart(2, '0');
+
+  const minute =
+    String(now.getMinutes())
+      .padStart(2, '0');
+
+  return `ORDER-${orderId}-${year}${month}${day}${hour}${minute}`;
 };
 
 // =========================
@@ -197,6 +265,10 @@ router.get(
 // GET ACTIVE ORDERS BY TABLE
 // GET /api/orders/table/:tableNumber/active
 // IMPORTANT: This must be before router.get('/:id')
+//
+// KDS VISIBILITY RULE:
+// Only pending, preparing, ready.
+// Never awaiting_payment.
 // =========================
 
 router.get(
@@ -216,21 +288,23 @@ router.get(
 
       if (!isConfigured) {
         const activeOrders =
-          db.orders.filter((order) => {
-            const status =
-              String(order.status || '')
-                .toLowerCase();
+          db.orders
+            .filter((order) => {
+              const status =
+                String(order.status || '')
+                  .toLowerCase();
 
-            return (
-              Number(order.table_number) ===
-              tableNumber &&
-              [
-                'pending',
-                'preparing',
-                'ready',
-              ].includes(status)
-            );
-          });
+              return (
+                Number(order.table_number) ===
+                tableNumber &&
+                [
+                  'pending',
+                  'preparing',
+                  'ready',
+                ].includes(status)
+              );
+            })
+            .map(forceDigitalPaymentIfXendit);
 
         return res.json({
           success: true,
@@ -296,7 +370,7 @@ router.get(
       } = await supabase
         .from('orders')
         .select(
-          'id, order_number, table_number, table_session_id, status, payment_status, payment_method, total_amount, created_at, updated_at, xendit_invoice_id, xendit_external_id, xendit_invoice_url, xendit_expiry_date'
+          'id, order_number, table_number, table_session_id, status, payment_status, payment_method, total_amount, created_at, updated_at, xendit_invoice_id, xendit_external_id, xendit_invoice_url, xendit_expiry_date, paid_at'
         )
         .eq(
           'table_session_id',
@@ -383,6 +457,9 @@ router.get(
       const enrichedOrders =
         (orders || []).map(
           (order) => {
+            const fixedOrder =
+              forceDigitalPaymentIfXendit(order);
+
             const items =
               (orderItems || [])
                 .filter(
@@ -428,7 +505,7 @@ router.get(
                 });
 
             return {
-              ...order,
+              ...fixedOrder,
               items,
             };
           }
@@ -489,6 +566,11 @@ router.post('/', async (req, res) => {
         paymentMethod
       );
 
+    const newOrderStatus =
+      getInitialOrderStatus(
+        paymentMethod
+      );
+
     console.log(
       'REQ BODY:',
       JSON.stringify(req.body, null, 2)
@@ -502,6 +584,16 @@ router.post('/', async (req, res) => {
     console.log(
       'PAYMENT METHOD:',
       paymentMethod
+    );
+
+    console.log(
+      'INITIAL ORDER STATUS:',
+      newOrderStatus
+    );
+
+    console.log(
+      'NEED XENDIT INVOICE:',
+      needInvoice
     );
 
     console.log(
@@ -525,8 +617,6 @@ router.post('/', async (req, res) => {
       });
     }
 
-    const newOrderStatus = 'pending';
-
     // =========================
     // COMPUTE TOTAL AMOUNT
     // =========================
@@ -545,7 +635,27 @@ router.post('/', async (req, res) => {
         0
       );
 
-    if (totalAmount <= 0) {
+    if (totalAmount < 0) {
+      return res.status(400).json({
+        success: false,
+        message:
+          'Invalid order total amount.',
+      });
+    }
+
+    if (
+      totalAmount <= 0 &&
+      !items.some((item) => {
+        const notes =
+          String(
+            item.special_request ||
+            item.notes ||
+            ''
+          ).trim();
+
+        return notes.length > 0;
+      })
+    ) {
       return res.status(400).json({
         success: false,
         message:
@@ -563,27 +673,27 @@ router.post('/', async (req, res) => {
 
       const invoiceData = needInvoice
         ? {
-          xendit_invoice_id:
-            `mock_inv_${Math.random()
-              .toString(36)
-              .substring(2, 11)
-              .toUpperCase()}`,
-          xendit_external_id:
-            `ORDER-${mockOrderId}`,
-          xendit_invoice_url:
-            `https://checkout-staging.xendit.co/web/mock_inv_${Date.now()}`,
-          xendit_expiry_date:
-            new Date(
-              Date.now() +
-              24 * 60 * 60 * 1000
-            ).toISOString(),
-        }
+            xendit_invoice_id:
+              `mock_inv_${Math.random()
+                .toString(36)
+                .substring(2, 11)
+                .toUpperCase()}`,
+            xendit_external_id:
+              buildMockExternalId(mockOrderId),
+            xendit_invoice_url:
+              `https://checkout-staging.xendit.co/web/mock_inv_${Date.now()}`,
+            xendit_expiry_date:
+              new Date(
+                Date.now() +
+                24 * 60 * 60 * 1000
+              ).toISOString(),
+          }
         : {
-          xendit_invoice_id: null,
-          xendit_external_id: null,
-          xendit_invoice_url: null,
-          xendit_expiry_date: null,
-        };
+            xendit_invoice_id: null,
+            xendit_external_id: null,
+            xendit_invoice_url: null,
+            xendit_expiry_date: null,
+          };
 
       const newOrder = {
         id: mockOrderId,
@@ -596,11 +706,16 @@ router.post('/', async (req, res) => {
         total_amount:
           totalAmount,
         status:
-          newOrderStatus,
+          needInvoice
+            ? 'awaiting_payment'
+            : newOrderStatus,
         payment_method:
-          paymentMethod,
+          needInvoice
+            ? 'Digital Payment'
+            : paymentMethod,
         payment_status:
           'pending',
+        paid_at: null,
         created_at:
           new Date().toISOString(),
         updated_at:
@@ -620,6 +735,10 @@ router.post('/', async (req, res) => {
           newOrder.payment_status,
         payment_method:
           newOrder.payment_method,
+        order_status:
+          newOrder.status,
+        invoice_url:
+          newOrder.xendit_invoice_url,
         xendit_invoice_url:
           newOrder.xendit_invoice_url,
       });
@@ -722,7 +841,7 @@ router.post('/', async (req, res) => {
         error: menuItemError,
       } = await supabase
         .from('menu_items')
-        .select('id, name')
+        .select('id, name, category')
         .eq('id', menuItemId)
         .single();
 
@@ -732,6 +851,16 @@ router.post('/', async (req, res) => {
           message:
             'Menu item not found.',
         });
+      }
+
+      const isChefOppaSpecial =
+        String(menuItem.category || '')
+          .trim()
+          .toLowerCase() ===
+        'chef oppa special';
+
+      if (isChefOppaSpecial) {
+        continue;
       }
 
       const maxServings =
@@ -822,14 +951,6 @@ router.post('/', async (req, res) => {
 
     // =========================
     // CREATE ORDER
-    // IMPORTANT:
-    // Every confirmed order must include:
-    // table_number, items, total_amount, status, payment_method, payment_status.
-    //
-    // New orders must stay pending.
-    // Payment status starts as pending.
-    // Only QR PH creates Xendit invoice.
-    // Pay at Counter and Pay Later do not call Xendit.
     // =========================
 
     const orderNumber =
@@ -848,11 +969,17 @@ router.post('/', async (req, res) => {
       total_amount:
         totalAmount,
       status:
-        'pending',
+        needInvoice
+          ? 'awaiting_payment'
+          : newOrderStatus,
       payment_method:
-        paymentMethod,
+        needInvoice
+          ? 'Digital Payment'
+          : paymentMethod,
       payment_status:
         'pending',
+      paid_at:
+        null,
       created_at:
         now,
       updated_at:
@@ -866,7 +993,7 @@ router.post('/', async (req, res) => {
       .from('orders')
       .insert(orderPayload)
       .select(
-        'id, order_number, table_number, table_session_id, status, payment_status, payment_method, total_amount, created_at, updated_at, xendit_invoice_id, xendit_external_id, xendit_invoice_url, xendit_expiry_date'
+        'id, order_number, table_number, table_session_id, status, payment_status, payment_method, total_amount, created_at, updated_at, paid_at, xendit_invoice_id, xendit_external_id, xendit_invoice_url, xendit_expiry_date'
       )
       .single();
 
@@ -889,8 +1016,6 @@ router.post('/', async (req, res) => {
 
     // =========================
     // CREATE ORDER ITEMS
-    // Create items immediately so Service Staff and KDS
-    // can display the order even if payment is pending.
     // =========================
 
     const orderItemsPayload =
@@ -981,6 +1106,29 @@ router.post('/', async (req, res) => {
         Number(item.quantity);
 
       const {
+        data: menuItem,
+        error: menuItemError,
+      } = await supabase
+        .from('menu_items')
+        .select('id, category')
+        .eq('id', menuItemId)
+        .single();
+
+      if (menuItemError || !menuItem) {
+        continue;
+      }
+
+      const isChefOppaSpecial =
+        String(menuItem.category || '')
+          .trim()
+          .toLowerCase() ===
+        'chef oppa special';
+
+      if (isChefOppaSpecial) {
+        continue;
+      }
+
+      const {
         data: recipeRows,
         error: recipeError,
       } = await supabase
@@ -1049,10 +1197,6 @@ router.post('/', async (req, res) => {
           );
         }
 
-        // =========================
-        // FIFO BATCH DEDUCTION
-        // =========================
-
         let remainingNeeded =
           totalNeeded;
 
@@ -1115,10 +1259,6 @@ router.post('/', async (req, res) => {
             deductAmount;
         }
 
-        // =========================
-        // LOG INGREDIENT USAGE
-        // =========================
-
         const {
           error: usageError,
         } = await supabase
@@ -1143,12 +1283,6 @@ router.post('/', async (req, res) => {
 
     // =========================
     // CREATE XENDIT INVOICE
-    // IMPORTANT:
-    // Only QR PH creates invoice.
-    // Pay at Counter and Pay Later do not call Xendit.
-    // QR PH stays payment_status = pending until webhook.
-    // Webhook must update payment_status only.
-    // KDS controls order.status.
     // =========================
 
     if (needInvoice) {
@@ -1160,30 +1294,37 @@ router.post('/', async (req, res) => {
             finalTableNumber
           );
 
+        const invoiceUpdatePayload = {
+          payment_method:
+            'Digital Payment',
+          payment_status:
+            'pending',
+          status:
+            'awaiting_payment',
+          xendit_invoice_id:
+            invoice.id,
+          xendit_external_id:
+            invoice.external_id,
+          xendit_invoice_url:
+            invoice.invoice_url,
+          updated_at:
+            new Date().toISOString(),
+        };
+
+        if (invoice.expiry_date) {
+          invoiceUpdatePayload.xendit_expiry_date =
+            invoice.expiry_date;
+        }
+
         const {
           data: updatedInvoiceOrder,
           error: updateOrderError,
         } = await supabase
           .from('orders')
-          .update({
-            payment_status:
-              'pending',
-            status:
-              'pending',
-            xendit_invoice_id:
-              invoice.id,
-            xendit_external_id:
-              invoice.external_id,
-            xendit_invoice_url:
-              invoice.invoice_url,
-            xendit_expiry_date:
-              invoice.expiry_date || null,
-            updated_at:
-              new Date().toISOString(),
-          })
+          .update(invoiceUpdatePayload)
           .eq('id', orderId)
           .select(
-            'id, order_number, table_number, table_session_id, status, payment_status, payment_method, total_amount, created_at, updated_at, xendit_invoice_id, xendit_external_id, xendit_invoice_url, xendit_expiry_date'
+            'id, order_number, table_number, table_session_id, status, payment_status, payment_method, total_amount, created_at, updated_at, paid_at, xendit_invoice_id, xendit_external_id, xendit_invoice_url, xendit_expiry_date'
           )
           .single();
 
@@ -1200,6 +1341,9 @@ router.post('/', async (req, res) => {
               'Invoice created but failed to save invoice details.',
           });
         }
+
+        createdOrder.payment_method =
+          'Digital Payment';
 
         createdOrder.payment_status =
           updatedInvoiceOrder.payment_status;
@@ -1221,6 +1365,22 @@ router.post('/', async (req, res) => {
 
         createdOrder.updated_at =
           updatedInvoiceOrder.updated_at;
+
+        console.log(
+          'XENDIT DETAILS SAVED TO ORDER:',
+          {
+            order_id:
+              orderId,
+            payment_method:
+              createdOrder.payment_method,
+            xendit_invoice_id:
+              updatedInvoiceOrder.xendit_invoice_id,
+            xendit_external_id:
+              updatedInvoiceOrder.xendit_external_id,
+            xendit_invoice_url:
+              updatedInvoiceOrder.xendit_invoice_url,
+          }
+        );
       } catch (invoiceError) {
         console.log(
           'XENDIT INVOICE CREATION ERROR:',
@@ -1241,6 +1401,11 @@ router.post('/', async (req, res) => {
       }
     }
 
+    const fixedCreatedOrder =
+      forceDigitalPaymentIfXendit(
+        createdOrder
+      );
+
     // =========================
     // SUCCESS RESPONSE
     // =========================
@@ -1250,7 +1415,7 @@ router.post('/', async (req, res) => {
       message:
         'Order created successfully.',
       data: {
-        ...createdOrder,
+        ...fixedCreatedOrder,
         items:
           orderItemsPayload,
         restaurant_table:
@@ -1259,15 +1424,23 @@ router.post('/', async (req, res) => {
           activeSession,
       },
       order_id:
-        createdOrder.id,
+        fixedCreatedOrder.id,
       payment_status:
-        createdOrder.payment_status,
+        fixedCreatedOrder.payment_status,
       payment_method:
-        createdOrder.payment_method,
+        fixedCreatedOrder.payment_method,
       order_status:
-        createdOrder.status,
+        fixedCreatedOrder.status,
+      invoice_url:
+        fixedCreatedOrder.xendit_invoice_url,
       xendit_invoice_url:
-        createdOrder.xendit_invoice_url,
+        fixedCreatedOrder.xendit_invoice_url,
+      xendit_invoice_id:
+        fixedCreatedOrder.xendit_invoice_id,
+      xendit_external_id:
+        fixedCreatedOrder.xendit_external_id,
+      xendit_expiry_date:
+        fixedCreatedOrder.xendit_expiry_date,
     });
   } catch (error) {
     console.error(
@@ -1312,7 +1485,10 @@ router.get('/:id', async (req, res) => {
       if (order) {
         return res.json({
           success: true,
-          data: order,
+          data:
+            forceDigitalPaymentIfXendit(
+              order
+            ),
         });
       }
 
@@ -1328,7 +1504,7 @@ router.get('/:id', async (req, res) => {
     } = await supabase
       .from('orders')
       .select(
-        'id, order_number, table_number, table_session_id, status, payment_status, payment_method, total_amount, created_at, updated_at, xendit_invoice_id, xendit_external_id, xendit_invoice_url, xendit_expiry_date'
+        'id, order_number, table_number, table_session_id, status, payment_status, payment_method, total_amount, created_at, updated_at, paid_at, xendit_invoice_id, xendit_external_id, xendit_invoice_url, xendit_expiry_date'
       )
       .eq('id', orderId)
       .single();
@@ -1338,6 +1514,39 @@ router.get('/:id', async (req, res) => {
         success: false,
         message: 'Not found',
       });
+    }
+
+    let fixedOrderRow =
+      forceDigitalPaymentIfXendit(
+        orderRow
+      );
+
+    if (
+      hasXenditInvoice(orderRow) &&
+      orderRow.payment_method !==
+        'Digital Payment'
+    ) {
+      const {
+        data: correctedOrder,
+        error: correctionError,
+      } = await supabase
+        .from('orders')
+        .update({
+          payment_method:
+            'Digital Payment',
+          updated_at:
+            new Date().toISOString(),
+        })
+        .eq('id', orderId)
+        .select(
+          'id, order_number, table_number, table_session_id, status, payment_status, payment_method, total_amount, created_at, updated_at, paid_at, xendit_invoice_id, xendit_external_id, xendit_invoice_url, xendit_expiry_date'
+        )
+        .single();
+
+      if (!correctionError && correctedOrder) {
+        fixedOrderRow =
+          correctedOrder;
+      }
     }
 
     const {
@@ -1426,19 +1635,27 @@ router.get('/:id', async (req, res) => {
     return res.json({
       success: true,
       data: {
-        ...orderRow,
+        ...fixedOrderRow,
         items: enrichedItems,
       },
       order_id:
-        orderRow.id,
+        fixedOrderRow.id,
       payment_status:
-        orderRow.payment_status,
+        fixedOrderRow.payment_status,
       payment_method:
-        orderRow.payment_method,
+        fixedOrderRow.payment_method,
       order_status:
-        orderRow.status,
+        fixedOrderRow.status,
+      invoice_url:
+        fixedOrderRow.xendit_invoice_url,
       xendit_invoice_url:
-        orderRow.xendit_invoice_url,
+        fixedOrderRow.xendit_invoice_url,
+      xendit_invoice_id:
+        fixedOrderRow.xendit_invoice_id,
+      xendit_external_id:
+        fixedOrderRow.xendit_external_id,
+      xendit_expiry_date:
+        fixedOrderRow.xendit_expiry_date,
     });
   } catch (error) {
     console.log(

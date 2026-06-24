@@ -48,17 +48,25 @@ export default function LoginScreen({
       const longest =
         Math.max(width, height);
 
-      const isPhone =
-        width < 600;
-
-      const isVeryNarrow =
-        width < 430;
-
       const isLandscape =
         width > height;
 
-      const base =
-        shortest / 768;
+      const isPhone =
+        shortest < 600;
+
+      const isSmallPhone =
+        width < 390;
+
+      const isShortHeight =
+        height < 680;
+
+      const isVeryShortHeight =
+        height < 560;
+
+      const availableHeight =
+        height -
+        insets.top -
+        insets.bottom;
 
       const clamp = (
         value,
@@ -71,186 +79,314 @@ export default function LoginScreen({
         );
       };
 
+      const base =
+        isPhone
+          ? Math.min(shortest / 390, 1)
+          : Math.min(shortest / 768, 1.08);
+
       const scale = (
         size,
-        min = size * 0.65,
-        max = size * 1.08
+        min = size * 0.72,
+        max = size * 1.12
       ) => {
         return Math.round(
           clamp(size * base, min, max)
         );
       };
 
-      const logoCircle =
-        isVeryNarrow
-          ? scale(94, 72, 98)
-          : isPhone
-            ? scale(108, 82, 112)
-            : scale(130, 90, 136);
+      const phoneLandscape =
+        isPhone && isLandscape;
 
-      const inputHeight =
-        isPhone
-          ? scale(54, 46, 56)
-          : scale(58, 48, 60);
+      const compact =
+        phoneLandscape ||
+        isShortHeight;
 
-      const buttonHeight =
-        isPhone
-          ? scale(58, 50, 60)
-          : scale(66, 54, 68);
+      const ultraCompact =
+        phoneLandscape ||
+        isVeryShortHeight;
 
       const cardWidth =
         isPhone
-          ? '94%'
-          : '88%';
+          ? isLandscape
+            ? '78%'
+            : '92%'
+          : isLandscape
+            ? '90%'
+            : '88%';
 
       const cardMaxWidth =
         isPhone
-          ? clamp(width - 28, 300, 430)
-          : clamp(longest * 0.82, 420, 950);
+          ? isLandscape
+            ? clamp(width * 0.74, 360, 520)
+            : clamp(width - 28, 300, 410)
+          : isLandscape
+            ? clamp(width * 0.9, 1050, 1400)
+            : clamp(width * 0.88, 760, 1080);
 
-      const cardMaxHeight =
-        height -
-        insets.top -
-        insets.bottom -
-        28;
+      const cardPaddingH =
+        isPhone
+          ? isLandscape
+            ? clamp(width * 0.035, 18, 28)
+            : clamp(width * 0.06, 20, 26)
+          : isLandscape
+            ? clamp(width * 0.055, 70, 96)
+            : clamp(width * 0.075, 54, 86);
+
+      const cardPaddingV =
+        isPhone
+          ? isLandscape
+            ? clamp(availableHeight * 0.03, 10, 16)
+            : clamp(availableHeight * 0.035, 20, 28)
+          : isLandscape
+            ? clamp(availableHeight * 0.055, 36, 56)
+            : clamp(availableHeight * 0.06, 34, 54);
+
+      const brandLogoSize =
+        isPhone
+          ? isLandscape
+            ? clamp(availableHeight * 0.13, 44, 62)
+            : clamp(width * 0.16, 56, 74)
+          : isLandscape
+            ? clamp(availableHeight * 0.2, 110, 145)
+            : clamp(shortest * 0.14, 105, 150);
+
+      const inputHeight =
+        isPhone
+          ? isLandscape
+            ? clamp(availableHeight * 0.085, 38, 46)
+            : clamp(availableHeight * 0.065, 46, 54)
+          : isLandscape
+            ? clamp(availableHeight * 0.105, 62, 74)
+            : clamp(availableHeight * 0.078, 60, 72);
+
+      const buttonHeight =
+        isPhone
+          ? isLandscape
+            ? clamp(availableHeight * 0.09, 40, 48)
+            : clamp(availableHeight * 0.068, 50, 58)
+          : isLandscape
+            ? clamp(availableHeight * 0.105, 66, 78)
+            : clamp(availableHeight * 0.082, 64, 76);
 
       return {
-        isPhone,
-        isVeryNarrow,
-        isLandscape,
+        compact,
+        ultraCompact,
 
         overlayPaddingH:
-          isVeryNarrow
-            ? scale(14, 12, 16)
-            : isPhone
-              ? scale(18, 14, 20)
-              : scale(32, 18, 34),
+          isPhone
+            ? isLandscape
+              ? 10
+              : 14
+            : isLandscape
+              ? 18
+              : 24,
 
         overlayPaddingV:
           isPhone
-            ? scale(12, 10, 16)
-            : scale(24, 14, 26),
+            ? isLandscape
+              ? 6
+              : 10
+            : isLandscape
+              ? 14
+              : 18,
 
         safeTopExtra:
           isPhone
-            ? 6
-            : 8,
+            ? isLandscape
+              ? 0
+              : 4
+            : 6,
 
         safeBottomExtra:
-          Math.max(insets.bottom + 8, 14),
+          Math.max(
+            insets.bottom + 6,
+            10
+          ),
 
         cardWidth,
 
         cardMaxWidth,
 
-        cardMaxHeight,
+        cardMaxHeight:
+          Math.max(
+            availableHeight -
+              (isPhone ? 18 : 30),
+            isPhone ? 280 : 520
+          ),
 
         cardRadius:
           isPhone
-            ? scale(26, 20, 28)
-            : scale(34, 22, 36),
+            ? isLandscape
+              ? 20
+              : 24
+            : isLandscape
+              ? 34
+              : 36,
 
-        cardPaddingH:
-          isVeryNarrow
-            ? scale(20, 16, 22)
-            : isPhone
-              ? scale(24, 20, 28)
-              : scale(60, 26, 60),
+        cardPaddingH,
 
-        cardPaddingV:
-          isVeryNarrow
-            ? scale(22, 18, 24)
-            : isPhone
-              ? scale(26, 20, 30)
-              : scale(38, 24, 40),
+        cardPaddingV,
 
-        logoCircle,
-
-        logoRadius:
-          logoCircle / 2,
-
-        logoSize:
-          logoCircle * 0.78,
-
-        logoMargin:
+        brandMargin:
           isPhone
-            ? scale(14, 10, 16)
-            : scale(22, 12, 22),
+            ? isLandscape
+              ? 10
+              : 16
+            : isLandscape
+              ? 26
+              : 28,
 
-        titleFont:
-          isVeryNarrow
-            ? scale(29, 24, 30)
-            : isPhone
-              ? scale(33, 26, 34)
-              : scale(44, 30, 44),
+        brandLogoSize,
 
-        subtitleFont:
-          isVeryNarrow
-            ? scale(17, 15, 18)
-            : isPhone
-              ? scale(19, 16, 20)
-              : scale(25, 18, 25),
-
-        subtitleMargin:
+        brandTitleFont:
           isPhone
-            ? scale(16, 12, 18)
-            : scale(22, 14, 22),
+            ? isLandscape
+              ? clamp(width * 0.031, 17, 21)
+              : isSmallPhone
+                ? 20
+                : 22
+            : isLandscape
+              ? 36
+              : 36,
+
+        brandPoweredFont:
+          isPhone
+            ? isLandscape
+              ? 13
+              : 14
+            : isLandscape
+              ? 21
+              : 21,
+
+        brandGap:
+          isPhone
+            ? isLandscape
+              ? 5
+              : 7
+            : 10,
 
         formMaxWidth:
           isPhone
             ? '100%'
-            : clamp(width * 0.72, 320, 520),
+            : isLandscape
+              ? clamp(width * 0.72, 860, 1040)
+              : clamp(width * 0.72, 700, 920),
 
         labelFont:
-          scale(18, 13, 18),
+          isPhone
+            ? isLandscape
+              ? 13
+              : 15
+            : isLandscape
+              ? 21
+              : 20,
 
         inputHeight,
 
         inputRadius:
-          scale(14, 10, 14),
+          isPhone
+            ? isLandscape
+              ? 11
+              : 13
+            : 18,
 
         inputFont:
-          scale(18, 14, 18),
+          isPhone
+            ? isLandscape
+              ? 13
+              : 15
+            : isLandscape
+              ? 21
+              : 20,
 
         inputPadding:
-          scale(18, 12, 18),
+          isPhone
+            ? isLandscape
+              ? 12
+              : 14
+            : 22,
 
         inputMarginBottom:
           isPhone
-            ? scale(12, 9, 13)
-            : scale(14, 10, 14),
+            ? isLandscape
+              ? 6
+              : 10
+            : isLandscape
+              ? 16
+              : 15,
 
         passwordMarginBottom:
           isPhone
-            ? scale(20, 15, 22)
-            : scale(28, 18, 28),
+            ? isLandscape
+              ? 9
+              : 16
+            : isLandscape
+              ? 30
+              : 28,
 
         showButtonWidth:
-          isVeryNarrow
-            ? scale(76, 66, 78)
-            : scale(95, 72, 95),
+          isPhone
+            ? isLandscape
+              ? 62
+              : 72
+            : isLandscape
+              ? 118
+              : 110,
 
         showButtonFont:
-          scale(16, 12, 16),
+          isPhone
+            ? isLandscape
+              ? 11
+              : 12
+            : 18,
 
         buttonHeight,
 
         buttonRadius:
-          scale(15, 11, 15),
+          isPhone
+            ? isLandscape
+              ? 11
+              : 13
+            : 18,
 
         buttonText:
-          scale(24, 17, 24),
+          isPhone
+            ? isLandscape
+              ? 16
+              : 18
+            : isLandscape
+              ? 28
+              : 27,
 
         noteMargin:
           isPhone
-            ? scale(16, 12, 18)
-            : scale(22, 14, 22),
+            ? isLandscape
+              ? 7
+              : 13
+            : isLandscape
+              ? 24
+              : 22,
 
         noteFont:
-          scale(15, 12, 15),
+          isPhone
+            ? isLandscape
+              ? 10
+              : 12
+            : 18,
 
         noteLine:
-          scale(22, 17, 22),
+          isPhone
+            ? isLandscape
+              ? 14
+              : 18
+            : 25,
+
+        noteLines:
+          ultraCompact
+            ? 1
+            : compact
+              ? 2
+              : undefined,
       };
     }, [
       width,
@@ -328,7 +464,7 @@ export default function LoginScreen({
             behavior={
               Platform.OS === 'ios'
                 ? 'padding'
-                : 'height'
+                : undefined
             }
           >
             <ScrollView
@@ -370,63 +506,57 @@ export default function LoginScreen({
               >
                 <View
                   style={[
-                    styles.logoCircle,
+                    styles.brandBlock,
                     {
-                      width:
-                        responsive.logoCircle,
-                      height:
-                        responsive.logoCircle,
-                      borderRadius:
-                        responsive.logoRadius,
                       marginBottom:
-                        responsive.logoMargin,
+                        responsive.brandMargin,
+                      gap:
+                        responsive.brandGap,
                     },
                   ]}
                 >
                   <Image
                     source={require('../../assets/chefoppa_logo.png')}
                     style={[
-                      styles.logo,
+                      styles.brandLogo,
                       {
                         width:
-                          responsive.logoSize,
+                          responsive.brandLogoSize,
                         height:
-                          responsive.logoSize,
+                          responsive.brandLogoSize,
                       },
                     ]}
                     resizeMode="contain"
                   />
+
+                  <Text
+                    style={[
+                      styles.brandTitle,
+                      {
+                        fontSize:
+                          responsive.brandTitleFont,
+                      },
+                    ]}
+                    numberOfLines={1}
+                    adjustsFontSizeToFit
+                  >
+                    Chef Oppa Korean Restaurant
+                  </Text>
+
+                  <Text
+                    style={[
+                      styles.poweredText,
+                      {
+                        fontSize:
+                          responsive.brandPoweredFont,
+                      },
+                    ]}
+                    numberOfLines={1}
+                    adjustsFontSizeToFit
+                  >
+                    Powered by DineSync+
+                  </Text>
                 </View>
-
-                <Text
-                  style={[
-                    styles.title,
-                    {
-                      fontSize:
-                        responsive.titleFont,
-                    },
-                  ]}
-                  numberOfLines={2}
-                  adjustsFontSizeToFit
-                >
-                  DineSync Tablet Login
-                </Text>
-
-                <Text
-                  style={[
-                    styles.subtitle,
-                    {
-                      fontSize:
-                        responsive.subtitleFont,
-                      marginBottom:
-                        responsive.subtitleMargin,
-                    },
-                  ]}
-                  numberOfLines={1}
-                  adjustsFontSizeToFit
-                >
-                  Chef Oppa Korean Restaurant
-                </Text>
 
                 <View
                   style={[
@@ -591,6 +721,9 @@ export default function LoginScreen({
                           responsive.noteLine,
                       },
                     ]}
+                    numberOfLines={
+                      responsive.noteLines
+                    }
                   >
                     Login using the assigned table account. The table number will be detected automatically.
                   </Text>
@@ -641,30 +774,31 @@ const styles =
         'rgba(245, 242, 237, 0.96)',
       alignItems: 'center',
       justifyContent: 'center',
+      overflow: 'hidden',
     },
 
-    logoCircle: {
-      backgroundColor:
-        'rgba(255, 255, 255, 0.94)',
-      justifyContent: 'center',
+    brandBlock: {
+      width: '100%',
       alignItems: 'center',
+      justifyContent: 'center',
     },
 
-    logo: {},
+    brandLogo: {},
 
-    title: {
-      fontWeight: '900',
+    brandTitle: {
+      width: '100%',
       color: '#1f1f1f',
+      fontWeight: '900',
       textAlign: 'center',
-      marginBottom: 8,
-      width: '100%',
     },
 
-    subtitle: {
-      fontWeight: '900',
-      color: '#666',
-      textAlign: 'center',
+    poweredText: {
       width: '100%',
+      color: '#1f1f1f',
+      fontWeight: '900',
+      fontStyle: 'italic',
+      textAlign: 'center',
+      opacity: 0.45,
     },
 
     form: {
@@ -674,8 +808,8 @@ const styles =
     label: {
       fontWeight: '900',
       color: '#555',
-      marginBottom: 8,
-      marginTop: 8,
+      marginBottom: 7,
+      marginTop: 5,
     },
 
     input: {
@@ -740,6 +874,6 @@ const styles =
       textAlign: 'center',
       fontWeight: '800',
       alignSelf: 'center',
-      maxWidth: 500,
+      maxWidth: 760,
     },
   });

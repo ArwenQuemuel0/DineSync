@@ -10,8 +10,140 @@ const {
 } = require('../supabaseClient');
 
 // =========================
+// HELPERS
+// =========================
+
+const normalizePaymentMethod = (value) => {
+  const normalized =
+    String(value || '')
+      .trim()
+      .toLowerCase()
+      .replace(/[_-]+/g, ' ')
+      .replace(/\s+/g, ' ');
+
+  if (
+    normalized === 'cash' ||
+    normalized === 'cash paid' ||
+    normalized === 'counter cash' ||
+    normalized === 'pay at counter'
+  ) {
+    return 'Cash';
+  }
+
+  if (
+    normalized === 'digital payment' ||
+    normalized === 'qr ph' ||
+    normalized === 'qrph' ||
+    normalized === 'xendit' ||
+    normalized === 'online payment'
+  ) {
+    return 'Digital Payment';
+  }
+
+  if (
+    normalized === 'pay later' ||
+    normalized === 'later'
+  ) {
+    return 'Pay Later';
+  }
+
+  return value || 'Cash';
+};
+
+const shouldMoveToKitchenAfterPayment = (status) => {
+  const normalized =
+    String(status || '')
+      .trim()
+      .toLowerCase();
+
+  return normalized === 'awaiting_payment';
+};
+
+const extractOrderIdFromExternalId = (externalId) => {
+  const value =
+    String(externalId || '')
+      .trim();
+
+  // New required format:
+  // ORDER-{order_id}-{timestamp}
+  // Example:
+  // ORDER-68-202606241806
+  const newFormatMatch =
+    value.match(/^ORDER-(\d+)-\d+$/);
+
+  if (newFormatMatch?.[1]) {
+    return Number(newFormatMatch[1]);
+  }
+
+  // Old fallback format:
+  // ORDER-{order_id}
+  const oldFormatMatch =
+    value.match(/^ORDER-(\d+)$/);
+
+  if (oldFormatMatch?.[1]) {
+    return Number(oldFormatMatch[1]);
+  }
+
+  return null;
+};
+
+const mapXenditStatus = (status) => {
+  const cleanStatus =
+    String(status || '')
+      .trim()
+      .toUpperCase();
+
+  if (
+    cleanStatus === 'PAID' ||
+    cleanStatus === 'SETTLED'
+  ) {
+    return 'paid';
+  }
+
+  if (cleanStatus === 'EXPIRED') {
+    return 'expired';
+  }
+
+  if (
+    cleanStatus === 'FAILED' ||
+    cleanStatus === 'VOIDED' ||
+    cleanStatus === 'CANCELED' ||
+    cleanStatus === 'CANCELLED'
+  ) {
+    return 'failed';
+  }
+
+  return 'pending';
+};
+
+const getPayloadInvoiceUrl = (payload) => {
+  return (
+    payload.invoice_url ||
+    payload.invoice_url_web ||
+    payload.checkout_url ||
+    null
+  );
+};
+
+const getPayloadExpiryDate = (payload) => {
+  return (
+    payload.expiry_date ||
+    payload.expiration_date ||
+    payload.expires_at ||
+    null
+  );
+};
+
+// =========================
 // PROCESS PAYMENT
 // POST /api/payments
+//
+// Used by Service Staff Payments page.
+// Cash settlement for Pay at Counter should:
+// payment_method = "Cash"
+// payment_status = "paid"
+// paid_at = current datetime
+// status = "pending" only if previous status was awaiting_payment
 // =========================
 
 router.post('/', async (req, res) => {
@@ -29,15 +161,20 @@ router.post('/', async (req, res) => {
       });
     }
 
-    if (!paymentMethod) {
+    const parsedOrderId =
+      parseInt(orderId);
+
+    if (!parsedOrderId) {
       return res.status(400).json({
         success: false,
-        message: 'Payment method is required.',
+        message: 'Invalid Order ID.',
       });
     }
 
-    const parsedOrderId =
-      parseInt(orderId);
+    const normalizedPaymentMethod =
+      normalizePaymentMethod(
+        paymentMethod || 'Cash'
+      );
 
     const totalAmount =
       Number(amount) || 0;
@@ -48,11 +185,11 @@ router.post('/', async (req, res) => {
         .substr(2, 9)
         .toUpperCase()}`;
 
+    const now =
+      new Date().toISOString();
+
     // =========================
     // MOCK DATABASE
-    // IMPORTANT:
-    // Payment must NOT change order.status.
-    // Order remains pending until KDS updates it.
     // =========================
 
     if (!isConfigured) {
@@ -73,25 +210,43 @@ router.post('/', async (req, res) => {
       const newPayment = {
         id: db.payments.length + 1,
         order_id: parsedOrderId,
-        payment_method: paymentMethod,
-        amount: totalAmount,
+        payment_method:
+          normalizedPaymentMethod,
+        amount:
+          totalAmount ||
+          Number(order.total_amount || 0),
         status: 'Paid',
         reference_number:
           referenceNumber,
-        created_at:
-          new Date().toISOString(),
-        updated_at:
-          new Date().toISOString(),
+        created_at: now,
+        updated_at: now,
       };
 
       db.payments.push(newPayment);
 
-      // Do NOT do this:
-      // order.status = 'Preparing';
+      order.payment_method =
+        normalizedPaymentMethod === 'Cash'
+          ? 'Cash'
+          : normalizedPaymentMethod;
+
+      order.payment_status = 'paid';
+      order.paid_at = now;
+      order.updated_at = now;
+
+      if (
+        shouldMoveToKitchenAfterPayment(
+          order.status
+        )
+      ) {
+        order.status = 'pending';
+      }
 
       return res.status(201).json({
         success: true,
+        message:
+          'Payment recorded successfully.',
         data: newPayment,
+        order,
       });
     }
 
@@ -105,7 +260,7 @@ router.post('/', async (req, res) => {
     } = await supabase
       .from('orders')
       .select(
-        'id, status, table_number'
+        'id, status, table_number, total_amount, payment_method, payment_status'
       )
       .eq('id', parsedOrderId)
       .single();
@@ -121,19 +276,18 @@ router.post('/', async (req, res) => {
     }
 
     // =========================
-    // INSERT PAYMENT
-    // IMPORTANT:
-    // This only records payment.
-    // It does NOT update orders.status.
+    // INSERT PAYMENT AUDIT RECORD
     // =========================
-
-    const now =
-      new Date().toISOString();
 
     const paymentPayload = {
       order_id: parsedOrderId,
-      payment_method: paymentMethod,
-      amount: totalAmount,
+      payment_method:
+        normalizedPaymentMethod,
+      amount:
+        totalAmount ||
+        Number(
+          existingOrder.total_amount || 0
+        ),
       status: 'Paid',
       reference_number:
         referenceNumber,
@@ -168,15 +322,59 @@ router.post('/', async (req, res) => {
       });
     }
 
-    // Do NOT do this:
-    // await supabase
-    //   .from('orders')
-    //   .update({ status: 'Preparing' })
-    //   .eq('id', parsedOrderId);
+    // =========================
+    // UPDATE ORDER PAYMENT
+    //
+    // IMPORTANT:
+    // Do not change kitchen status except:
+    // awaiting_payment -> pending after payment is confirmed.
+    // =========================
+
+    const orderUpdatePayload = {
+      payment_method:
+        normalizedPaymentMethod === 'Cash'
+          ? 'Cash'
+          : normalizedPaymentMethod,
+      payment_status: 'paid',
+      paid_at: now,
+      updated_at: now,
+    };
+
+    if (
+      shouldMoveToKitchenAfterPayment(
+        existingOrder.status
+      )
+    ) {
+      orderUpdatePayload.status =
+        'pending';
+    }
+
+    const {
+      data: updatedOrder,
+      error: orderUpdateError,
+    } = await supabase
+      .from('orders')
+      .update(orderUpdatePayload)
+      .eq('id', parsedOrderId)
+      .select(
+        'id, order_number, table_number, status, payment_status, payment_method, paid_at, total_amount, created_at, updated_at'
+      )
+      .single();
+
+    if (orderUpdateError) {
+      return res.status(500).json({
+        success: false,
+        message:
+          orderUpdateError.message,
+      });
+    }
 
     return res.status(201).json({
       success: true,
+      message:
+        'Payment recorded successfully.',
       data: paymentRow,
+      order: updatedOrder,
     });
   } catch (error) {
     console.error(
@@ -193,155 +391,465 @@ router.post('/', async (req, res) => {
   }
 });
 
-
 // =========================
 // XENDIT WEBHOOK CALLBACK
 // POST /api/payments/webhook
+//
+// Backup/older webhook route.
+//
+// Recommended main webhook route:
+// POST /api/webhooks/xendit
+//
+// This backup route also supports:
+// ORDER-{order_id}-{timestamp}
+// Example:
+// ORDER-68-202606241806
+//
+// Digital Payment / QR PH rule:
+// paid:
+// payment_status = paid
+// paid_at = current datetime
+// status = pending only if current status is awaiting_payment
+//
+// expired/failed:
+// payment_status only
+// status remains awaiting_payment
 // =========================
 
 router.post('/webhook', async (req, res) => {
   try {
-    const callbackToken = process.env.XENDIT_CALLBACK_TOKEN;
-    const headerToken = req.headers['x-callback-token'];
+    const callbackToken =
+      process.env.XENDIT_CALLBACK_TOKEN ||
+      process.env.XENDIT_WEBHOOK_TOKEN;
 
-    if (callbackToken && headerToken !== callbackToken) {
-      console.warn('⚠️ [WEBHOOK] Callback token mismatch!');
+    const headerToken =
+      req.headers['x-callback-token'];
+
+    if (
+      callbackToken &&
+      headerToken !== callbackToken
+    ) {
+      console.warn(
+        '⚠️ [WEBHOOK] Callback token mismatch!'
+      );
+
       return res.status(403).json({
         success: false,
-        message: 'Invalid callback token.'
+        message: 'Invalid callback token.',
       });
     }
 
-    const { id, external_id, status, amount } = req.body;
-    console.log(`[WEBHOOK] Received callback for ${external_id}, Status: ${status}`);
+    const payload =
+      req.body || {};
 
-    if (!external_id || !external_id.startsWith('ORDER-')) {
-      console.log('[WEBHOOK] Ignored callback (not an order invoice)');
-      return res.json({ success: true, message: 'Ignored' });
+    const {
+      id,
+      external_id,
+      status,
+      amount,
+    } = payload;
+
+    console.log(
+      `[WEBHOOK] Received callback for ${external_id}, Status: ${status}`
+    );
+
+    if (
+      !external_id ||
+      !String(external_id).startsWith('ORDER-')
+    ) {
+      console.log(
+        '[WEBHOOK] Ignored callback (not an order invoice)'
+      );
+
+      return res.json({
+        success: true,
+        message: 'Ignored',
+      });
     }
 
-    const orderId = parseInt(external_id.replace('ORDER-', ''));
-    if (isNaN(orderId)) {
-      return res.status(400).json({ success: false, message: 'Invalid external_id format.' });
+    const orderId =
+      extractOrderIdFromExternalId(
+        external_id
+      );
+
+    if (!orderId) {
+      return res.status(400).json({
+        success: false,
+        message:
+          'Invalid external_id format.',
+      });
     }
 
-    // Map Xendit status to order payment_status
-    // Required statuses: pending, paid, expired, failed
-    let mappedStatus = 'pending';
-    const cleanStatus = String(status || '').toUpperCase();
-    if (cleanStatus === 'PAID' || cleanStatus === 'SETTLED') {
-      mappedStatus = 'paid';
-    } else if (cleanStatus === 'EXPIRED') {
-      mappedStatus = 'expired';
-    } else if (cleanStatus === 'FAILED') {
-      mappedStatus = 'failed';
-    }
+    const mappedStatus =
+      mapXenditStatus(status);
 
-    console.log(`[WEBHOOK] Mapping Xendit status "${status}" to payment_status "${mappedStatus}" for Order ${orderId}`);
+    const now =
+      new Date().toISOString();
 
-    // Update in Mock DB if Supabase is not configured
+    const xenditInvoiceId =
+      id || null;
+
+    const xenditInvoiceUrl =
+      getPayloadInvoiceUrl(payload);
+
+    const xenditExpiryDate =
+      getPayloadExpiryDate(payload);
+
+    console.log(
+      '[WEBHOOK] Mapping Xendit invoice:',
+      {
+        order_id:
+          orderId,
+        external_id,
+        xendit_invoice_id:
+          xenditInvoiceId,
+        raw_status:
+          status,
+        payment_status:
+          mappedStatus,
+      }
+    );
+
+    // =========================
+    // MOCK DATABASE
+    // =========================
+
     if (!isConfigured) {
-      const order = db.orders.find(o => o.id === orderId);
+      const order =
+        db.orders.find(
+          (o) =>
+            Number(o.id) ===
+            Number(orderId)
+        );
+
       if (!order) {
-        console.warn(`[WEBHOOK] Order ${orderId} not found in Mock DB.`);
-        return res.status(404).json({ success: false, message: 'Order not found.' });
+        console.warn(
+          `[WEBHOOK] Order ${orderId} not found in Mock DB.`
+        );
+
+        return res.status(404).json({
+          success: false,
+          message: 'Order not found.',
+        });
       }
 
-      order.payment_status = mappedStatus;
-      // Do NOT change order.status! Keep it pending.
+      order.payment_status =
+        mappedStatus;
 
-      // Record in mock payments if paid
+      order.xendit_invoice_id =
+        xenditInvoiceId ||
+        order.xendit_invoice_id ||
+        null;
+
+      order.xendit_external_id =
+        external_id ||
+        order.xendit_external_id ||
+        null;
+
+      order.xendit_invoice_url =
+        xenditInvoiceUrl ||
+        order.xendit_invoice_url ||
+        null;
+
+      order.xendit_expiry_date =
+        xenditExpiryDate ||
+        order.xendit_expiry_date ||
+        null;
+
+      order.updated_at = now;
+
       if (mappedStatus === 'paid') {
-        const alreadyPaid = db.payments.some(p => p.order_id === orderId);
+        order.payment_method =
+          'Digital Payment';
+
+        order.paid_at = now;
+
+        if (
+          shouldMoveToKitchenAfterPayment(
+            order.status
+          )
+        ) {
+          order.status = 'pending';
+        }
+
+        const alreadyPaid =
+          db.payments.some(
+            (p) =>
+              Number(p.order_id) ===
+              Number(orderId)
+          );
+
         if (!alreadyPaid) {
           const newPayment = {
             id: db.payments.length + 1,
             order_id: orderId,
-            payment_method: 'Xendit',
-            amount: Number(amount) || order.total_amount || 0,
+            payment_method:
+              'Digital Payment',
+            amount:
+              Number(amount) ||
+              Number(
+                order.total_amount || 0
+              ),
             status: 'Paid',
-            reference_number: id || `TXN-${Math.random().toString(36).substr(2, 9).toUpperCase()}`,
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
+            reference_number:
+              xenditInvoiceId ||
+              `TXN-${Math.random()
+                .toString(36)
+                .substr(2, 9)
+                .toUpperCase()}`,
+            created_at: now,
+            updated_at: now,
           };
+
           db.payments.push(newPayment);
-          console.log(`[WEBHOOK] Recorded mock payment for Order ${orderId}`);
+
+          console.log(
+            `[WEBHOOK] Recorded mock payment for Order ${orderId}`
+          );
         }
       }
 
-      return res.json({ success: true, message: 'Mock webhook processed successfully.' });
+      return res.json({
+        success: true,
+        message:
+          'Mock webhook processed successfully.',
+        order_id:
+          orderId,
+        payment_status:
+          mappedStatus,
+        order_status:
+          order.status,
+        xendit_invoice_id:
+          order.xendit_invoice_id,
+        xendit_external_id:
+          order.xendit_external_id,
+      });
     }
 
-    // Update in Supabase
-    // 1. Get current order to ensure it exists
-    const { data: existingOrder, error: orderLookupError } = await supabase
+    // =========================
+    // LOOKUP ORDER
+    // =========================
+
+    const {
+      data: existingOrder,
+      error: orderLookupError,
+    } = await supabase
       .from('orders')
-      .select('id, total_amount, table_number')
+      .select(
+        'id, status, total_amount, table_number, payment_method, payment_status, xendit_invoice_id, xendit_external_id, xendit_invoice_url, xendit_expiry_date'
+      )
       .eq('id', orderId)
       .single();
 
-    if (orderLookupError || !existingOrder) {
-      console.warn(`[WEBHOOK] Order ${orderId} not found in Supabase.`);
-      return res.status(404).json({ success: false, message: 'Order not found.' });
+    if (
+      orderLookupError ||
+      !existingOrder
+    ) {
+      console.warn(
+        `[WEBHOOK] Order ${orderId} not found in Supabase.`
+      );
+
+      return res.status(404).json({
+        success: false,
+        message: 'Order not found.',
+      });
     }
 
-    // 2. Update payment_status (do NOT alter order.status!)
-    const { error: orderUpdateError } = await supabase
+    // =========================
+    // UPDATE ORDER PAYMENT STATUS
+    // and preserve/save Xendit invoice details.
+    // =========================
+
+    const orderUpdatePayload = {
+      payment_status:
+        mappedStatus,
+
+      xendit_invoice_id:
+        xenditInvoiceId ||
+        existingOrder.xendit_invoice_id ||
+        null,
+
+      xendit_external_id:
+        external_id ||
+        existingOrder.xendit_external_id ||
+        null,
+
+      xendit_invoice_url:
+        xenditInvoiceUrl ||
+        existingOrder.xendit_invoice_url ||
+        null,
+
+      updated_at:
+        now,
+    };
+
+    if (
+      xenditExpiryDate ||
+      existingOrder.xendit_expiry_date
+    ) {
+      orderUpdatePayload.xendit_expiry_date =
+        xenditExpiryDate ||
+        existingOrder.xendit_expiry_date;
+    }
+
+    if (mappedStatus === 'paid') {
+      orderUpdatePayload.payment_method =
+        'Digital Payment';
+
+      orderUpdatePayload.paid_at =
+        now;
+
+      if (
+        shouldMoveToKitchenAfterPayment(
+          existingOrder.status
+        )
+      ) {
+        orderUpdatePayload.status =
+          'pending';
+      }
+    }
+
+    const {
+      data: updatedOrder,
+      error: orderUpdateError,
+    } = await supabase
       .from('orders')
-      .update({
-        payment_status: mappedStatus,
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', orderId);
+      .update(orderUpdatePayload)
+      .eq('id', orderId)
+      .select(
+        'id, order_number, table_number, status, payment_status, payment_method, paid_at, total_amount, xendit_invoice_id, xendit_external_id, xendit_invoice_url, xendit_expiry_date, created_at, updated_at'
+      )
+      .single();
 
     if (orderUpdateError) {
-      console.error('[WEBHOOK] Failed to update order payment_status:', orderUpdateError);
-      return res.status(500).json({ success: false, message: orderUpdateError.message });
+      console.error(
+        '[WEBHOOK] Failed to update order payment_status:',
+        orderUpdateError
+      );
+
+      return res.status(500).json({
+        success: false,
+        message:
+          orderUpdateError.message,
+      });
     }
 
-    // 3. Insert record in payments table if paid
+    console.log(
+      '[WEBHOOK] Order updated:',
+      {
+        order_id:
+          updatedOrder.id,
+        status:
+          updatedOrder.status,
+        payment_status:
+          updatedOrder.payment_status,
+        xendit_invoice_id:
+          updatedOrder.xendit_invoice_id,
+        xendit_external_id:
+          updatedOrder.xendit_external_id,
+      }
+    );
+
+    // =========================
+    // INSERT PAYMENT AUDIT RECORD IF PAID
+    // =========================
+
     if (mappedStatus === 'paid') {
-      // Check if payment already exists
-      const { data: existingPayment, error: paymentCheckError } = await supabase
+      const {
+        data: existingPayment,
+        error: paymentCheckError,
+      } = await supabase
         .from('payments')
         .select('id')
         .eq('order_id', orderId)
         .limit(1);
 
-      if (!paymentCheckError && (!existingPayment || existingPayment.length === 0)) {
-        const now = new Date().toISOString();
+      if (
+        !paymentCheckError &&
+        (
+          !existingPayment ||
+          existingPayment.length === 0
+        )
+      ) {
         const paymentPayload = {
-          order_id: orderId,
-          payment_method: 'Xendit',
-          amount: Number(amount) || existingOrder.total_amount || 0,
-          status: 'Paid',
-          reference_number: id || `TXN-${Math.random().toString(36).substr(2, 9).toUpperCase()}`,
-          created_at: now,
-          updated_at: now
+          order_id:
+            orderId,
+
+          payment_method:
+            'Digital Payment',
+
+          amount:
+            Number(amount) ||
+            Number(
+              existingOrder.total_amount || 0
+            ),
+
+          status:
+            'Paid',
+
+          reference_number:
+            xenditInvoiceId ||
+            `TXN-${Math.random()
+              .toString(36)
+              .substr(2, 9)
+              .toUpperCase()}`,
+
+          created_at:
+            now,
+
+          updated_at:
+            now,
         };
 
-        const { error: paymentInsertError } = await supabase
+        const {
+          error: paymentInsertError,
+        } = await supabase
           .from('payments')
           .insert(paymentPayload);
 
         if (paymentInsertError) {
-          console.error('[WEBHOOK] Failed to insert payment audit record:', paymentInsertError);
-          // Don't fail the webhook response since the order status was already updated
+          console.error(
+            '[WEBHOOK] Failed to insert payment audit record:',
+            paymentInsertError
+          );
         } else {
-          console.log(`[WEBHOOK] Recorded payment audit record for Order ${orderId}`);
+          console.log(
+            `[WEBHOOK] Recorded payment audit record for Order ${orderId}`
+          );
         }
       }
     }
 
     return res.json({
       success: true,
-      message: 'Webhook processed successfully.'
+      message:
+        'Webhook processed successfully.',
+      order_id:
+        orderId,
+      payment_status:
+        mappedStatus,
+      order_status:
+        updatedOrder?.status,
+      xendit_invoice_id:
+        updatedOrder?.xendit_invoice_id,
+      xendit_external_id:
+        updatedOrder?.xendit_external_id,
+      xendit_invoice_url:
+        updatedOrder?.xendit_invoice_url,
+      order:
+        updatedOrder,
     });
   } catch (error) {
-    console.error('[WEBHOOK] Error handling Xendit webhook:', error);
+    console.error(
+      '[WEBHOOK] Error handling Xendit webhook:',
+      error
+    );
+
     return res.status(500).json({
       success: false,
-      message: error.message || 'Internal server error.'
+      message:
+        error.message ||
+        'Internal server error.',
     });
   }
 });

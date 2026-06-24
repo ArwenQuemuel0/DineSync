@@ -9,7 +9,6 @@ import {
   Text,
   StyleSheet,
   TouchableOpacity,
-  FlatList,
   Alert,
   ActivityIndicator,
   useWindowDimensions,
@@ -100,7 +99,9 @@ export default function OrderConfirmScreen({
       };
 
       const useTwoPane =
-        !isPortrait && width >= 720;
+        !isPortrait &&
+        width >= 720 &&
+        height >= 520;
 
       const screenPadding =
         isVeryNarrow
@@ -114,13 +115,10 @@ export default function OrderConfirmScreen({
         isVeryNarrow,
         useTwoPane,
 
-        safeTopExtra:
-          isPhone
-            ? 6
-            : 8,
+        safeTopExtra: 0,
 
         safeBottomExtra:
-          Math.max(insets.bottom + 8, 16),
+          Math.max(insets.bottom + 6, 12),
 
         containerPadding:
           screenPadding,
@@ -239,20 +237,6 @@ export default function OrderConfirmScreen({
         buttonPadding:
           scale(16, 12, 16),
 
-        optionMaxHeight:
-          useTwoPane
-            ? undefined
-            : isPhone
-              ? undefined
-              : clamp(height * 0.42, 360, 500),
-
-        receiptMaxHeight:
-          useTwoPane
-            ? undefined
-            : isPhone
-              ? undefined
-              : clamp(height * 0.42, 350, 480),
-
         maxContentWidth:
           clamp(longest * 0.95, 340, 1300),
       };
@@ -303,10 +287,54 @@ export default function OrderConfirmScreen({
     }, [cartItems]);
 
   const [selectedPayment, setSelectedPayment] =
-    useState('Pay at Counter');
+    useState('Pay Later');
 
   const [loading, setLoading] =
     useState(false);
+
+  const paymentOptions =
+    useMemo(() => {
+      return [
+        {
+          label: 'Pay Later',
+          apiMethod: 'Pay Later',
+          description:
+            'Send your order to the kitchen now and settle payment later with staff.',
+          disabled: false,
+        },
+        {
+          label: 'Pay at Counter',
+          apiMethod: 'Pay at Counter',
+          description:
+            'Pay first at the cashier before your order is sent to the kitchen.',
+          disabled: false,
+        },
+        {
+          label: 'QR PH',
+          apiMethod: 'Digital Payment',
+          description:
+            hasCustomRequest
+              ? 'Not available for Chef Oppa Special requests because the price must be confirmed by staff.'
+              : 'Pay securely through Xendit QR PH checkout.',
+          disabled: hasCustomRequest,
+        },
+      ];
+    }, [
+      hasCustomRequest,
+    ]);
+
+  const selectedOption =
+    useMemo(() => {
+      return (
+        paymentOptions.find(
+          (option) =>
+            option.label === selectedPayment
+        ) || paymentOptions[0]
+      );
+    }, [
+      paymentOptions,
+      selectedPayment,
+    ]);
 
   useEffect(() => {
     if (!tableResetRequired) {
@@ -336,7 +364,7 @@ export default function OrderConfirmScreen({
       hasCustomRequest &&
       selectedPayment === 'QR PH'
     ) {
-      setSelectedPayment('Pay at Counter');
+      setSelectedPayment('Pay Later');
     }
   }, [
     hasCustomRequest,
@@ -360,28 +388,33 @@ export default function OrderConfirmScreen({
       : '0.00';
   };
 
-  const paymentOptions = [
-    {
-      label: 'Pay at Counter',
-      description:
-        'Confirm your order now and pay at the cashier counter.',
-      disabled: false,
-    },
-    {
-      label: 'Pay Later',
-      description:
-        'Send your order to the kitchen and settle payment later with staff.',
-      disabled: false,
-    },
-    {
-      label: 'QR PH',
-      description:
-        hasCustomRequest
-          ? 'Not available for Chef Oppa Special requests because the price must be confirmed by staff.'
-          : 'Pay online using the Xendit QR PH checkout link.',
-      disabled: hasCustomRequest,
-    },
-  ];
+  const getConfirmationMessage = (
+    method
+  ) => {
+    if (method === 'Pay Later') {
+      return 'Order sent to kitchen. Please settle payment later with staff.';
+    }
+
+    if (method === 'Pay at Counter') {
+      return 'Order recorded. Please proceed to the counter to pay before the kitchen prepares your order.';
+    }
+
+    return 'Opening Xendit QR PH checkout. Your order will be sent to the kitchen after payment is confirmed.';
+  };
+
+  const getConfirmDialogMessage = (
+    method
+  ) => {
+    if (method === 'Pay Later') {
+      return 'Please review your order carefully. Once confirmed, your order will be sent to the kitchen and can no longer be cancelled or changed.';
+    }
+
+    if (method === 'Pay at Counter') {
+      return 'Please review your order carefully. Once confirmed, your order will be recorded first. Please pay at the counter before the kitchen prepares your order.';
+    }
+
+    return 'Please review your order carefully. Once confirmed, your order will be recorded first and Xendit QR PH checkout will open. The kitchen will receive your order after payment is confirmed.';
+  };
 
   const handleSelectPayment = (option) => {
     if (option.disabled) {
@@ -393,7 +426,37 @@ export default function OrderConfirmScreen({
       return;
     }
 
+    console.log(
+      'SELECTED PAYMENT OPTION:',
+      {
+        label:
+          option.label,
+        apiMethod:
+          option.apiMethod,
+      }
+    );
+
     setSelectedPayment(option.label);
+  };
+
+  const getSafeSelectedOption = () => {
+    const option =
+      paymentOptions.find(
+        (item) =>
+          item.label === selectedPayment
+      ) || paymentOptions[0];
+
+    if (
+      option.disabled ||
+      (
+        hasCustomRequest &&
+        option.label === 'QR PH'
+      )
+    ) {
+      return paymentOptions[0];
+    }
+
+    return option;
   };
 
   const handleFinalConfirm = async () => {
@@ -417,9 +480,12 @@ export default function OrderConfirmScreen({
       return;
     }
 
+    const paymentSnapshot =
+      getSafeSelectedOption();
+
     if (
       hasCustomRequest &&
-      selectedPayment === 'QR PH'
+      paymentSnapshot.label === 'QR PH'
     ) {
       Alert.alert(
         'QR PH Not Available',
@@ -429,9 +495,22 @@ export default function OrderConfirmScreen({
       return;
     }
 
+    console.log(
+      'CONFIRM PAYMENT SNAPSHOT:',
+      {
+        selectedPayment,
+        label:
+          paymentSnapshot.label,
+        apiMethod:
+          paymentSnapshot.apiMethod,
+      }
+    );
+
     Alert.alert(
       'Confirm Order',
-      'Please review your order carefully. Once confirmed, your order will be sent to the kitchen and can no longer be cancelled or changed.',
+      getConfirmDialogMessage(
+        paymentSnapshot.label
+      ),
       [
         {
           text: 'Go Back',
@@ -440,16 +519,85 @@ export default function OrderConfirmScreen({
         {
           text: 'Confirm Order',
           style: 'destructive',
-          onPress: submitOrder,
+          onPress: () =>
+            submitOrder(
+              paymentSnapshot
+            ),
         },
       ]
     );
   };
 
-  const submitOrder = async () => {
+  const goToOrderStatusWithMessage = (
+    orderId,
+    message
+  ) => {
+    Alert.alert(
+      'Order Confirmed',
+      message,
+      [
+        {
+          text: 'OK',
+          onPress: () => {
+            navigation.replace(
+              'OrderStatus',
+              {
+                orderId,
+                message,
+              }
+            );
+          },
+        },
+      ]
+    );
+  };
+
+  const openPaymentWithMessage = ({
+    orderId,
+    invoiceUrl,
+    message,
+  }) => {
+    Alert.alert(
+      'Order Recorded',
+      message,
+      [
+        {
+          text: 'Open Checkout',
+          onPress: () => {
+            navigation.replace(
+              'PaymentWebView',
+              {
+                orderId,
+                invoiceUrl,
+                message,
+              }
+            );
+          },
+        },
+      ]
+    );
+  };
+
+  const submitOrder = async (
+    paymentSnapshot
+  ) => {
     setLoading(true);
 
     try {
+      const selectedPaymentOption =
+        paymentSnapshot ||
+        getSafeSelectedOption();
+
+      console.log(
+        'SUBMIT ORDER PAYMENT:',
+        {
+          label:
+            selectedPaymentOption.label,
+          apiMethod:
+            selectedPaymentOption.apiMethod,
+        }
+      );
+
       const tableCheck =
         await ensureCanOrder();
 
@@ -479,7 +627,7 @@ export default function OrderConfirmScreen({
         await placeOrder(
           cartItems,
           finalTableNumber,
-          selectedPayment
+          selectedPaymentOption.apiMethod
         );
 
       if (
@@ -514,39 +662,49 @@ export default function OrderConfirmScreen({
         return;
       }
 
+      const confirmationMessage =
+        getConfirmationMessage(
+          selectedPaymentOption.label
+        );
+
       clearCart();
 
       setActiveOrderId(orderId);
 
-      if (selectedPayment === 'QR PH') {
+      if (
+        selectedPaymentOption.label === 'QR PH'
+      ) {
         if (!invoiceUrl) {
           Alert.alert(
             'Payment Error',
-            'No payment link was returned. Please ask restaurant staff for help.'
+            'No Xendit QR PH checkout link was returned. Please ask restaurant staff for help.'
           );
 
           navigation.replace(
             'OrderStatus',
-            { orderId }
+            {
+              orderId,
+              message:
+                'Order recorded, but the Xendit QR PH checkout link was not returned. Please contact staff.',
+            }
           );
 
           return;
         }
 
-        navigation.replace(
-          'PaymentWebView',
-          {
-            orderId,
-            invoiceUrl,
-          }
-        );
+        openPaymentWithMessage({
+          orderId,
+          invoiceUrl,
+          message:
+            confirmationMessage,
+        });
 
         return;
       }
 
-      navigation.replace(
-        'OrderStatus',
-        { orderId }
+      goToOrderStatusWithMessage(
+        orderId,
+        confirmationMessage
       );
     } catch (error) {
       console.error(
@@ -585,9 +743,10 @@ export default function OrderConfirmScreen({
     }
   };
 
-  const renderReceiptItem = ({
+  const renderReceiptItem = (
     item,
-  }) => {
+    index
+  ) => {
     const customItem =
       isCustomItem(item);
 
@@ -609,8 +768,18 @@ export default function OrderConfirmScreen({
       item.notes ||
       '';
 
+    const itemKey =
+      String(
+        item.menu_item_id ||
+          item.id ||
+          index
+      );
+
     return (
-      <View style={styles.receiptItem}>
+      <View
+        key={itemKey}
+        style={styles.receiptItem}
+      >
         <View style={styles.receiptItemLeft}>
           <Text
             style={[
@@ -695,8 +864,6 @@ export default function OrderConfirmScreen({
             responsive.cardPadding,
           borderRadius:
             responsive.cardRadius,
-          maxHeight:
-            responsive.receiptMaxHeight,
         },
         responsive.useTwoPane &&
           styles.receiptTwoPane,
@@ -736,22 +903,11 @@ export default function OrderConfirmScreen({
         ]}
       />
 
-      <FlatList
-        data={cartItems}
-        keyExtractor={(item, index) =>
-          String(
-            item.menu_item_id ||
-              item.id ||
-              index
-          )
-        }
-        renderItem={renderReceiptItem}
-        showsVerticalScrollIndicator={false}
-        nestedScrollEnabled
-        contentContainerStyle={{
-          paddingBottom: 12,
-        }}
-      />
+      <View style={styles.receiptItemsList}>
+        {cartItems.map(
+          renderReceiptItem
+        )}
+      </View>
 
       <View
         style={[
@@ -833,27 +989,8 @@ export default function OrderConfirmScreen({
     </View>
   );
 
-  const optionCard = (
-    <ScrollView
-      style={[
-        styles.optionCard,
-        {
-          padding:
-            responsive.cardPadding,
-          borderRadius:
-            responsive.cardRadius,
-          maxHeight:
-            responsive.optionMaxHeight,
-        },
-        responsive.useTwoPane &&
-          styles.optionTwoPane,
-      ]}
-      nestedScrollEnabled
-      showsVerticalScrollIndicator={false}
-      contentContainerStyle={{
-        paddingBottom: 20,
-      }}
-    >
+  const optionCardContent = (
+    <>
       <Text
         style={[
           styles.optionTitle,
@@ -981,7 +1118,42 @@ export default function OrderConfirmScreen({
           Confirm Order
         </Text>
       </TouchableOpacity>
+    </>
+  );
+
+  const optionCard = responsive.useTwoPane ? (
+    <ScrollView
+      style={[
+        styles.optionCard,
+        {
+          padding:
+            responsive.cardPadding,
+          borderRadius:
+            responsive.cardRadius,
+        },
+        styles.optionTwoPane,
+      ]}
+      showsVerticalScrollIndicator={false}
+      contentContainerStyle={{
+        paddingBottom: 20,
+      }}
+    >
+      {optionCardContent}
     </ScrollView>
+  ) : (
+    <View
+      style={[
+        styles.optionCard,
+        {
+          padding:
+            responsive.cardPadding,
+          borderRadius:
+            responsive.cardRadius,
+        },
+      ]}
+    >
+      {optionCardContent}
+    </View>
   );
 
   if (loading) {
@@ -1001,7 +1173,7 @@ export default function OrderConfirmScreen({
             },
           ]}
         >
-          Sending order to kitchen...
+          Processing order...
         </Text>
       </View>
     );
@@ -1103,7 +1275,7 @@ export default function OrderConfirmScreen({
               },
             ]}
           >
-            Review your order before sending it to the kitchen.
+            Review your order and choose how you want to settle payment.
           </Text>
 
           {responsive.useTwoPane ? (
@@ -1182,7 +1354,8 @@ const styles =
 
     topBar: {
       flexDirection: 'row',
-      justifyContent: 'space-between',
+      justifyContent:
+        'space-between',
       alignItems: 'center',
       gap: 12,
     },
@@ -1236,6 +1409,10 @@ const styles =
       flex: 1.18,
     },
 
+    receiptItemsList: {
+      width: '100%',
+    },
+
     optionCard: {
       backgroundColor: '#fff',
       borderWidth: 1,
@@ -1266,7 +1443,8 @@ const styles =
 
     receiptItem: {
       flexDirection: 'row',
-      justifyContent: 'space-between',
+      justifyContent:
+        'space-between',
       alignItems: 'flex-start',
       paddingVertical: 10,
       borderBottomWidth: 1,
@@ -1312,7 +1490,8 @@ const styles =
 
     summaryRow: {
       flexDirection: 'row',
-      justifyContent: 'space-between',
+      justifyContent:
+        'space-between',
       alignItems: 'center',
       marginTop: 8,
       gap: 12,

@@ -5,7 +5,13 @@
 export const normalizeOrderStatus = (status) => {
   const value = String(status || '')
     .trim()
-    .toLowerCase();
+    .toLowerCase()
+    .replace(/[_-]+/g, '_')
+    .replace(/\s+/g, '_');
+
+  if (value === 'awaiting_payment') {
+    return 'awaiting_payment';
+  }
 
   if (value === 'pending') {
     return 'pending';
@@ -23,7 +29,10 @@ export const normalizeOrderStatus = (status) => {
     return 'served';
   }
 
-  if (value === 'cancelled' || value === 'canceled') {
+  if (
+    value === 'cancelled' ||
+    value === 'canceled'
+  ) {
     return 'cancelled';
   }
 
@@ -31,7 +40,12 @@ export const normalizeOrderStatus = (status) => {
 };
 
 export const getOrderStatusLabel = (status) => {
-  const normalized = normalizeOrderStatus(status);
+  const normalized =
+    normalizeOrderStatus(status);
+
+  if (normalized === 'awaiting_payment') {
+    return 'Awaiting Payment';
+  }
 
   if (normalized === 'pending') {
     return 'Pending';
@@ -57,13 +71,32 @@ export const getOrderStatusLabel = (status) => {
 };
 
 export const isActiveOrderStatus = (status) => {
-  const normalized = normalizeOrderStatus(status);
+  const normalized =
+    normalizeOrderStatus(status);
 
   return [
     'pending',
     'preparing',
     'ready',
   ].includes(normalized);
+};
+
+export const isKdsVisibleOrderStatus = (status) => {
+  const normalized =
+    normalizeOrderStatus(status);
+
+  return [
+    'pending',
+    'preparing',
+    'ready',
+  ].includes(normalized);
+};
+
+export const isAwaitingPaymentStatus = (status) => {
+  return (
+    normalizeOrderStatus(status) ===
+    'awaiting_payment'
+  );
 };
 
 // =========================
@@ -74,7 +107,9 @@ export const isActiveOrderStatus = (status) => {
 export const normalizePaymentStatus = (paymentStatus) => {
   const value = String(paymentStatus || '')
     .trim()
-    .toLowerCase();
+    .toLowerCase()
+    .replace(/[_-]+/g, '_')
+    .replace(/\s+/g, '_');
 
   if (value === 'paid') {
     return 'paid';
@@ -92,7 +127,8 @@ export const normalizePaymentStatus = (paymentStatus) => {
 };
 
 export const getPaymentStatusLabel = (paymentStatus) => {
-  const normalized = normalizePaymentStatus(paymentStatus);
+  const normalized =
+    normalizePaymentStatus(paymentStatus);
 
   if (normalized === 'paid') {
     return 'Paid';
@@ -107,4 +143,50 @@ export const getPaymentStatusLabel = (paymentStatus) => {
   }
 
   return 'Unpaid';
+};
+
+// =========================
+// PAYMENT METHOD HELPERS
+// =========================
+
+export const normalizePaymentMethod = (paymentMethod) => {
+  const value = String(paymentMethod || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[_-]+/g, ' ')
+    .replace(/\s+/g, ' ');
+
+  if (
+    value === 'digital payment' ||
+    value === 'qr ph' ||
+    value === 'qrph' ||
+    value === 'xendit' ||
+    value === 'online payment'
+  ) {
+    return 'QR PH';
+  }
+
+  if (
+    value === 'cash' ||
+    value === 'cash paid'
+  ) {
+    return 'Cash';
+  }
+
+  if (
+    value === 'pay at counter' ||
+    value === 'counter' ||
+    value === 'cashier'
+  ) {
+    return 'Pay at Counter';
+  }
+
+  if (
+    value === 'pay later' ||
+    value === 'later'
+  ) {
+    return 'Pay Later';
+  }
+
+  return paymentMethod || 'Pay Later';
 };

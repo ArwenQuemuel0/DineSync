@@ -115,14 +115,23 @@ export default function MenuScreen({
       const shortest =
         Math.min(width, height);
 
-      const base =
-        shortest / 768;
+      const isLandscape =
+        width > height;
 
-      const isPortrait =
-        height >= width;
+      const isPhone =
+        shortest < 600;
 
       const isPhoneWidth =
         width < 430;
+
+      const isVeryNarrow =
+        width < 380;
+
+      const isShortHeight =
+        height < 650;
+
+      const base =
+        Math.min(shortest / 768, 1.05);
 
       const clamp = (
         value,
@@ -146,11 +155,13 @@ export default function MenuScreen({
       };
 
       const useSideCart =
-        !isPortrait && width >= 720;
+        isLandscape &&
+        width >= 760 &&
+        height >= 520;
 
       const cartWidth =
         useSideCart
-          ? clamp(width * 0.27, 270, 355)
+          ? clamp(width * 0.27, 250, 370)
           : '100%';
 
       const availableMenuWidth =
@@ -177,9 +188,7 @@ export default function MenuScreen({
               2,
               3
             )
-          : isPhoneWidth
-            ? 2
-            : 2;
+          : 2;
 
       const menuCardWidth =
         Math.floor(
@@ -197,28 +206,46 @@ export default function MenuScreen({
             ? scale(88, 66, 94)
             : scale(102, 74, 110);
 
+      const stackedCartMinHeight =
+        clamp(
+          height * 0.21,
+          isVeryNarrow ? 185 : 205,
+          255
+        );
+
       const stackedCartMaxHeight =
-        isPhoneWidth
-          ? clamp(height * 0.2, 135, 175)
-          : clamp(height * 0.24, 175, 235);
+        clamp(
+          height * 0.26,
+          isVeryNarrow ? 205 : 230,
+          300
+        );
+
+      const stackedCartListMaxHeight =
+        clamp(
+          height * 0.12,
+          86,
+          125
+        );
 
       return {
+        isPhone,
         isPhoneWidth,
+        isVeryNarrow,
+        isShortHeight,
         useSideCart,
         cartWidth,
         menuColumns,
         menuCardWidth,
+        stackedCartMinHeight,
         stackedCartMaxHeight,
+        stackedCartListMaxHeight,
         cardGap,
 
-        topSafeExtra:
-          isPhoneWidth
-            ? 10
-            : 6,
+        topSafeExtra: 0,
 
         topBarMinHeight:
           isPhoneWidth
-            ? scale(86, 78, 94)
+            ? scale(78, 70, 84)
             : scale(74, 62, 82),
 
         topBarPaddingH:
@@ -228,7 +255,7 @@ export default function MenuScreen({
 
         topBarPaddingV:
           isPhoneWidth
-            ? scale(8, 6, 10)
+            ? scale(7, 5, 8)
             : scale(8, 6, 10),
 
         topTitle:
@@ -246,30 +273,32 @@ export default function MenuScreen({
 
         topButtonFont:
           isPhoneWidth
-            ? scale(12, 10, 12)
+            ? scale(11, 9, 12)
             : scale(15, 10, 15),
 
         topButtonPaddingV:
           isPhoneWidth
-            ? scale(6, 5, 6)
+            ? scale(5, 4, 6)
             : scale(8, 5, 8),
 
         topButtonPaddingH:
           isPhoneWidth
-            ? scale(9, 7, 10)
+            ? scale(8, 6, 10)
             : scale(14, 7, 14),
 
         categoryHeight:
           isPhoneWidth
-            ? scale(58, 50, 62)
-            : scale(70, 52, 70),
+            ? scale(54, 48, 58)
+            : scale(66, 50, 68),
 
         categoryPaddingV:
-          scale(12, 8, 12),
+          isPhoneWidth
+            ? scale(10, 7, 10)
+            : scale(12, 8, 12),
 
         categoryPaddingH:
           isPhoneWidth
-            ? scale(18, 12, 20)
+            ? scale(16, 12, 18)
             : scale(22, 12, 22),
 
         categoryText:
@@ -280,7 +309,7 @@ export default function MenuScreen({
 
         menuPaddingTop:
           isPhoneWidth
-            ? scale(14, 12, 16)
+            ? scale(12, 10, 14)
             : scale(18, 14, 22),
 
         menuPaddingH,
@@ -347,9 +376,14 @@ export default function MenuScreen({
           scale(14, 8, 16),
 
         sidebarPaddingT:
-          isPhoneWidth
-            ? scale(8, 6, 10)
-            : scale(12, 7, 16),
+          useSideCart
+            ? scale(12, 7, 16)
+            : scale(7, 5, 9),
+
+        sidebarPaddingBottom:
+          useSideCart
+            ? Math.max(insets.bottom + 8, 12)
+            : Math.max(insets.bottom + 2, 6),
 
         cartIcon:
           scale(24, 17, 24),
@@ -389,18 +423,16 @@ export default function MenuScreen({
 
         checkoutPadding:
           isPhoneWidth
-            ? scale(10, 8, 11)
-            : scale(12, 9, 14),
+            ? scale(10, 7, 10)
+            : scale(12, 8, 12),
 
         searchPadding:
           isPhoneWidth
-            ? scale(10, 8, 12)
+            ? scale(8, 6, 10)
             : scale(12, 9, 14),
 
         searchBottomPadding:
-          isPhoneWidth
-            ? Math.max(insets.bottom + 8, 18)
-            : Math.max(insets.bottom + 6, 14),
+          Math.max(insets.bottom + 4, 10),
 
         searchFont:
           scale(18, 12, 18),
@@ -409,11 +441,11 @@ export default function MenuScreen({
           scale(18, 12, 18),
 
         searchButtonPaddingV:
-          scale(12, 8, 12),
+          scale(10, 7, 11),
 
         searchButtonPaddingH:
           isPhoneWidth
-            ? scale(16, 12, 18)
+            ? scale(14, 10, 16)
             : scale(24, 12, 24),
 
         modalWidth:
@@ -1265,20 +1297,9 @@ export default function MenuScreen({
 
       <SafeAreaView
         style={styles.safeArea}
-        edges={[
-          'top',
-          'bottom',
-        ]}
+        edges={['top']}
       >
-        <View
-          style={[
-            styles.container,
-            {
-              paddingTop:
-                responsive.topSafeExtra,
-            },
-          ]}
-        >
+        <View style={styles.container}>
           <View
             style={[
               styles.topBar,
@@ -1545,7 +1566,7 @@ export default function MenuScreen({
                   paddingBottom:
                     responsive.useSideCart
                       ? 30
-                      : responsive.cardGap + 18,
+                      : responsive.cardGap + 12,
                   alignItems:
                     responsive.menuColumns === 1
                       ? 'center'
@@ -1562,6 +1583,10 @@ export default function MenuScreen({
                     responsive.useSideCart
                       ? responsive.cartWidth
                       : '100%',
+                  minHeight:
+                    responsive.useSideCart
+                      ? undefined
+                      : responsive.stackedCartMinHeight,
                   maxHeight:
                     responsive.useSideCart
                       ? undefined
@@ -1570,6 +1595,8 @@ export default function MenuScreen({
                     responsive.sidebarPaddingH,
                   paddingTop:
                     responsive.sidebarPaddingT,
+                  paddingBottom:
+                    responsive.sidebarPaddingBottom,
                   borderLeftWidth:
                     responsive.useSideCart
                       ? 1
@@ -1631,11 +1658,19 @@ export default function MenuScreen({
                   }
                   showsHorizontalScrollIndicator={false}
                   showsVerticalScrollIndicator={false}
+                  style={[
+                    styles.cartList,
+                    !responsive.useSideCart && {
+                      maxHeight:
+                        responsive.stackedCartListMaxHeight,
+                      minHeight: 82,
+                    },
+                  ]}
                   contentContainerStyle={{
                     paddingBottom:
                       responsive.useSideCart
-                        ? 20
-                        : 8,
+                        ? 14
+                        : 4,
                     gap:
                       responsive.useSideCart
                         ? 0
@@ -1757,8 +1792,8 @@ export default function MenuScreen({
                   {
                     fontSize:
                       responsive.searchButtonText,
-                    },
-                  ]}
+                  },
+                ]}
                 numberOfLines={1}
               >
                 Search
@@ -1882,7 +1917,7 @@ const styles =
   StyleSheet.create({
     frame: {
       flex: 1,
-      backgroundColor: '#b8b3b3',
+      backgroundColor: '#fafafa',
     },
 
     safeArea: {
@@ -2157,6 +2192,12 @@ const styles =
       backgroundColor: '#fff',
       borderLeftColor: '#ddd',
       borderTopColor: '#ddd',
+      flexShrink: 0,
+    },
+
+    cartList: {
+      flexGrow: 0,
+      minHeight: 72,
     },
 
     cartHeader: {
@@ -2176,11 +2217,14 @@ const styles =
 
     emptyCartText: {
       color: '#777',
-      marginTop: 10,
+      marginTop: 4,
+      borderBottomWidth: 1,
+      borderBottomColor: '#dddddd',
+      paddingBottom: 8,
     },
 
     cartItem: {
-      paddingVertical: 10,
+      paddingVertical: 8,
       borderBottomWidth: 1,
       borderBottomColor: '#eeeeee',
       minWidth: 170,
@@ -2249,7 +2293,7 @@ const styles =
       fontSize: 13,
       fontWeight: '800',
       lineHeight: 18,
-      marginBottom: 10,
+      marginBottom: 8,
     },
 
     removeText: {
@@ -2260,7 +2304,7 @@ const styles =
     qtyRow: {
       flexDirection: 'row',
       alignItems: 'center',
-      marginTop: 10,
+      marginTop: 8,
     },
 
     qtyButton: {
@@ -2286,8 +2330,8 @@ const styles =
     cartFooter: {
       borderTopWidth: 1,
       borderTopColor: '#dddddd',
-      paddingTop: 10,
-      paddingBottom: 10,
+      paddingTop: 8,
+      paddingBottom: 4,
     },
 
     totalRow: {

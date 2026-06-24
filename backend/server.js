@@ -13,7 +13,12 @@ const PORT =
 // =========================
 
 app.use(cors());
-app.use(express.json());
+
+app.use(
+  express.json({
+    limit: '10mb',
+  })
+);
 
 // =========================
 // ROUTES
@@ -50,20 +55,22 @@ app.use('/api/menu', menuRoutes);
 
 app.use('/api/orders', orderRoutes);
 
-app.use(
-  '/api/payments',
-  paymentRoutes
-);
+app.use('/api/payments', paymentRoutes);
 
-app.use(
-  '/api/table',
-  tableRoutes
-);
+app.use('/api/table', tableRoutes);
 
-app.use(
-  '/api/ai',
-  aiRoutes
-);
+app.use('/api/ai', aiRoutes);
+
+// =========================
+// XENDIT WEBHOOK ROUTE
+//
+// Recommended webhook URL:
+// POST /api/webhooks/xendit
+//
+// Note:
+// /api/payments/webhook also exists inside routes/payments.js
+// as a fallback/older webhook route.
+// =========================
 
 app.use(
   '/api/webhooks',
@@ -103,9 +110,14 @@ app.post('/test', (req, res) => {
 });
 
 // =========================
-// PAYMENT REDIRECT TEST ROUTES
-// These are only landing routes after Xendit payment.
-// Mobile WebView will detect these URLs.
+// PAYMENT REDIRECT ROUTES
+//
+// These are landing routes after Xendit payment.
+// Mobile WebView detects these URLs.
+//
+// In .env:
+// XENDIT_SUCCESS_REDIRECT_URL=http://YOUR_IP_OR_DOMAIN:3000/payment-success
+// XENDIT_FAILURE_REDIRECT_URL=http://YOUR_IP_OR_DOMAIN:3000/payment-failed
 // =========================
 
 app.get('/payment-success', (req, res) => {
@@ -121,6 +133,18 @@ app.get('/payment-failed', (req, res) => {
 });
 
 // =========================
+// 404 FALLBACK
+// =========================
+
+app.use((req, res) => {
+  return res.status(404).json({
+    success: false,
+    message: 'Route not found.',
+    path: req.originalUrl,
+  });
+});
+
+// =========================
 // START SERVER
 // =========================
 
@@ -130,6 +154,14 @@ app.listen(
   () => {
     console.log(
       `Server is running on port ${PORT}`
+    );
+
+    console.log(
+      `API Base URL: http://localhost:${PORT}/api`
+    );
+
+    console.log(
+      `Xendit Webhook URL: http://localhost:${PORT}/api/webhooks/xendit`
     );
   }
 );

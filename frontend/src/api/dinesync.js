@@ -92,7 +92,8 @@ const parseNumeric = (value) => {
     return null;
   }
 
-  const numeric = Number(value);
+  const numeric =
+    Number(value);
 
   return Number.isFinite(numeric)
     ? numeric
@@ -171,18 +172,20 @@ const normalizeMenuItem = (item) => {
     is_available:
       item?.is_available,
 
-    flavor_tags: Array.isArray(item?.flavor_tags)
-      ? item.flavor_tags
-      : item?.flavor_tags
-        ? String(item.flavor_tags)
-            .split(',')
-            .map((tag) => tag.trim())
-            .filter(Boolean)
-        : [],
+    flavor_tags:
+      Array.isArray(item?.flavor_tags)
+        ? item.flavor_tags
+        : item?.flavor_tags
+          ? String(item.flavor_tags)
+              .split(',')
+              .map((tag) => tag.trim())
+              .filter(Boolean)
+          : [],
 
-    meal_type: item?.meal_type
-      ? String(item.meal_type).trim()
-      : null,
+    meal_type:
+      item?.meal_type
+        ? String(item.meal_type).trim()
+        : null,
   };
 };
 
@@ -190,7 +193,8 @@ export const extractApiErrorMessage = (
   error,
   fallback = 'Something went wrong. Please try again.'
 ) => {
-  const data = error?.response?.data;
+  const data =
+    error?.response?.data;
 
   if (!data) {
     return error?.message || fallback;
@@ -366,14 +370,110 @@ const isCustomCartItem = (item) => {
       .trim()
       .toLowerCase();
 
+  const name =
+    String(item?.name || '')
+      .trim()
+      .toLowerCase();
+
   return (
     category === 'chef oppa special' ||
-    inventoryType === 'custom'
+    inventoryType === 'custom' ||
+    name.includes(
+      'custom chef oppa special'
+    )
   );
+};
+
+const normalizePaymentMethodForOrder = (
+  paymentMethod
+) => {
+  const normalized =
+    String(paymentMethod || '')
+      .trim()
+      .toLowerCase()
+      .replace(/[_-]+/g, ' ')
+      .replace(/\s+/g, ' ');
+
+  if (
+    normalized === 'qr ph' ||
+    normalized === 'qrph' ||
+    normalized === 'xendit' ||
+    normalized === 'online payment' ||
+    normalized === 'electronic payment' ||
+    normalized === 'digital payment'
+  ) {
+    return 'Digital Payment';
+  }
+
+  if (
+    normalized === 'pay at counter' ||
+    normalized === 'pay counter' ||
+    normalized === 'counter' ||
+    normalized === 'cashier'
+  ) {
+    return 'Pay at Counter';
+  }
+
+  if (
+    normalized === 'pay later' ||
+    normalized === 'later'
+  ) {
+    return 'Pay Later';
+  }
+
+  if (normalized === 'cash') {
+    return 'Cash';
+  }
+
+  return 'Pay Later';
+};
+
+const getInitialOrderStatus = (
+  paymentMethod
+) => {
+  const normalizedMethod =
+    normalizePaymentMethodForOrder(
+      paymentMethod
+    );
+
+  if (normalizedMethod === 'Pay Later') {
+    return 'pending';
+  }
+
+  if (
+    normalizedMethod === 'Pay at Counter' ||
+    normalizedMethod === 'Digital Payment'
+  ) {
+    return 'awaiting_payment';
+  }
+
+  return 'pending';
 };
 
 // =========================
 // PLACE ORDER
+// =========================
+//
+// Payment rules:
+//
+// Pay Later:
+// payment_method = "Pay Later"
+// payment_status = "pending"
+// status = "pending"
+// Goes to KDS immediately.
+//
+// Pay at Counter:
+// payment_method = "Pay at Counter"
+// payment_status = "pending"
+// status = "awaiting_payment"
+// Does not go to KDS yet.
+//
+// QR PH:
+// payment_method = "Digital Payment"
+// payment_status = "pending"
+// status = "awaiting_payment"
+// Create order first, then backend returns Xendit checkout link.
+// Does not go to KDS until payment is confirmed.
 // =========================
 
 export const placeOrder = async (
@@ -384,6 +484,44 @@ export const placeOrder = async (
   if (!tableNumber) {
     throw new Error(
       'Table number is missing. Please login using a table account.'
+    );
+  }
+
+  const normalizedPaymentMethod =
+    normalizePaymentMethodForOrder(
+      paymentMethod
+    );
+
+  const initialStatus =
+    getInitialOrderStatus(
+      normalizedPaymentMethod
+    );
+
+  console.log(
+    'PLACE ORDER PAYMENT CHECK:',
+    {
+      rawPaymentMethod:
+        paymentMethod,
+      normalizedPaymentMethod,
+      initialStatus,
+    }
+  );
+
+  if (
+    normalizedPaymentMethod === 'Digital Payment' &&
+    initialStatus !== 'awaiting_payment'
+  ) {
+    throw new Error(
+      'Digital Payment must create an awaiting_payment order.'
+    );
+  }
+
+  if (
+    normalizedPaymentMethod === 'Pay Later' &&
+    initialStatus !== 'pending'
+  ) {
+    throw new Error(
+      'Pay Later must create a pending order.'
     );
   }
 
@@ -447,17 +585,26 @@ export const placeOrder = async (
     );
 
   const payload = {
-    table_number: tableNumber,
+    table_number:
+      tableNumber,
     items,
-    total_amount: totalAmount,
-    payment_method: paymentMethod,
-    payment_status: 'pending',
-    status: 'pending',
+    total_amount:
+      totalAmount,
+    payment_method:
+      normalizedPaymentMethod,
+    payment_status:
+      'pending',
+    status:
+      initialStatus,
   };
 
   console.log(
     'ORDER PAYLOAD:',
-    payload
+    JSON.stringify(
+      payload,
+      null,
+      2
+    )
   );
 
   const response =
@@ -465,6 +612,15 @@ export const placeOrder = async (
       '/orders',
       payload
     );
+
+  console.log(
+    'ORDER RESPONSE:',
+    JSON.stringify(
+      response.data,
+      null,
+      2
+    )
+  );
 
   return response.data;
 };

@@ -24,6 +24,8 @@ import {
   CommonActions,
 } from '@react-navigation/native';
 
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
 import {
   getTableOrderHistory,
   getOrderStatus,
@@ -37,7 +39,6 @@ import {
   getOrderStatusLabel,
   isActiveOrderStatus,
   normalizePaymentStatus,
-  getPaymentStatusLabel,
 } from '../utils/orderStatus';
 
 export default function OrderStatusScreen({
@@ -46,6 +47,8 @@ export default function OrderStatusScreen({
 }) {
   const {
     orderId,
+    message: routeMessage,
+    qrPaymentProcessCompleted = false,
   } = route.params || {};
 
   const {
@@ -65,13 +68,16 @@ export default function OrderStatusScreen({
         Math.max(width, height);
 
       const isPhone =
-        width < 600;
+        shortest < 600;
 
       const isVeryNarrow =
         width < 430;
 
+      const isLandscape =
+        width > height;
+
       const base =
-        shortest / 768;
+        Math.min(shortest / 768, 1.05);
 
       const clamp = (
         value,
@@ -99,20 +105,18 @@ export default function OrderStatusScreen({
 
       const bottomBarHeight =
         bottomBarNeedsWrap
-          ? scale(150, 128, 164)
-          : scale(82, 72, 92);
+          ? scale(128, 112, 142)
+          : scale(78, 68, 88);
 
       return {
         isPhone,
         isVeryNarrow,
+        isLandscape,
 
-        safeTopExtra:
-          isPhone
-            ? 6
-            : 8,
+        safeTopExtra: 0,
 
         safeBottomExtra:
-          Math.max(insets.bottom + 8, 16),
+          Math.max(insets.bottom + 6, 12),
 
         containerPadding:
           isVeryNarrow
@@ -123,7 +127,7 @@ export default function OrderStatusScreen({
 
         topBarHeight:
           isPhone
-            ? scale(56, 48, 60)
+            ? scale(54, 46, 58)
             : scale(64, 50, 68),
 
         backText:
@@ -150,8 +154,8 @@ export default function OrderStatusScreen({
 
         subHeaderMargin:
           isPhone
-            ? scale(14, 12, 16)
-            : scale(20, 16, 22),
+            ? scale(12, 10, 14)
+            : scale(18, 14, 20),
 
         loadingText:
           scale(22, 16, 22),
@@ -220,6 +224,21 @@ export default function OrderStatusScreen({
         paymentMessagePaddingH:
           scale(14, 10, 14),
 
+        continuePaymentMargin:
+          scale(12, 8, 14),
+
+        continuePaymentPaddingV:
+          scale(12, 9, 13),
+
+        continuePaymentPaddingH:
+          scale(16, 12, 18),
+
+        continuePaymentRadius:
+          scale(14, 10, 14),
+
+        continuePaymentText:
+          scale(16, 13, 17),
+
         dividerMargin:
           scale(16, 10, 16),
 
@@ -275,11 +294,11 @@ export default function OrderStatusScreen({
               : scale(24, 16, 24),
 
         bottomBarBottom:
-          Math.max(insets.bottom + 10, 18),
+          Math.max(insets.bottom + 6, 12),
 
         bottomBarPadding:
           isPhone
-            ? scale(12, 10, 13)
+            ? scale(10, 8, 12)
             : scale(14, 10, 14),
 
         bottomBarRadius:
@@ -293,11 +312,11 @@ export default function OrderStatusScreen({
           scale(15, 11, 15),
 
         buttonPaddingV:
-          scale(12, 9, 12),
+          scale(11, 8, 11),
 
         buttonPaddingH:
           isPhone
-            ? scale(16, 12, 18)
+            ? scale(14, 10, 16)
             : scale(22, 14, 22),
 
         buttonRadius:
@@ -308,7 +327,7 @@ export default function OrderStatusScreen({
 
         listBottom:
           bottomBarHeight +
-          Math.max(insets.bottom + 36, 56),
+          Math.max(insets.bottom + 26, 42),
 
         maxContentWidth:
           clamp(longest * 0.94, 340, 1100),
@@ -342,6 +361,11 @@ export default function OrderStatusScreen({
   const [error, setError] =
     useState('');
 
+  const [
+    completedQrPaymentProcessOrderIds,
+    setCompletedQrPaymentProcessOrderIds,
+  ] = useState([]);
+
   useEffect(() => {
     if (!tableResetRequired) {
       return;
@@ -362,6 +386,44 @@ export default function OrderStatusScreen({
   }, [
     tableResetRequired,
     acknowledgeTableReset,
+    navigation,
+  ]);
+
+  useEffect(() => {
+    const loadCompletedQrPaymentProcesses =
+      async () => {
+        try {
+          const raw =
+            await AsyncStorage.getItem(
+              'completedQrPaymentProcessOrderIds'
+            );
+
+          const ids =
+            raw ? JSON.parse(raw) : [];
+
+          setCompletedQrPaymentProcessOrderIds(
+            Array.isArray(ids)
+              ? ids.map((id) => String(id))
+              : []
+          );
+        } catch (storageError) {
+          console.log(
+            'LOAD COMPLETED QR PAYMENT PROCESS ERROR:',
+            storageError
+          );
+        }
+      };
+
+    loadCompletedQrPaymentProcesses();
+
+    const unsubscribe =
+      navigation.addListener(
+        'focus',
+        loadCompletedQrPaymentProcesses
+      );
+
+    return unsubscribe;
+  }, [
     navigation,
   ]);
 
@@ -393,6 +455,18 @@ export default function OrderStatusScreen({
     }
 
     return null;
+  };
+
+  const isVisibleOrderStatus = (
+    status
+  ) => {
+    const normalized =
+      normalizeOrderStatus(status);
+
+    return (
+      isActiveOrderStatus(status) ||
+      normalized === 'awaiting_payment'
+    );
   };
 
   const fetchOrders = async (
@@ -429,7 +503,7 @@ export default function OrderStatusScreen({
         const activeOrders = (
           response.data || []
         ).filter((order) =>
-          isActiveOrderStatus(
+          isVisibleOrderStatus(
             order.status
           )
         );
@@ -480,16 +554,26 @@ export default function OrderStatusScreen({
       return '';
     }
 
-    return date.toLocaleString();
+    return date.toLocaleString(
+      'en-PH',
+      {
+        timeZone: 'Asia/Manila',
+        year: 'numeric',
+        month: 'numeric',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: true,
+      }
+    );
   };
 
   const normalizePaymentMethod = (
     value
   ) => {
     const normalized =
-      String(
-        value || 'Pay at Counter'
-      )
+      String(value || 'Pay Later')
         .trim()
         .toLowerCase()
         .replace(/[_-]+/g, ' ')
@@ -499,9 +583,17 @@ export default function OrderStatusScreen({
       normalized === 'qr ph' ||
       normalized === 'qrph' ||
       normalized === 'xendit' ||
-      normalized === 'online payment'
+      normalized === 'online payment' ||
+      normalized === 'digital payment'
     ) {
       return 'QR PH';
+    }
+
+    if (
+      normalized === 'cash' ||
+      normalized === 'cash paid'
+    ) {
+      return 'Cash';
     }
 
     if (
@@ -511,7 +603,186 @@ export default function OrderStatusScreen({
       return 'Pay Later';
     }
 
-    return 'Pay at Counter';
+    if (
+      normalized === 'pay at counter' ||
+      normalized === 'counter' ||
+      normalized === 'cashier'
+    ) {
+      return 'Pay at Counter';
+    }
+
+    return value || 'Pay Later';
+  };
+
+  const getPaymentMethodLabel = (
+    order
+  ) => {
+    const paymentMethod =
+      normalizePaymentMethod(
+        order.payment_method
+      );
+
+    if (paymentMethod === 'QR PH') {
+      return 'QR PH';
+    }
+
+    if (paymentMethod === 'Pay at Counter') {
+      return 'Pay at Counter';
+    }
+
+    if (paymentMethod === 'Pay Later') {
+      return 'Pay Later';
+    }
+
+    if (paymentMethod === 'Cash') {
+      return 'Cash';
+    }
+
+    return paymentMethod || 'Pay Later';
+  };
+
+  const getOrderInvoiceUrl = (
+    order
+  ) => {
+    return (
+      order?.xendit_invoice_url ||
+      order?.invoice_url ||
+      order?.payment_url ||
+      order?.checkout_url ||
+      null
+    );
+  };
+
+  const isSameRouteOrder = (
+    order
+  ) => {
+    return (
+      orderId &&
+      Number(order?.id) ===
+        Number(orderId)
+    );
+  };
+
+  const hasCompletedQrPaymentProcess = (
+    order
+  ) => {
+    const orderIdString =
+      String(order?.id || '');
+
+    if (!orderIdString) {
+      return false;
+    }
+
+    return (
+      completedQrPaymentProcessOrderIds.includes(
+        orderIdString
+      ) ||
+      (
+        qrPaymentProcessCompleted &&
+        isSameRouteOrder(order)
+      )
+    );
+  };
+
+  const canContinueQrPayment = (
+    order
+  ) => {
+    const paymentMethod =
+      normalizePaymentMethod(
+        order.payment_method
+      );
+
+    const paymentStatus =
+      normalizePaymentStatus(
+        order.payment_status
+      );
+
+    const orderStatus =
+      normalizeOrderStatus(
+        order.status
+      );
+
+    const invoiceUrl =
+      getOrderInvoiceUrl(order);
+
+    const completedProcess =
+      hasCompletedQrPaymentProcess(order);
+
+    return (
+      paymentMethod === 'QR PH' &&
+      paymentStatus === 'pending' &&
+      orderStatus === 'awaiting_payment' &&
+      Boolean(invoiceUrl) &&
+      !completedProcess
+    );
+  };
+
+  const handleContinueQrPayment = (
+    order
+  ) => {
+    const invoiceUrl =
+      getOrderInvoiceUrl(order);
+
+    if (!invoiceUrl) {
+      setError(
+        'QR PH checkout link is missing. Please ask restaurant staff for assistance.'
+      );
+
+      return;
+    }
+
+    navigation.navigate(
+      'PaymentWebView',
+      {
+        orderId:
+          order.id,
+        invoiceUrl,
+        message:
+          'Continue your QR PH payment. Your order will be sent to the kitchen after payment is confirmed.',
+      }
+    );
+  };
+
+  const getEffectiveOrderStatus = (
+    order
+  ) => {
+    const paymentMethod =
+      normalizePaymentMethod(
+        order.payment_method
+      );
+
+    const paymentStatus =
+      normalizePaymentStatus(
+        order.payment_status
+      );
+
+    const orderStatus =
+      normalizeOrderStatus(
+        order.status
+      );
+
+    if (
+      paymentMethod === 'Pay Later' &&
+      paymentStatus === 'pending'
+    ) {
+      return 'pending';
+    }
+
+    if (
+      paymentMethod === 'QR PH' &&
+      paymentStatus === 'pending'
+    ) {
+      return 'awaiting_payment';
+    }
+
+    if (
+      paymentMethod === 'Pay at Counter' &&
+      paymentStatus === 'pending'
+    ) {
+      return 'awaiting_payment';
+    }
+
+    return orderStatus;
   };
 
   const isCustomOrderItem = (
@@ -567,10 +838,16 @@ export default function OrderStatusScreen({
   };
 
   const getStatusStyle = (
-    status
+    order
   ) => {
     const normalized =
-      normalizeOrderStatus(status);
+      getEffectiveOrderStatus(order);
+
+    if (
+      normalized === 'awaiting_payment'
+    ) {
+      return styles.statusAwaitingPayment;
+    }
 
     if (
       normalized === 'pending'
@@ -591,6 +868,21 @@ export default function OrderStatusScreen({
     }
 
     return styles.statusDefault;
+  };
+
+  const getDisplayOrderStatusLabel = (
+    order
+  ) => {
+    const normalized =
+      getEffectiveOrderStatus(order);
+
+    if (
+      normalized === 'awaiting_payment'
+    ) {
+      return 'Awaiting Payment';
+    }
+
+    return getOrderStatusLabel(normalized);
   };
 
   const getPaymentStatusStyle = (
@@ -629,9 +921,7 @@ export default function OrderStatusScreen({
       );
 
     const orderStatus =
-      normalizeOrderStatus(
-        order.status
-      );
+      getEffectiveOrderStatus(order);
 
     const paymentMethod =
       normalizePaymentMethod(
@@ -639,10 +929,53 @@ export default function OrderStatusScreen({
       );
 
     if (
+      paymentMethod === 'QR PH' &&
+      paymentStatus === 'pending' &&
+      hasCompletedQrPaymentProcess(order)
+    ) {
+      return 'QR PH payment process completed. Checking payment confirmation from the system...';
+    }
+
+    if (
+      paymentMethod === 'QR PH' &&
+      paymentStatus === 'pending'
+    ) {
+      return 'Waiting for Xendit QR PH payment confirmation. Your order will be sent to the kitchen after payment is confirmed.';
+    }
+
+    if (
+      paymentMethod === 'Pay at Counter' &&
+      paymentStatus === 'pending'
+    ) {
+      return 'Order recorded. Please proceed to the counter to pay before the kitchen prepares your order.';
+    }
+
+    if (
+      paymentMethod === 'Pay Later' &&
+      paymentStatus === 'pending'
+    ) {
+      return 'Order sent to kitchen. Please settle payment later with staff.';
+    }
+
+    if (
+      paymentStatus === 'paid' &&
+      paymentMethod === 'Cash'
+    ) {
+      return 'Cash payment received. Your order has been sent to the kitchen.';
+    }
+
+    if (
+      paymentStatus === 'paid' &&
+      paymentMethod === 'QR PH'
+    ) {
+      return 'QR PH payment confirmed. Your order has been sent to the kitchen.';
+    }
+
+    if (
       paymentStatus === 'paid' &&
       orderStatus === 'pending'
     ) {
-      return 'Payment received. Your order is now in queue.';
+      return 'Payment confirmed. Your order has been sent to the kitchen.';
     }
 
     if (paymentStatus === 'expired') {
@@ -653,54 +986,30 @@ export default function OrderStatusScreen({
       return 'Payment failed. Please try again or ask restaurant staff for help.';
     }
 
-    if (paymentMethod === 'Pay at Counter') {
-      return 'Your order has been sent to the kitchen. Please pay at the counter.';
-    }
-
-    if (paymentMethod === 'Pay Later') {
-      return 'Your order has been sent to the kitchen. Payment will be settled later with staff.';
-    }
-
-    if (
-      paymentMethod === 'QR PH' &&
-      paymentStatus === 'pending'
-    ) {
-      return 'QR PH payment is still being processed.';
-    }
-
-    return '';
+    return routeMessage || '';
   };
 
   const getPaymentLabel = (
     order
   ) => {
-    const paymentMethod =
-      normalizePaymentMethod(
-        order.payment_method
-      );
-
     const paymentStatus =
       normalizePaymentStatus(
         order.payment_status
       );
 
-    if (
-      paymentMethod === 'Pay at Counter' &&
-      paymentStatus === 'pending'
-    ) {
-      return 'Pay at Counter';
+    if (paymentStatus === 'paid') {
+      return 'Paid';
     }
 
-    if (
-      paymentMethod === 'Pay Later' &&
-      paymentStatus === 'pending'
-    ) {
-      return 'Pay Later';
+    if (paymentStatus === 'expired') {
+      return 'Expired';
     }
 
-    return getPaymentStatusLabel(
-      order.payment_status
-    );
+    if (paymentStatus === 'failed') {
+      return 'Failed';
+    }
+
+    return 'Pending';
   };
 
   const getOrderTotal = (
@@ -759,9 +1068,10 @@ export default function OrderStatusScreen({
       getPaymentMessage(item);
 
     const paymentMethod =
-      normalizePaymentMethod(
-        item.payment_method
-      );
+      getPaymentMethodLabel(item);
+
+    const showContinueQrPayment =
+      canContinueQrPayment(item);
 
     return (
       <View
@@ -843,9 +1153,7 @@ export default function OrderStatusScreen({
                   paddingHorizontal:
                     responsive.badgePaddingH,
                 },
-                getStatusStyle(
-                  item.status
-                ),
+                getStatusStyle(item),
               ]}
             >
               <Text
@@ -858,9 +1166,7 @@ export default function OrderStatusScreen({
                 ]}
                 numberOfLines={1}
               >
-                {getOrderStatusLabel(
-                  item.status
-                )}
+                {getDisplayOrderStatusLabel(item)}
               </Text>
             </View>
 
@@ -912,6 +1218,43 @@ export default function OrderStatusScreen({
           >
             {paymentMessage}
           </Text>
+        ) : null}
+
+        {showContinueQrPayment ? (
+          <TouchableOpacity
+            style={[
+              styles.continuePaymentBtn,
+              {
+                marginTop:
+                  responsive.continuePaymentMargin,
+                paddingVertical:
+                  responsive.continuePaymentPaddingV,
+                paddingHorizontal:
+                  responsive.continuePaymentPaddingH,
+                borderRadius:
+                  responsive.continuePaymentRadius,
+              },
+            ]}
+            onPress={() =>
+              handleContinueQrPayment(
+                item
+              )
+            }
+          >
+            <Text
+              style={[
+                styles.continuePaymentText,
+                {
+                  fontSize:
+                    responsive.continuePaymentText,
+                },
+              ]}
+              numberOfLines={1}
+              adjustsFontSizeToFit
+            >
+              Continue QR PH Payment
+            </Text>
+          </TouchableOpacity>
         ) : null}
 
         <View
@@ -1107,10 +1450,7 @@ export default function OrderStatusScreen({
 
         <SafeAreaView
           style={styles.safeAreaLight}
-          edges={[
-            'top',
-            'bottom',
-          ]}
+          edges={['top']}
         >
           <View style={styles.loadingContainer}>
             <ActivityIndicator
@@ -1145,10 +1485,7 @@ export default function OrderStatusScreen({
 
       <SafeAreaView
         style={styles.safeAreaLight}
-        edges={[
-          'top',
-          'bottom',
-        ]}
+        edges={['top']}
       >
         <View
           style={[
@@ -1200,8 +1537,8 @@ export default function OrderStatusScreen({
                 {
                   fontSize:
                     responsive.tableText,
-                  },
-                ]}
+                },
+              ]}
               numberOfLines={1}
             >
               Table {finalTableNumber || '-'}
@@ -1274,8 +1611,8 @@ export default function OrderStatusScreen({
                   {
                     fontSize:
                       responsive.emptyIcon,
-                    },
-                  ]}
+                  },
+                ]}
               >
                 🧾
               </Text>
@@ -1286,8 +1623,8 @@ export default function OrderStatusScreen({
                   {
                     fontSize:
                       responsive.emptyTitle,
-                    },
-                  ]}
+                  },
+                ]}
               >
                 No Active Orders
               </Text>
@@ -1303,7 +1640,7 @@ export default function OrderStatusScreen({
                   },
                 ]}
               >
-                Pending, preparing, and ready orders will appear here. Served orders move to order history.
+                Pending, preparing, ready, and awaiting payment orders will appear here. Served orders move to order history.
               </Text>
             </View>
           ) : (
@@ -1420,7 +1757,7 @@ export default function OrderStatusScreen({
                       responsive.buttonPaddingH,
                     borderRadius:
                       responsive.buttonRadius,
-                    },
+                  },
                 ]}
                 onPress={() =>
                   navigation.navigate(
@@ -1574,18 +1911,18 @@ const styles =
 
     orderHeaderRight: {
       alignItems: 'flex-end',
-      maxWidth: 160,
+      maxWidth: 165,
     },
 
     statusBadge: {
       borderRadius: 999,
-      maxWidth: 160,
+      maxWidth: 165,
     },
 
     paymentBadge: {
       borderRadius: 999,
       marginTop: 8,
-      maxWidth: 160,
+      maxWidth: 165,
     },
 
     statusBadgeText: {
@@ -1608,6 +1945,23 @@ const styles =
       fontWeight: '800',
     },
 
+    continuePaymentBtn: {
+      backgroundColor: '#f68c45',
+      alignItems: 'center',
+      justifyContent: 'center',
+      alignSelf: 'stretch',
+      shadowColor: '#000',
+      shadowOpacity: 0.08,
+      shadowRadius: 5,
+      elevation: 2,
+    },
+
+    continuePaymentText: {
+      color: '#fff',
+      fontWeight: '900',
+      textAlign: 'center',
+    },
+
     paymentPending: {
       backgroundColor: '#ffeeba',
     },
@@ -1622,6 +1976,10 @@ const styles =
 
     paymentFailed: {
       backgroundColor: '#f5c6cb',
+    },
+
+    statusAwaitingPayment: {
+      backgroundColor: '#fde68a',
     },
 
     statusPending: {
@@ -1748,7 +2106,7 @@ const styles =
       backgroundColor: '#fff',
       borderWidth: 1,
       borderColor: '#ddd',
-      gap: 12,
+      gap: 10,
       shadowColor: '#000',
       shadowOpacity: 0.08,
       shadowRadius: 8,

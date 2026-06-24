@@ -52,7 +52,7 @@ export default function PaymentScreen({
         Math.max(width, height);
 
       const isPhone =
-        width < 600;
+        shortest < 600;
 
       const isVeryNarrow =
         width < 430;
@@ -60,8 +60,11 @@ export default function PaymentScreen({
       const isLandscape =
         width > height;
 
+      const isShortHeight =
+        height < 650;
+
       const base =
-        shortest / 768;
+        Math.min(shortest / 768, 1.05);
 
       const clamp = (
         value,
@@ -84,36 +87,48 @@ export default function PaymentScreen({
         );
       };
 
+      const compact =
+        isPhone ||
+        isShortHeight;
+
       const methodCardWidth =
-        isVeryNarrow
-          ? clamp(width - 44, 250, 340)
-          : isPhone
-            ? clamp(width * 0.86, 260, 390)
-            : clamp(width * 0.26, 190, 270);
+        isPhone
+          ? isLandscape
+            ? clamp(width * 0.3, 170, 230)
+            : isVeryNarrow
+              ? clamp(width - 44, 250, 340)
+              : clamp(width * 0.88, 270, 400)
+          : isLandscape
+            ? clamp(width * 0.26, 230, 330)
+            : clamp(width * 0.36, 250, 350);
 
       const methodCardHeight =
         isPhone
-          ? scale(135, 116, 145)
-          : scale(245, 155, 250);
+          ? isLandscape
+            ? clamp(height * 0.28, 112, 142)
+            : scale(150, 132, 162)
+          : isLandscape
+            ? scale(230, 165, 245)
+            : scale(240, 175, 255);
 
       return {
         isPhone,
         isVeryNarrow,
         isLandscape,
+        compact,
 
-        safeTopExtra:
-          isPhone
-            ? 6
-            : 8,
+        safeTopExtra: 0,
 
         safeBottomExtra:
-          Math.max(insets.bottom + 10, 18),
+          Math.max(insets.bottom + 6, 12),
 
         containerPadding:
           isVeryNarrow
             ? scale(14, 12, 16)
             : isPhone
-              ? scale(18, 14, 20)
+              ? isLandscape
+                ? scale(12, 10, 14)
+                : scale(18, 14, 20)
               : scale(32, 18, 34),
 
         topGap:
@@ -131,25 +146,40 @@ export default function PaymentScreen({
 
         logo:
           isPhone
-            ? scale(56, 44, 60)
+            ? isLandscape
+              ? scale(46, 36, 48)
+              : scale(56, 44, 60)
             : scale(80, 50, 80),
 
         header:
           isVeryNarrow
-            ? scale(36, 32, 38)
+            ? scale(34, 30, 36)
             : isPhone
-              ? scale(42, 34, 44)
+              ? isLandscape
+                ? scale(34, 28, 36)
+                : scale(42, 34, 44)
               : scale(58, 36, 60),
 
         headerMargin:
           isPhone
-            ? scale(18, 12, 20)
-            : scale(24, 14, 24),
+            ? isLandscape
+              ? scale(10, 8, 12)
+              : scale(16, 10, 18)
+            : scale(22, 14, 24),
 
         subHeader:
           isPhone
-            ? scale(23, 20, 24)
+            ? isLandscape
+              ? scale(19, 16, 20)
+              : scale(23, 20, 24)
             : scale(34, 22, 34),
+
+        subHeaderBottom:
+          isPhone
+            ? isLandscape
+              ? scale(10, 8, 12)
+              : scale(18, 14, 20)
+            : scale(22, 16, 24),
 
         warningWidth:
           isPhone
@@ -160,10 +190,10 @@ export default function PaymentScreen({
           clamp(longest * 0.82, 320, 980),
 
         warningPaddingV:
-          scale(14, 10, 14),
+          scale(12, 8, 13),
 
         warningPaddingH:
-          scale(18, 12, 18),
+          scale(16, 12, 18),
 
         warningText:
           scale(18, 12, 18),
@@ -173,7 +203,9 @@ export default function PaymentScreen({
 
         methodGap:
           isPhone
-            ? scale(16, 14, 18)
+            ? isLandscape
+              ? scale(10, 8, 12)
+              : scale(14, 12, 16)
             : scale(20, 12, 20),
 
         methodCardWidth,
@@ -185,18 +217,38 @@ export default function PaymentScreen({
 
         methodIcon:
           isPhone
-            ? scale(48, 40, 52)
-            : scale(82, 52, 82),
+            ? isLandscape
+              ? scale(34, 28, 36)
+              : scale(42, 34, 46)
+            : scale(68, 44, 70),
 
         methodIconMargin:
           isPhone
-            ? scale(8, 6, 10)
-            : scale(18, 10, 18),
+            ? isLandscape
+              ? scale(5, 4, 6)
+              : scale(8, 6, 10)
+            : scale(14, 8, 15),
 
         methodText:
           isPhone
-            ? scale(21, 18, 23)
-            : scale(30, 19, 30),
+            ? isLandscape
+              ? scale(16, 14, 17)
+              : scale(20, 17, 22)
+            : scale(27, 18, 28),
+
+        methodSubtitle:
+          isPhone
+            ? isLandscape
+              ? scale(11, 10, 12)
+              : scale(13, 12, 14)
+            : scale(16, 13, 17),
+
+        methodSubtitleLine:
+          isPhone
+            ? isLandscape
+              ? scale(15, 13, 16)
+              : scale(18, 16, 19)
+            : scale(23, 18, 24),
 
         footerWidth:
           isPhone
@@ -208,17 +260,19 @@ export default function PaymentScreen({
 
         footerMargin:
           isPhone
-            ? scale(24, 18, 28)
-            : scale(38, 24, 38),
+            ? isLandscape
+              ? scale(14, 10, 16)
+              : scale(22, 16, 26)
+            : scale(34, 22, 38),
 
         footerPaddingV:
           isPhone
-            ? scale(16, 13, 18)
-            : scale(24, 16, 24),
+            ? scale(14, 11, 16)
+            : scale(22, 16, 24),
 
         footerPaddingH:
           isPhone
-            ? scale(16, 13, 18)
+            ? scale(14, 12, 16)
             : scale(32, 18, 32),
 
         footerRadius:
@@ -226,15 +280,19 @@ export default function PaymentScreen({
 
         totalText:
           isPhone
-            ? scale(25, 21, 27)
+            ? isLandscape
+              ? scale(20, 17, 21)
+              : scale(25, 21, 27)
             : scale(38, 24, 38),
 
         buttonPaddingV:
-          scale(18, 12, 18),
+          isPhone
+            ? scale(14, 10, 15)
+            : scale(18, 12, 18),
 
         buttonPaddingH:
           isPhone
-            ? scale(26, 20, 28)
+            ? scale(24, 18, 26)
             : scale(40, 24, 40),
 
         buttonRadius:
@@ -302,7 +360,34 @@ export default function PaymentScreen({
   const [
     selectedMethod,
     setSelectedMethod,
-  ] = useState('Pay at Counter');
+  ] = useState('Pay Later');
+
+  const paymentOptions =
+    useMemo(() => {
+      return [
+        {
+          method: 'Pay Later',
+          apiMethod: 'Pay Later',
+          icon: '🧾',
+          subtitle:
+            'Send your order to the kitchen now and settle payment later with staff.',
+        },
+        {
+          method: 'Pay at Counter',
+          apiMethod: 'Pay at Counter',
+          icon: '💵',
+          subtitle:
+            'Pay first at the cashier before your order is sent to the kitchen.',
+        },
+        {
+          method: 'QR PH',
+          apiMethod: 'Digital Payment',
+          icon: '📱',
+          subtitle:
+            'Pay securely through Xendit QR PH checkout.',
+        },
+      ];
+    }, []);
 
   const hasCustomRequest =
     useMemo(() => {
@@ -317,12 +402,37 @@ export default function PaymentScreen({
             .trim()
             .toLowerCase();
 
+        const name =
+          String(item?.name || '')
+            .trim()
+            .toLowerCase();
+
         return (
           category === 'chef oppa special' ||
-          inventoryType === 'custom'
+          inventoryType === 'custom' ||
+          name.includes(
+            'custom chef oppa special'
+          )
         );
       });
     }, [cartItems]);
+
+  const getSelectedOption = () => {
+    const option =
+      paymentOptions.find(
+        (item) =>
+          item.method === selectedMethod
+      ) || paymentOptions[0];
+
+    if (
+      hasCustomRequest &&
+      option.method === 'QR PH'
+    ) {
+      return paymentOptions[0];
+    }
+
+    return option;
+  };
 
   const handleSelectMethod = (
     method
@@ -339,7 +449,86 @@ export default function PaymentScreen({
       return;
     }
 
+    const selectedOption =
+      paymentOptions.find(
+        (option) =>
+          option.method === method
+      );
+
+    console.log(
+      'PAYMENT SCREEN SELECTED METHOD:',
+      {
+        method,
+        apiMethod:
+          selectedOption?.apiMethod,
+      }
+    );
+
     setSelectedMethod(method);
+  };
+
+  const getConfirmationMessage = (
+    method
+  ) => {
+    if (method === 'Pay Later') {
+      return 'Order sent to kitchen. Please settle payment later with staff.';
+    }
+
+    if (method === 'Pay at Counter') {
+      return 'Order recorded. Please proceed to the counter to pay before the kitchen prepares your order.';
+    }
+
+    return 'Opening Xendit QR PH checkout. Your order will be sent to the kitchen after payment is confirmed.';
+  };
+
+  const goToOrderStatusWithMessage = (
+    orderId,
+    message
+  ) => {
+    Alert.alert(
+      'Order Confirmed',
+      message,
+      [
+        {
+          text: 'OK',
+          onPress: () => {
+            navigation.replace(
+              'OrderStatus',
+              {
+                orderId,
+                message,
+              }
+            );
+          },
+        },
+      ]
+    );
+  };
+
+  const openPaymentWithMessage = ({
+    orderId,
+    invoiceUrl,
+    message,
+  }) => {
+    Alert.alert(
+      'Order Recorded',
+      message,
+      [
+        {
+          text: 'Open Checkout',
+          onPress: () => {
+            navigation.replace(
+              'PaymentWebView',
+              {
+                orderId,
+                invoiceUrl,
+                message,
+              }
+            );
+          },
+        },
+      ]
+    );
   };
 
   const handlePayment = async () => {
@@ -366,8 +555,11 @@ export default function PaymentScreen({
       return;
     }
 
+    const paymentSnapshot =
+      getSelectedOption();
+
     if (
-      selectedMethod === 'QR PH' &&
+      paymentSnapshot.method === 'QR PH' &&
       hasCustomRequest
     ) {
       Alert.alert(
@@ -377,6 +569,17 @@ export default function PaymentScreen({
 
       return;
     }
+
+    console.log(
+      'PAYMENT SCREEN SNAPSHOT:',
+      {
+        selectedMethod,
+        method:
+          paymentSnapshot.method,
+        apiMethod:
+          paymentSnapshot.apiMethod,
+      }
+    );
 
     setLoading(true);
 
@@ -406,11 +609,21 @@ export default function PaymentScreen({
         return;
       }
 
+      console.log(
+        'PAYMENT SCREEN SUBMIT ORDER:',
+        {
+          method:
+            paymentSnapshot.method,
+          apiMethod:
+            paymentSnapshot.apiMethod,
+        }
+      );
+
       const orderResponse =
         await placeOrder(
           cartItems,
           finalTableNumber,
-          selectedMethod
+          paymentSnapshot.apiMethod
         );
 
       if (
@@ -445,38 +658,48 @@ export default function PaymentScreen({
         return;
       }
 
+      const confirmationMessage =
+        getConfirmationMessage(
+          paymentSnapshot.method
+        );
+
       clearCart();
       setActiveOrderId(orderId);
 
-      if (selectedMethod === 'QR PH') {
+      if (
+        paymentSnapshot.method === 'QR PH'
+      ) {
         if (!invoiceUrl) {
           Alert.alert(
             'Payment Error',
-            'No Xendit invoice URL was returned. Please contact restaurant staff.'
+            'No Xendit QR PH checkout link was returned. Please ask restaurant staff for help.'
           );
 
           navigation.replace(
             'OrderStatus',
-            { orderId }
+            {
+              orderId,
+              message:
+                'Order recorded, but the Xendit QR PH checkout link was not returned. Please contact staff.',
+            }
           );
 
           return;
         }
 
-        navigation.replace(
-          'PaymentWebView',
-          {
-            orderId,
-            invoiceUrl,
-          }
-        );
+        openPaymentWithMessage({
+          orderId,
+          invoiceUrl,
+          message:
+            confirmationMessage,
+        });
 
         return;
       }
 
-      navigation.replace(
-        'OrderStatus',
-        { orderId }
+      goToOrderStatusWithMessage(
+        orderId,
+        confirmationMessage
       );
     } catch (error) {
       console.error(
@@ -518,6 +741,7 @@ export default function PaymentScreen({
   const renderMethod = ({
     method,
     icon,
+    subtitle,
     disabled = false,
   }) => {
     const active =
@@ -525,6 +749,7 @@ export default function PaymentScreen({
 
     return (
       <TouchableOpacity
+        key={method}
         style={[
           styles.methodCard,
           {
@@ -572,6 +797,26 @@ export default function PaymentScreen({
         >
           {method}
         </Text>
+
+        <Text
+          style={[
+            styles.methodSubtitle,
+            {
+              fontSize:
+                responsive.methodSubtitle,
+              lineHeight:
+                responsive.methodSubtitleLine,
+            },
+          ]}
+          numberOfLines={
+            responsive.isLandscape
+              ? 3
+              : 4
+          }
+          adjustsFontSizeToFit
+        >
+          {subtitle}
+        </Text>
       </TouchableOpacity>
     );
   };
@@ -587,10 +832,7 @@ export default function PaymentScreen({
 
         <SafeAreaView
           style={styles.safeAreaLight}
-          edges={[
-            'top',
-            'bottom',
-          ]}
+          edges={['top']}
         >
           <View style={styles.loadingContainer}>
             <ActivityIndicator
@@ -625,10 +867,7 @@ export default function PaymentScreen({
 
       <SafeAreaView
         style={styles.safeAreaLight}
-        edges={[
-          'top',
-          'bottom',
-        ]}
+        edges={['top']}
       >
         <ScrollView
           style={styles.container}
@@ -729,6 +968,8 @@ export default function PaymentScreen({
               {
                 fontSize:
                   responsive.subHeader,
+                marginBottom:
+                  responsive.subHeaderBottom,
               },
             ]}
             numberOfLines={1}
@@ -778,21 +1019,18 @@ export default function PaymentScreen({
               },
             ]}
           >
-            {renderMethod({
-              method: 'Pay at Counter',
-              icon: '💵',
-            })}
-
-            {renderMethod({
-              method: 'Pay Later',
-              icon: '🧾',
-            })}
-
-            {renderMethod({
-              method: 'QR PH',
-              icon: '📱',
-              disabled: hasCustomRequest,
-            })}
+            {paymentOptions.map((option) =>
+              renderMethod({
+                method: option.method,
+                icon: option.icon,
+                subtitle:
+                  option.subtitle,
+                disabled:
+                  option.method ===
+                    'QR PH' &&
+                  hasCustomRequest,
+              })
+            )}
           </View>
 
           <View
@@ -901,7 +1139,8 @@ const styles =
 
     topRow: {
       flexDirection: 'row',
-      justifyContent: 'space-between',
+      justifyContent:
+        'space-between',
       alignItems: 'center',
       flexWrap: 'wrap',
     },
@@ -957,7 +1196,6 @@ const styles =
     subHeader: {
       textAlign: 'center',
       marginTop: 8,
-      marginBottom: 22,
       fontWeight: '800',
       color: '#444',
     },
@@ -982,7 +1220,7 @@ const styles =
       justifyContent: 'center',
       alignItems: 'center',
       flexWrap: 'wrap',
-      marginTop: 10,
+      marginTop: 8,
     },
 
     methodCard: {
@@ -995,6 +1233,8 @@ const styles =
       shadowOpacity: 0.06,
       shadowRadius: 6,
       elevation: 2,
+      paddingHorizontal: 12,
+      paddingVertical: 12,
     },
 
     methodCardActive: {
@@ -1016,13 +1256,21 @@ const styles =
       textAlign: 'center',
     },
 
+    methodSubtitle: {
+      marginTop: 8,
+      color: '#666',
+      fontWeight: '700',
+      textAlign: 'center',
+    },
+
     footer: {
       alignSelf: 'center',
       borderWidth: 1,
       borderColor: '#d0d0d0',
       flexDirection: 'row',
       flexWrap: 'wrap',
-      justifyContent: 'space-between',
+      justifyContent:
+        'space-between',
       alignItems: 'center',
       backgroundColor: '#fafafa',
       gap: 14,
@@ -1054,7 +1302,7 @@ const styles =
     },
 
     disclaimer: {
-      marginTop: 18,
+      marginTop: 16,
       textAlign: 'center',
       fontWeight: '800',
       color: '#666',

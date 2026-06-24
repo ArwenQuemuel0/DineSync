@@ -52,13 +52,13 @@ export default function OrderHistoryScreen({
         Math.max(width, height);
 
       const isPhone =
-        width < 600;
+        shortest < 600;
 
       const isVeryNarrow =
         width < 430;
 
       const base =
-        shortest / 768;
+        Math.min(shortest / 768, 1.05);
 
       const clamp = (
         value,
@@ -85,17 +85,14 @@ export default function OrderHistoryScreen({
         isPhone,
         isVeryNarrow,
 
-        safeTopExtra:
-          isPhone
-            ? 6
-            : 8,
+        safeTopExtra: 0,
 
         safeBottomExtra:
-          Math.max(insets.bottom + 8, 16),
+          Math.max(insets.bottom + 6, 12),
 
         topBarHeight:
           isPhone
-            ? scale(64, 56, 68)
+            ? scale(60, 52, 64)
             : scale(76, 60, 78),
 
         topBarPadding:
@@ -137,8 +134,8 @@ export default function OrderHistoryScreen({
 
         listBottom:
           isPhone
-            ? Math.max(insets.bottom + 26, 34)
-            : Math.max(insets.bottom + 36, 44),
+            ? Math.max(insets.bottom + 22, 30)
+            : Math.max(insets.bottom + 32, 40),
 
         cardPadding:
           isVeryNarrow
@@ -366,17 +363,31 @@ export default function OrderHistoryScreen({
   };
 
   const formatDateTime = (value) => {
-    if (!value) {
-      return '-';
-    }
-
+    if (!value) return '';
+  
     const date = new Date(value);
-
-    if (Number.isNaN(date.getTime())) {
-      return '-';
+  
+    if (
+      Number.isNaN(
+        date.getTime()
+      )
+    ) {
+      return '';
     }
-
-    return date.toLocaleString();
+  
+    return date.toLocaleString(
+      'en-PH',
+      {
+        timeZone: 'Asia/Manila',
+        year: 'numeric',
+        month: 'numeric',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: true,
+      }
+    );
   };
 
   const getOrderTotal = (order) => {
@@ -420,9 +431,10 @@ export default function OrderHistoryScreen({
     );
   };
 
-  const renderOrderItem = ({
+  const renderOrderItem = (
     item,
-  }) => {
+    itemIndex
+  ) => {
     const price =
       getItemPrice(item);
 
@@ -432,8 +444,18 @@ export default function OrderHistoryScreen({
     const subtotal =
       price * quantity;
 
+    const itemKey =
+      String(
+        item.id ||
+          item.menu_item_id ||
+          itemIndex
+      );
+
     return (
-      <View style={styles.itemRow}>
+      <View
+        key={itemKey}
+        style={styles.itemRow}
+      >
         <View style={styles.itemInfo}>
           <Text
             style={[
@@ -596,21 +618,9 @@ export default function OrderHistoryScreen({
             No items found for this order.
           </Text>
         ) : (
-          <FlatList
-            data={items}
-            keyExtractor={(
-              item,
-              itemIndex
-            ) =>
-              String(
-                item.id ||
-                  item.menu_item_id ||
-                  itemIndex
-              )
-            }
-            renderItem={renderOrderItem}
-            scrollEnabled={false}
-          />
+          <View style={styles.itemsList}>
+            {items.map(renderOrderItem)}
+          </View>
         )}
 
         <View
@@ -668,10 +678,7 @@ export default function OrderHistoryScreen({
 
         <SafeAreaView
           style={styles.safeArea}
-          edges={[
-            'top',
-            'bottom',
-          ]}
+          edges={['top']}
         >
           <View style={styles.loadingContainer}>
             <ActivityIndicator
@@ -706,20 +713,9 @@ export default function OrderHistoryScreen({
 
       <SafeAreaView
         style={styles.safeArea}
-        edges={[
-          'top',
-          'bottom',
-        ]}
+        edges={['top']}
       >
-        <View
-          style={[
-            styles.container,
-            {
-              paddingTop:
-                responsive.safeTopExtra,
-            },
-          ]}
-        >
+        <View style={styles.container}>
           <View
             style={[
               styles.topBar,
@@ -901,7 +897,7 @@ const styles =
   StyleSheet.create({
     frame: {
       flex: 1,
-      backgroundColor: '#b8b3b3',
+      backgroundColor: '#fafafa',
     },
 
     safeArea: {
@@ -1028,6 +1024,10 @@ const styles =
       backgroundColor: '#eee',
     },
 
+    itemsList: {
+      width: '100%',
+    },
+
     itemRow: {
       flexDirection: 'row',
       justifyContent: 'space-between',
@@ -1091,6 +1091,7 @@ const styles =
 
     emptyContainer: {
       flex: 1,
+      backgroundColor: '#efefef',
       justifyContent: 'center',
       alignItems: 'center',
       paddingHorizontal: 24,

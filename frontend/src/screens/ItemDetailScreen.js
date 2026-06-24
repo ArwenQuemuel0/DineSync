@@ -1,4 +1,5 @@
 import React, {
+  useCallback,
   useEffect,
   useMemo,
   useState,
@@ -17,7 +18,6 @@ import {
   TextInput,
   StatusBar,
   ScrollView,
-  Platform,
 } from 'react-native';
 
 import {
@@ -66,17 +66,8 @@ export default function ItemDetailScreen({
       const shortest =
         Math.min(width, height);
 
-      const longest =
-        Math.max(width, height);
-
-      const isPortrait =
-        height >= width;
-
       const isPhone =
-        width < 600;
-
-      const isVeryNarrow =
-        width < 430;
+        shortest < 600;
 
       const base =
         shortest / 768;
@@ -103,44 +94,57 @@ export default function ItemDetailScreen({
       };
 
       const useSideCart =
-        !isPortrait && width >= 720;
+        width > height &&
+        width >= 760 &&
+        height >= 520;
 
       const cartWidth =
         useSideCart
-          ? clamp(width * 0.28, 275, 360)
+          ? clamp(width * 0.27, 250, 370)
           : '100%';
+
+      const detailWidth =
+        useSideCart
+          ? width - cartWidth
+          : width;
 
       const imageSize =
         isPhone
-          ? scale(112, 86, 118)
-          : scale(150, 105, 165);
+          ? scale(132, 100, 142)
+          : scale(182, 130, 198);
 
       const recommendationWidth =
         isPhone
-          ? clamp(width * 0.74, 235, 320)
-          : clamp(width * 0.22, 220, 300);
+          ? clamp(width * 0.84, 290, 370)
+          : useSideCart
+            ? clamp(detailWidth * 0.43, 390, 460)
+            : clamp(width * 0.42, 360, 460);
 
-      const cartMaxHeight =
-        useSideCart
-          ? undefined
-          : isVeryNarrow
-            ? clamp(height * 0.22, 145, 185)
-            : clamp(height * 0.25, 175, 240);
+      const recommendationRightWidth =
+        isPhone
+          ? scale(86, 76, 94)
+          : scale(102, 92, 112);
+
+      const recommendationMinHeight =
+        isPhone
+          ? scale(112, 100, 120)
+          : scale(124, 112, 132);
+
+      const cartPhoneMinHeight =
+        clamp(height * 0.22, 210, 255);
+
+      const cartPhoneListMaxHeight =
+        clamp(height * 0.13, 92, 120);
 
       return {
         isPhone,
-        isVeryNarrow,
         useSideCart,
         cartWidth,
-        cartMaxHeight,
 
-        topSafeExtra:
-          isPhone
-            ? 8
-            : 6,
+        topSafeExtra: 0,
 
         bottomSafeExtra:
-          Math.max(insets.bottom + 8, 14),
+          Math.max(insets.bottom + 2, 6),
 
         topBarHeight:
           isPhone
@@ -163,19 +167,19 @@ export default function ItemDetailScreen({
             : scale(22, 15, 22),
 
         detailPadding:
-          isPhone
-            ? scale(14, 10, 16)
-            : scale(28, 16, 30),
+          useSideCart
+            ? scale(18, 12, 20)
+            : scale(12, 8, 14),
 
         detailBottomPadding:
-          isPhone
-            ? scale(18, 14, 22)
-            : scale(24, 18, 30),
+          useSideCart
+            ? scale(8, 6, 10)
+            : scale(6, 4, 8),
 
         cardPadding:
-          isPhone
-            ? scale(18, 14, 20)
-            : scale(28, 18, 30),
+          useSideCart
+            ? scale(28, 18, 30)
+            : scale(16, 12, 18),
 
         cardRadius:
           scale(24, 16, 26),
@@ -187,8 +191,8 @@ export default function ItemDetailScreen({
 
         emoji:
           isPhone
-            ? scale(50, 38, 54)
-            : scale(68, 44, 70),
+            ? scale(58, 42, 62)
+            : scale(78, 52, 82),
 
         itemName:
           isPhone
@@ -251,25 +255,46 @@ export default function ItemDetailScreen({
             : scale(22, 17, 22),
 
         recommendationWidth,
+        recommendationRightWidth,
+        recommendationMinHeight,
 
         recommendationCircle:
           isPhone
-            ? scale(56, 46, 58)
-            : scale(64, 50, 66),
+            ? scale(70, 56, 74)
+            : scale(82, 66, 88),
 
         recommendationName:
-          scale(16, 12, 16),
+          isPhone
+            ? scale(16, 13, 17)
+            : scale(17, 14, 18),
+
+        recommendationLine:
+          isPhone
+            ? scale(20, 16, 21)
+            : scale(21, 17, 22),
 
         recommendationPrice:
-          scale(15, 12, 15),
+          isPhone
+            ? scale(15, 12, 15)
+            : scale(16, 13, 16),
+
+        recommendationAddText:
+          isPhone
+            ? scale(14, 12, 14)
+            : scale(15, 13, 15),
+
+        recommendationAddPaddingH:
+          isPhone
+            ? scale(18, 14, 20)
+            : scale(22, 18, 24),
 
         sidebarPaddingH:
           scale(14, 10, 16),
 
         sidebarPaddingT:
-          isPhone
-            ? scale(9, 7, 10)
-            : scale(16, 9, 16),
+          useSideCart
+            ? scale(16, 9, 16)
+            : scale(6, 4, 8),
 
         cartIcon:
           scale(24, 18, 24),
@@ -308,7 +333,7 @@ export default function ItemDetailScreen({
           scale(16, 13, 16),
 
         checkoutPadding:
-          scale(14, 10, 14),
+          scale(12, 8, 12),
 
         errorText:
           scale(26, 18, 26),
@@ -318,8 +343,11 @@ export default function ItemDetailScreen({
 
         maxCardWidth:
           useSideCart
-            ? clamp(longest * 0.7, 520, 950)
+            ? Math.min(detailWidth - 24, 950)
             : clamp(width - 28, 300, 680),
+
+        cartPhoneMinHeight,
+        cartPhoneListMaxHeight,
       };
     }, [
       width,
@@ -448,7 +476,7 @@ export default function ItemDetailScreen({
     };
 
   useFocusEffect(
-    React.useCallback(() => {
+    useCallback(() => {
       refreshLiveItem();
     }, [routeItem?.id])
   );
@@ -471,11 +499,6 @@ export default function ItemDetailScreen({
           selectedItem: item,
           cartItems,
         });
-
-      console.log(
-        'AI RECOMMENDATIONS RESPONSE:',
-        response
-      );
 
       if (response.success) {
         const recommendedItems =
@@ -596,7 +619,6 @@ export default function ItemDetailScreen({
         tableCheck.message ||
           assignmentMessage
       );
-
       return;
     }
 
@@ -605,7 +627,6 @@ export default function ItemDetailScreen({
         'Out of Stock',
         'This item is currently out of stock.'
       );
-
       return;
     }
 
@@ -618,7 +639,6 @@ export default function ItemDetailScreen({
           'Chef Oppa Special Request',
           'Please describe your Chef Oppa Special request before adding it to cart.'
         );
-
         return;
       }
 
@@ -632,7 +652,6 @@ export default function ItemDetailScreen({
       });
 
       setSpecialRequest('');
-
       return;
     }
 
@@ -653,7 +672,6 @@ export default function ItemDetailScreen({
         tableCheck.message ||
           assignmentMessage
       );
-
       return;
     }
 
@@ -662,7 +680,6 @@ export default function ItemDetailScreen({
         'Out of Stock',
         'This recommended item is currently out of stock.'
       );
-
       return;
     }
 
@@ -719,7 +736,6 @@ export default function ItemDetailScreen({
         'Empty Order',
         'Please add at least one item before proceeding.'
       );
-
       return;
     }
 
@@ -732,7 +748,6 @@ export default function ItemDetailScreen({
         tableCheck.message ||
           assignmentMessage
       );
-
       return;
     }
 
@@ -744,7 +759,6 @@ export default function ItemDetailScreen({
         'Limited Stock',
         inventoryCheck.message
       );
-
       return;
     }
 
@@ -753,7 +767,6 @@ export default function ItemDetailScreen({
         'Table Error',
         'No table number found. Please login again using the assigned table account.'
       );
-
       return;
     }
 
@@ -795,7 +808,7 @@ export default function ItemDetailScreen({
             width:
               responsive.recommendationWidth,
             minHeight:
-              responsive.recommendationCircle + 42,
+              responsive.recommendationMinHeight,
           },
           !recommendedAvailable &&
             styles.recommendationCardDisabled,
@@ -838,39 +851,59 @@ export default function ItemDetailScreen({
             )}
           </View>
 
-          <Text
-            style={[
-              styles.recommendationName,
-              {
-                fontSize:
-                  responsive.recommendationName,
-              },
-            ]}
-            numberOfLines={2}
-          >
-            {recommendedItem.name}
-          </Text>
+          <View style={styles.recommendationTextBox}>
+            <Text
+              style={[
+                styles.recommendationName,
+                {
+                  fontSize:
+                    responsive.recommendationName,
+                  lineHeight:
+                    responsive.recommendationLine,
+                },
+              ]}
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.78}
+            >
+              {recommendedItem.name}
+            </Text>
+
+            <Text
+              style={[
+                styles.recommendationPrice,
+                {
+                  fontSize:
+                    responsive.recommendationPrice,
+                },
+              ]}
+              numberOfLines={1}
+              adjustsFontSizeToFit
+              minimumFontScale={0.82}
+            >
+              {recommendedCustom
+                ? 'To be confirmed'
+                : `₱${formatMoney(recommendedItem.price)}`}
+            </Text>
+          </View>
         </TouchableOpacity>
 
-        <View style={styles.recommendationRight}>
-          <Text
-            style={[
-              styles.recommendationPrice,
-              {
-                fontSize:
-                  responsive.recommendationPrice,
-              },
-            ]}
-            numberOfLines={2}
-          >
-            {recommendedCustom
-              ? 'To be confirmed'
-              : `₱${formatMoney(recommendedItem.price)}`}
-          </Text>
-
+        <View
+          style={[
+            styles.recommendationRight,
+            {
+              width:
+                responsive.recommendationRightWidth,
+            },
+          ]}
+        >
           <TouchableOpacity
             style={[
               styles.recommendationAddButton,
+              {
+                paddingHorizontal:
+                  responsive.recommendationAddPaddingH,
+              },
               !recommendedAvailable &&
                 styles.recommendationAddButtonDisabled,
               !canOrder &&
@@ -886,7 +919,16 @@ export default function ItemDetailScreen({
                 : handleAddRecommendedItem(recommendedItem)
             }
           >
-            <Text style={styles.recommendationAddText}>
+            <Text
+              style={[
+                styles.recommendationAddText,
+                {
+                  fontSize:
+                    responsive.recommendationAddText,
+                },
+              ]}
+              numberOfLines={1}
+            >
               {recommendedCustom
                 ? 'Request'
                 : 'Add'}
@@ -1094,17 +1136,14 @@ export default function ItemDetailScreen({
     return (
       <View style={styles.frame}>
         <StatusBar
-          barStyle="dark-content"
-          backgroundColor="#efefef"
+          barStyle="light-content"
+          backgroundColor="#b8b3b3"
           translucent={false}
         />
 
         <SafeAreaView
           style={styles.safeArea}
-          edges={[
-            'top',
-            'bottom',
-          ]}
+          edges={['top']}
         >
           <View style={styles.emptyState}>
             <Text
@@ -1153,20 +1192,9 @@ export default function ItemDetailScreen({
 
       <SafeAreaView
         style={styles.safeArea}
-        edges={[
-          'top',
-          'bottom',
-        ]}
+        edges={['top']}
       >
-        <View
-          style={[
-            styles.container,
-            {
-              paddingTop:
-                responsive.topSafeExtra,
-            },
-          ]}
-        >
+        <View style={styles.container}>
           <View
             style={[
               styles.topBar,
@@ -1238,6 +1266,7 @@ export default function ItemDetailScreen({
                 {
                   padding:
                     responsive.detailPadding,
+                  flex: 1,
                 },
               ]}
             >
@@ -1517,9 +1546,7 @@ export default function ItemDetailScreen({
                         renderItem={
                           renderRecommendation
                         }
-                        showsHorizontalScrollIndicator={
-                          false
-                        }
+                        showsHorizontalScrollIndicator={false}
                         contentContainerStyle={{
                           paddingHorizontal: 4,
                         }}
@@ -1539,11 +1566,7 @@ export default function ItemDetailScreen({
                 styles.cartSidebar,
                 {
                   width:
-                    responsive.useSideCart
-                      ? responsive.cartWidth
-                      : '100%',
-                  maxHeight:
-                    responsive.cartMaxHeight,
+                    responsive.cartWidth,
                   paddingHorizontal:
                     responsive.sidebarPaddingH,
                   paddingTop:
@@ -1558,6 +1581,10 @@ export default function ItemDetailScreen({
                     responsive.useSideCart
                       ? 0
                       : 1,
+                  minHeight:
+                    responsive.useSideCart
+                      ? undefined
+                      : responsive.cartPhoneMinHeight,
                 },
               ]}
             >
@@ -1603,25 +1630,25 @@ export default function ItemDetailScreen({
                 <FlatList
                   data={cartItems}
                   keyExtractor={(cartItem) =>
-                    String(
-                      getItemId(cartItem)
-                    )
+                    String(getItemId(cartItem))
                   }
                   renderItem={renderCartItem}
-                  horizontal={
-                    !responsive.useSideCart
-                  }
-                  showsHorizontalScrollIndicator={
-                    false
-                  }
-                  showsVerticalScrollIndicator={
-                    false
-                  }
+                  horizontal={!responsive.useSideCart}
+                  showsHorizontalScrollIndicator={false}
+                  showsVerticalScrollIndicator={false}
+                  style={[
+                    styles.cartList,
+                    !responsive.useSideCart && {
+                      maxHeight:
+                        responsive.cartPhoneListMaxHeight,
+                      minHeight: 82,
+                    },
+                  ]}
                   contentContainerStyle={{
                     paddingBottom:
                       responsive.useSideCart
-                        ? 20
-                        : 8,
+                        ? 12
+                        : 4,
                     gap:
                       responsive.useSideCart
                         ? 0
@@ -1630,7 +1657,17 @@ export default function ItemDetailScreen({
                 />
               )}
 
-              <View style={styles.cartFooter}>
+              <View
+                style={[
+                  styles.cartFooter,
+                  {
+                    paddingBottom:
+                      responsive.useSideCart
+                        ? 10
+                        : 4,
+                  },
+                ]}
+              >
                 <View style={styles.totalRow}>
                   <Text
                     style={[
@@ -1709,7 +1746,7 @@ const styles =
   StyleSheet.create({
     frame: {
       flex: 1,
-      backgroundColor: '#b8b3b3',
+      backgroundColor: '#fff',
     },
 
     safeArea: {
@@ -1953,12 +1990,12 @@ const styles =
       borderColor: '#f0b287',
       borderRadius: 18,
       paddingHorizontal: 14,
-      paddingVertical: 12,
+      paddingVertical: 10,
       marginHorizontal: 8,
       flexDirection: 'row',
       alignItems: 'center',
-      justifyContent:
-        'space-between',
+      justifyContent: 'space-between',
+      overflow: 'hidden',
     },
 
     recommendationCardDisabled: {
@@ -1969,7 +2006,8 @@ const styles =
       flexDirection: 'row',
       alignItems: 'center',
       flex: 1,
-      paddingRight: 10,
+      paddingRight: 12,
+      minWidth: 0,
     },
 
     recommendationCircle: {
@@ -1978,6 +2016,7 @@ const styles =
       alignItems: 'center',
       overflow: 'hidden',
       marginRight: 12,
+      flexShrink: 0,
     },
 
     recommendationImage: {
@@ -1986,11 +2025,17 @@ const styles =
     },
 
     recommendationEmoji: {
-      fontSize: 28,
+      fontSize: 30,
+    },
+
+    recommendationTextBox: {
+      flex: 1,
+      minWidth: 0,
+      justifyContent: 'center',
     },
 
     recommendationName: {
-      flex: 1,
+      width: '100%',
       fontWeight: '900',
       color: '#333',
     },
@@ -1998,20 +2043,23 @@ const styles =
     recommendationRight: {
       alignItems: 'center',
       justifyContent: 'center',
+      flexShrink: 0,
     },
 
     recommendationPrice: {
+      width: '100%',
       fontWeight: '900',
       color: '#f68c45',
-      marginBottom: 8,
-      textAlign: 'center',
+      marginTop: 3,
+      textAlign: 'left',
     },
 
     recommendationAddButton: {
       backgroundColor: '#f68c45',
       paddingVertical: 7,
-      paddingHorizontal: 24,
       borderRadius: 10,
+      minWidth: 74,
+      alignItems: 'center',
     },
 
     recommendationAddButtonDisabled: {
@@ -2021,7 +2069,6 @@ const styles =
     recommendationAddText: {
       color: '#fff',
       fontWeight: '900',
-      fontSize: 14,
     },
 
     noRecommendationText: {
@@ -2034,12 +2081,18 @@ const styles =
       backgroundColor: '#fff',
       borderLeftColor: '#ddd',
       borderTopColor: '#ddd',
+      flexShrink: 0,
+    },
+
+    cartList: {
+      flexGrow: 0,
+      minHeight: 72,
     },
 
     cartHeader: {
       flexDirection: 'row',
       alignItems: 'center',
-      marginBottom: 10,
+      marginBottom: 8,
     },
 
     cartIcon: {
@@ -2053,18 +2106,22 @@ const styles =
 
     emptyCartText: {
       color: '#777',
-      marginTop: 10,
+      marginTop: 4,
+      borderBottomWidth: 1,
+      borderBottomColor: '#dddddd',
+      paddingBottom: 8,
     },
 
     cartItem: {
-      paddingVertical: 12,
+      paddingVertical: 8,
       borderBottomWidth: 1,
       borderBottomColor: '#eeeeee',
     },
 
     cartItemStacked: {
-      minWidth: 170,
-      maxWidth: 230,
+      minWidth: 165,
+      maxWidth: 225,
+      paddingRight: 10,
     },
 
     cartItemTop: {
@@ -2123,7 +2180,7 @@ const styles =
       fontSize: 13,
       fontWeight: '800',
       lineHeight: 18,
-      marginBottom: 10,
+      marginBottom: 8,
     },
 
     removeText: {
@@ -2134,7 +2191,7 @@ const styles =
     qtyRow: {
       flexDirection: 'row',
       alignItems: 'center',
-      marginTop: 10,
+      marginTop: 8,
     },
 
     qtyButton: {
@@ -2160,8 +2217,7 @@ const styles =
     cartFooter: {
       borderTopWidth: 1,
       borderTopColor: '#dddddd',
-      paddingTop: 12,
-      paddingBottom: 12,
+      paddingTop: 8,
     },
 
     totalRow: {
@@ -2169,7 +2225,7 @@ const styles =
       justifyContent:
         'space-between',
       alignItems: 'center',
-      marginBottom: 12,
+      marginBottom: 10,
       gap: 10,
     },
 

@@ -1,6 +1,7 @@
 import React, {
   useEffect,
   useMemo,
+  useRef,
 } from 'react';
 
 import {
@@ -23,6 +24,8 @@ import {
   CommonActions,
 } from '@react-navigation/native';
 
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
 import { WebView } from 'react-native-webview';
 
 import { useTableStatus } from '../context/TableStatusContext';
@@ -34,7 +37,11 @@ export default function PaymentWebViewScreen({
   const {
     orderId,
     invoiceUrl,
+    message,
   } = route.params || {};
+
+  const hasNavigatedRef =
+    useRef(false);
 
   const {
     width,
@@ -53,13 +60,16 @@ export default function PaymentWebViewScreen({
         Math.max(width, height);
 
       const isPhone =
-        width < 600;
+        shortest < 600;
 
       const isVeryNarrow =
         width < 430;
 
+      const isLandscape =
+        width > height;
+
       const base =
-        shortest / 768;
+        Math.min(shortest / 768, 1.05);
 
       const clamp = (
         value,
@@ -85,18 +95,18 @@ export default function PaymentWebViewScreen({
       return {
         isPhone,
         isVeryNarrow,
+        isLandscape,
 
-        safeTopExtra:
-          isPhone
-            ? 6
-            : 8,
+        safeTopExtra: 0,
 
         safeBottomExtra:
           Math.max(insets.bottom, 0),
 
         headerHeight:
           isPhone
-            ? scale(58, 52, 62)
+            ? isLandscape
+              ? scale(52, 44, 56)
+              : scale(58, 50, 62)
             : scale(72, 58, 74),
 
         headerPadding:
@@ -108,8 +118,10 @@ export default function PaymentWebViewScreen({
 
         sideWidth:
           isPhone
-            ? scale(62, 54, 66)
-            : scale(70, 56, 74),
+            ? isLandscape
+              ? scale(58, 50, 62)
+              : scale(64, 54, 68)
+            : scale(76, 58, 80),
 
         closeText:
           isPhone
@@ -213,6 +225,81 @@ export default function PaymentWebViewScreen({
     navigation,
   ]);
 
+  const markQrPaymentProcessCompleted =
+    async () => {
+      if (!orderId) {
+        return;
+      }
+
+      try {
+        const raw =
+          await AsyncStorage.getItem(
+            'completedQrPaymentProcessOrderIds'
+          );
+
+        const parsedIds =
+          raw ? JSON.parse(raw) : [];
+
+        const normalizedIds =
+          Array.isArray(parsedIds)
+            ? parsedIds.map((id) =>
+                String(id)
+              )
+            : [];
+
+        const orderIdString =
+          String(orderId);
+
+        if (
+          !normalizedIds.includes(
+            orderIdString
+          )
+        ) {
+          normalizedIds.push(
+            orderIdString
+          );
+        }
+
+        await AsyncStorage.setItem(
+          'completedQrPaymentProcessOrderIds',
+          JSON.stringify(
+            normalizedIds
+          )
+        );
+
+        console.log(
+          'SAVED COMPLETED QR PAYMENT PROCESS:',
+          orderIdString
+        );
+      } catch (storageError) {
+        console.log(
+          'SAVE COMPLETED QR PAYMENT PROCESS ERROR:',
+          storageError
+        );
+      }
+    };
+
+  const goToOrderStatus = ({
+    statusMessage,
+    qrPaymentProcessCompleted = false,
+  }) => {
+    if (hasNavigatedRef.current) {
+      return;
+    }
+
+    hasNavigatedRef.current = true;
+
+    navigation.replace(
+      'OrderStatus',
+      {
+        orderId,
+        message:
+          statusMessage || message || '',
+        qrPaymentProcessCompleted,
+      }
+    );
+  };
+
   const handleNavigationChange = (
     navState
   ) => {
@@ -224,47 +311,66 @@ export default function PaymentWebViewScreen({
       currentUrl
     );
 
+    const lowerUrl =
+      currentUrl.toLowerCase();
+
     const isSuccess =
-      currentUrl.includes(
+      lowerUrl.includes(
         'payment-success'
+      ) ||
+      lowerUrl.includes(
+        'success'
+      ) ||
+      lowerUrl.includes(
+        'paid'
       );
 
     const isFailed =
-      currentUrl.includes(
+      lowerUrl.includes(
         'payment-failed'
       ) ||
-      currentUrl.includes(
+      lowerUrl.includes(
         'payment-cancel'
       ) ||
-      currentUrl.includes(
+      lowerUrl.includes(
+        'cancel'
+      ) ||
+      lowerUrl.includes(
         'failure'
+      ) ||
+      lowerUrl.includes(
+        'failed'
       );
 
     if (isSuccess) {
-      navigation.replace(
-        'OrderStatus',
-        { orderId }
-      );
+      markQrPaymentProcessCompleted();
+
+      goToOrderStatus({
+        statusMessage:
+          'QR PH payment process completed. Checking payment confirmation from the system...',
+        qrPaymentProcessCompleted: true,
+      });
 
       return;
     }
 
     if (isFailed) {
       Alert.alert(
-        'Payment Status',
-        'Payment was not completed. You can check the order status or ask restaurant staff for help.'
+        'Payment Not Completed',
+        'Payment was not completed. Your order will not be sent to the kitchen until payment is confirmed.'
       );
 
-      navigation.replace(
-        'OrderStatus',
-        { orderId }
-      );
+      goToOrderStatus({
+        statusMessage:
+          'Payment was not completed. Please ask staff for assistance or try again.',
+        qrPaymentProcessCompleted: false,
+      });
     }
   };
 
   if (!invoiceUrl) {
     return (
-      <View style={styles.frame}>
+      <View style={styles.frameLight}>
         <StatusBar
           barStyle="dark-content"
           backgroundColor="#efefef"
@@ -273,10 +379,7 @@ export default function PaymentWebViewScreen({
 
         <SafeAreaView
           style={styles.safeAreaLight}
-          edges={[
-            'top',
-            'bottom',
-          ]}
+          edges={['top']}
         >
           <View
             style={[
@@ -325,7 +428,7 @@ export default function PaymentWebViewScreen({
                   },
                 ]}
               >
-                No payment link was provided.
+                No Xendit QR PH checkout link was provided.
               </Text>
 
               <TouchableOpacity
@@ -341,10 +444,11 @@ export default function PaymentWebViewScreen({
                   },
                 ]}
                 onPress={() =>
-                  navigation.replace(
-                    'OrderStatus',
-                    { orderId }
-                  )
+                  goToOrderStatus({
+                    statusMessage:
+                      'Order recorded, but the Xendit checkout link was not returned. Please contact staff.',
+                    qrPaymentProcessCompleted: false,
+                  })
                 }
               >
                 <Text
@@ -368,7 +472,7 @@ export default function PaymentWebViewScreen({
   }
 
   return (
-    <View style={styles.frame}>
+    <View style={styles.frameWhite}>
       <StatusBar
         barStyle="dark-content"
         backgroundColor="#ffffff"
@@ -377,10 +481,7 @@ export default function PaymentWebViewScreen({
 
       <SafeAreaView
         style={styles.safeAreaWhite}
-        edges={[
-          'top',
-          'bottom',
-        ]}
+        edges={['top']}
       >
         <View
           style={[
@@ -413,10 +514,11 @@ export default function PaymentWebViewScreen({
                 },
               ]}
               onPress={() =>
-                navigation.replace(
-                  'OrderStatus',
-                  { orderId }
-                )
+                goToOrderStatus({
+                  statusMessage:
+                    'Xendit QR PH checkout was closed. Your order will be sent to the kitchen after payment is confirmed.',
+                  qrPaymentProcessCompleted: false,
+                })
               }
             >
               <Text
@@ -444,7 +546,7 @@ export default function PaymentWebViewScreen({
               numberOfLines={1}
               adjustsFontSizeToFit
             >
-              Complete Payment
+              Xendit QR PH Checkout
             </Text>
 
             <View
@@ -482,14 +584,14 @@ export default function PaymentWebViewScreen({
                       },
                     ]}
                   >
-                    Loading payment page...
+                    Loading Xendit QR PH checkout...
                   </Text>
                 </View>
               )}
               onError={() => {
                 Alert.alert(
                   'Payment Page Error',
-                  'Unable to load the payment page. Please check your connection.'
+                  'Unable to load the Xendit checkout page. Please check your connection.'
                 );
               }}
             />
@@ -502,9 +604,14 @@ export default function PaymentWebViewScreen({
 
 const styles =
   StyleSheet.create({
-    frame: {
+    frameWhite: {
       flex: 1,
       backgroundColor: '#ffffff',
+    },
+
+    frameLight: {
+      flex: 1,
+      backgroundColor: '#efefef',
     },
 
     safeAreaWhite: {
@@ -519,7 +626,7 @@ const styles =
 
     container: {
       flex: 1,
-      backgroundColor: '#efefef',
+      backgroundColor: '#ffffff',
     },
 
     header: {
@@ -558,7 +665,7 @@ const styles =
 
     loadingContainer: {
       ...StyleSheet.absoluteFillObject,
-      backgroundColor: '#efefef',
+      backgroundColor: '#ffffff',
       alignItems: 'center',
       justifyContent: 'center',
       paddingHorizontal: 24,

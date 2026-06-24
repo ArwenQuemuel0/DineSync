@@ -42,13 +42,24 @@ export default function WelcomeScreen({
         Math.max(width, height);
 
       const isPhone =
-        width < 600;
+        shortest < 600;
 
       const isVeryNarrow =
         width < 430;
 
+      const isLandscape =
+        width > height;
+
+      const isShortHeight =
+        height < 650;
+
+      const availableHeight =
+        height -
+        insets.top -
+        insets.bottom;
+
       const base =
-        shortest / 768;
+        Math.min(shortest / 768, 1.05);
 
       const clamp = (
         value,
@@ -71,29 +82,40 @@ export default function WelcomeScreen({
         );
       };
 
+      const compact =
+        isPhone ||
+        isShortHeight;
+
       const logoCircle =
-        isVeryNarrow
-          ? scale(104, 82, 110)
-          : isPhone
-            ? scale(122, 92, 130)
+        isPhone
+          ? isLandscape
+            ? clamp(availableHeight * 0.18, 62, 88)
+            : isVeryNarrow
+              ? scale(104, 82, 110)
+              : scale(122, 92, 130)
+          : isLandscape
+            ? scale(132, 92, 145)
             : scale(150, 100, 160);
 
-      const availableHeight =
-        height -
-        insets.top -
-        insets.bottom;
+      const cardHeight =
+        isPhone
+          ? isLandscape
+            ? availableHeight * 0.86
+            : availableHeight * 0.8
+          : isLandscape
+            ? availableHeight * 0.90
+            : availableHeight * 0.88;
 
       return {
         isPhone,
         isVeryNarrow,
+        isLandscape,
+        compact,
 
-        safeTopExtra:
-          isPhone
-            ? 8
-            : 10,
+        safeTopExtra: 0,
 
         safeBottomExtra:
-          Math.max(insets.bottom + 10, 18),
+          Math.max(insets.bottom + 6, 12),
 
         overlayPaddingH:
           isVeryNarrow
@@ -104,52 +126,63 @@ export default function WelcomeScreen({
 
         overlayPaddingV:
           isPhone
-            ? scale(14, 12, 18)
-            : scale(24, 14, 28),
+            ? isLandscape
+              ? scale(8, 6, 10)
+              : scale(12, 10, 14)
+            : scale(20, 12, 24),
 
         cardWidth:
           isPhone
-            ? '94%'
+            ? isLandscape
+              ? '76%'
+              : '94%'
             : '94%',
 
         cardMaxWidth:
           isPhone
-            ? clamp(width - 28, 300, 430)
+            ? isLandscape
+              ? clamp(width * 0.74, 360, 560)
+              : clamp(width - 28, 300, 430)
             : clamp(longest * 0.9, 420, 1320),
 
-        cardHeight:
-          isPhone
-            ? availableHeight * 0.76
-            : availableHeight * 0.82,
+        cardHeight,
 
         cardMaxHeight:
-          availableHeight * 0.9,
+          availableHeight * 0.94,
 
         cardRadius:
           isPhone
-            ? scale(28, 20, 30)
+            ? isLandscape
+              ? scale(24, 18, 26)
+              : scale(28, 20, 30)
             : scale(36, 22, 38),
 
         cardPaddingH:
           isVeryNarrow
             ? scale(20, 16, 22)
             : isPhone
-              ? scale(26, 20, 30)
+              ? isLandscape
+                ? scale(24, 18, 28)
+                : scale(26, 20, 30)
               : scale(56, 24, 58),
 
         cardPaddingTop:
-          isVeryNarrow
-            ? scale(24, 18, 26)
-            : isPhone
-              ? scale(30, 22, 34)
-              : scale(44, 22, 46),
+          isPhone
+            ? isLandscape
+              ? scale(16, 12, 20)
+              : isVeryNarrow
+                ? scale(22, 18, 24)
+                : scale(28, 20, 32)
+            : scale(42, 22, 46),
 
         cardPaddingBottom:
-          isVeryNarrow
-            ? scale(24, 18, 26)
-            : isPhone
-              ? scale(30, 22, 34)
-              : scale(48, 24, 50),
+          isPhone
+            ? isLandscape
+              ? scale(16, 12, 20)
+              : isVeryNarrow
+                ? scale(22, 18, 24)
+                : scale(28, 20, 32)
+            : scale(46, 24, 50),
 
         logoCircle,
 
@@ -161,56 +194,70 @@ export default function WelcomeScreen({
 
         logoMargin:
           isPhone
-            ? scale(12, 8, 14)
+            ? isLandscape
+              ? scale(8, 5, 10)
+              : scale(12, 8, 14)
             : scale(16, 8, 16),
 
         titleFont:
-          isVeryNarrow
-            ? scale(34, 28, 36)
-            : isPhone
-              ? scale(40, 32, 42)
-              : scale(58, 34, 60),
+          isPhone
+            ? isLandscape
+              ? scale(32, 26, 34)
+              : isVeryNarrow
+                ? scale(34, 28, 36)
+                : scale(40, 32, 42)
+            : scale(58, 34, 60),
 
         titleLine:
-          isVeryNarrow
-            ? scale(42, 34, 44)
-            : isPhone
-              ? scale(48, 38, 50)
-              : scale(66, 40, 68),
+          isPhone
+            ? isLandscape
+              ? scale(38, 30, 40)
+              : isVeryNarrow
+                ? scale(42, 34, 44)
+                : scale(48, 38, 50)
+            : scale(66, 40, 68),
 
         subtitleFont:
-          isVeryNarrow
-            ? scale(18, 15, 19)
-            : isPhone
-              ? scale(22, 17, 23)
-              : scale(28, 18, 28),
+          isPhone
+            ? isLandscape
+              ? scale(18, 15, 19)
+              : isVeryNarrow
+                ? scale(18, 15, 19)
+                : scale(22, 17, 23)
+            : scale(28, 18, 28),
 
         subtitleMargin:
           scale(8, 4, 8),
 
         tableLabelFont:
-          isVeryNarrow
-            ? scale(18, 15, 19)
-            : isPhone
-              ? scale(21, 17, 22)
-              : scale(26, 17, 26),
+          isPhone
+            ? isLandscape
+              ? scale(17, 14, 18)
+              : isVeryNarrow
+                ? scale(18, 15, 19)
+                : scale(21, 17, 22)
+            : scale(26, 17, 26),
 
         tableNumberFont:
-          isVeryNarrow
-            ? scale(34, 28, 36)
-            : isPhone
-              ? scale(42, 32, 44)
-              : scale(64, 36, 66),
+          isPhone
+            ? isLandscape
+              ? scale(32, 26, 34)
+              : isVeryNarrow
+                ? scale(34, 28, 36)
+                : scale(42, 32, 44)
+            : scale(64, 36, 66),
 
         tableNumberMargin:
           scale(8, 4, 8),
 
         tapFont:
-          isVeryNarrow
-            ? scale(17, 14, 18)
-            : isPhone
-              ? scale(20, 16, 21)
-              : scale(24, 16, 24),
+          isPhone
+            ? isLandscape
+              ? scale(16, 13, 17)
+              : isVeryNarrow
+                ? scale(17, 14, 18)
+                : scale(20, 16, 21)
+            : scale(24, 16, 24),
       };
     }, [
       width,
@@ -231,179 +278,178 @@ export default function WelcomeScreen({
         translucent
       />
 
-      <SafeAreaView
-        style={styles.safeArea}
-        edges={[
-          'top',
-          'bottom',
-        ]}
-      >
-        <Pressable
-          style={styles.screenPress}
-          onPress={() =>
-            navigation.reset({
-              index: 0,
-              routes: [
-                {
-                  name: 'Menu',
-                },
-              ],
-            })
-          }
+      <View style={styles.backgroundTint}>
+        <SafeAreaView
+          style={styles.safeArea}
+          edges={['top']}
         >
-          <View
-            style={[
-              styles.overlay,
-              {
-                paddingHorizontal:
-                  responsive.overlayPaddingH,
-                paddingTop:
-                  responsive.overlayPaddingV +
-                  responsive.safeTopExtra,
-                paddingBottom:
-                  responsive.overlayPaddingV +
-                  responsive.safeBottomExtra,
-              },
-            ]}
+          <Pressable
+            style={styles.screenPress}
+            onPress={() =>
+              navigation.reset({
+                index: 0,
+                routes: [
+                  {
+                    name: 'Menu',
+                  },
+                ],
+              })
+            }
           >
             <View
               style={[
-                styles.card,
+                styles.overlay,
                 {
-                  width:
-                    responsive.cardWidth,
-                  maxWidth:
-                    responsive.cardMaxWidth,
-                  height:
-                    responsive.cardHeight,
-                  maxHeight:
-                    responsive.cardMaxHeight,
-                  borderRadius:
-                    responsive.cardRadius,
                   paddingHorizontal:
-                    responsive.cardPaddingH,
+                    responsive.overlayPaddingH,
                   paddingTop:
-                    responsive.cardPaddingTop,
+                    responsive.overlayPaddingV +
+                    responsive.safeTopExtra,
                   paddingBottom:
-                    responsive.cardPaddingBottom,
+                    responsive.overlayPaddingV +
+                    responsive.safeBottomExtra,
                 },
               ]}
             >
               <View
                 style={[
-                  styles.logoCircle,
+                  styles.card,
                   {
                     width:
-                      responsive.logoCircle,
+                      responsive.cardWidth,
+                    maxWidth:
+                      responsive.cardMaxWidth,
                     height:
-                      responsive.logoCircle,
+                      responsive.cardHeight,
+                    maxHeight:
+                      responsive.cardMaxHeight,
                     borderRadius:
-                      responsive.logoRadius,
-                      marginBottom:
-                      responsive.logoMargin,
+                      responsive.cardRadius,
+                    paddingHorizontal:
+                      responsive.cardPaddingH,
+                    paddingTop:
+                      responsive.cardPaddingTop,
+                    paddingBottom:
+                      responsive.cardPaddingBottom,
                   },
                 ]}
               >
-                <Image
-                  source={require('../../assets/chefoppa_logo.png')}
+                <View
                   style={[
-                    styles.logo,
+                    styles.logoCircle,
                     {
                       width:
-                        responsive.logoSize,
+                        responsive.logoCircle,
                       height:
-                        responsive.logoSize,
+                        responsive.logoCircle,
+                      borderRadius:
+                        responsive.logoRadius,
+                      marginBottom:
+                        responsive.logoMargin,
                     },
                   ]}
-                  resizeMode="contain"
-                />
-              </View>
-
-              <View style={styles.content}>
-                <View style={styles.headerSection}>
-                  <Text
-                    style={[
-                      styles.title,
-                      {
-                        fontSize:
-                          responsive.titleFont,
-                        lineHeight:
-                          responsive.titleLine,
-                      },
-                    ]}
-                    numberOfLines={2}
-                    adjustsFontSizeToFit
-                  >
-                    Welcome to Chef Oppa
-                  </Text>
-
-                  <Text
-                    style={[
-                      styles.subtitle,
-                      {
-                        fontSize:
-                          responsive.subtitleFont,
-                        marginTop:
-                          responsive.subtitleMargin,
-                      },
-                    ]}
-                    numberOfLines={1}
-                    adjustsFontSizeToFit
-                  >
-                    Korean Restaurant
-                  </Text>
-                </View>
-
-                <View style={styles.tableSection}>
-                  <Text
-                    style={[
-                      styles.tableLabel,
-                      {
-                        fontSize:
-                          responsive.tableLabelFont,
-                      },
-                    ]}
-                    numberOfLines={1}
-                    adjustsFontSizeToFit
-                  >
-                    Your Table Number
-                  </Text>
-
-                  <Text
-                    style={[
-                      styles.tableNumber,
-                      {
-                        fontSize:
-                          responsive.tableNumberFont,
-                        marginTop:
-                          responsive.tableNumberMargin,
-                      },
-                    ]}
-                    numberOfLines={1}
-                    adjustsFontSizeToFit
-                  >
-                    Table No. {tableNumber || user?.table_number || '-'}
-                  </Text>
-                </View>
-
-                <Text
-                  style={[
-                    styles.tapText,
-                    {
-                      fontSize:
-                        responsive.tapFont,
-                    },
-                  ]}
-                  numberOfLines={1}
-                  adjustsFontSizeToFit
                 >
-                  Tap anywhere to start
-                </Text>
+                  <Image
+                    source={require('../../assets/chefoppa_logo.png')}
+                    style={[
+                      styles.logo,
+                      {
+                        width:
+                          responsive.logoSize,
+                        height:
+                          responsive.logoSize,
+                      },
+                    ]}
+                    resizeMode="contain"
+                  />
+                </View>
+
+                <View style={styles.content}>
+                  <View style={styles.headerSection}>
+                    <Text
+                      style={[
+                        styles.title,
+                        {
+                          fontSize:
+                            responsive.titleFont,
+                          lineHeight:
+                            responsive.titleLine,
+                        },
+                      ]}
+                      numberOfLines={2}
+                      adjustsFontSizeToFit
+                    >
+                      Welcome to Chef Oppa
+                    </Text>
+
+                    <Text
+                      style={[
+                        styles.subtitle,
+                        {
+                          fontSize:
+                            responsive.subtitleFont,
+                          marginTop:
+                            responsive.subtitleMargin,
+                        },
+                      ]}
+                      numberOfLines={1}
+                      adjustsFontSizeToFit
+                    >
+                      Korean Restaurant
+                    </Text>
+                  </View>
+
+                  <View style={styles.tableSection}>
+                    <Text
+                      style={[
+                        styles.tableLabel,
+                        {
+                          fontSize:
+                            responsive.tableLabelFont,
+                        },
+                      ]}
+                      numberOfLines={1}
+                      adjustsFontSizeToFit
+                    >
+                      Your Table Number
+                    </Text>
+
+                    <Text
+                      style={[
+                        styles.tableNumber,
+                        {
+                          fontSize:
+                            responsive.tableNumberFont,
+                          marginTop:
+                            responsive.tableNumberMargin,
+                        },
+                      ]}
+                      numberOfLines={1}
+                      adjustsFontSizeToFit
+                    >
+                      Table No. {tableNumber || user?.table_number || '-'}
+                    </Text>
+                  </View>
+
+                  <Text
+                    style={[
+                      styles.tapText,
+                      {
+                        fontSize:
+                          responsive.tapFont,
+                      },
+                    ]}
+                    numberOfLines={1}
+                    adjustsFontSizeToFit
+                  >
+                    Tap anywhere to start
+                  </Text>
+                </View>
               </View>
             </View>
-          </View>
-        </Pressable>
-      </SafeAreaView>
+          </Pressable>
+        </SafeAreaView>
+      </View>
     </ImageBackground>
   );
 }
@@ -412,6 +458,12 @@ const styles =
   StyleSheet.create({
     background: {
       flex: 1,
+    },
+
+    backgroundTint: {
+      flex: 1,
+      backgroundColor:
+        'rgba(120, 76, 48, 0.42)',
     },
 
     safeArea: {
@@ -426,8 +478,6 @@ const styles =
 
     overlay: {
       flex: 1,
-      backgroundColor:
-        'rgba(120, 76, 48, 0.42)',
       justifyContent: 'center',
       alignItems: 'center',
     },
@@ -440,6 +490,7 @@ const styles =
       shadowOpacity: 0.12,
       shadowRadius: 10,
       elevation: 4,
+      overflow: 'hidden',
     },
 
     logoCircle: {
@@ -447,6 +498,7 @@ const styles =
         'rgba(255, 255, 255, 0.92)',
       justifyContent: 'center',
       alignItems: 'center',
+      flexShrink: 0,
     },
 
     logo: {},
