@@ -39,6 +39,237 @@ import {
   isCustomItem,
 } from '../utils/inventory';
 
+const VALID_NORMAL_INVENTORY_TYPES = [
+  'per_order',
+  'per_head',
+];
+
+const normalizeText = (value) => {
+  return String(value || '')
+    .trim()
+    .toLowerCase();
+};
+
+const normalizeInventoryType = (value) => {
+  return normalizeText(value)
+    .replace(/[-\s]+/g, '_');
+};
+
+const isAvailableTrue = (value) => {
+  return (
+    value === true ||
+    value === 1 ||
+    value === '1' ||
+    normalizeText(value) === 'true' ||
+    normalizeText(value) === 'yes' ||
+    normalizeText(value) === 'available'
+  );
+};
+
+const hasInventoryType = (item) => {
+  return (
+    item?.inventory_type !== null &&
+    item?.inventory_type !== undefined &&
+    String(item.inventory_type).trim() !== ''
+  );
+};
+
+const hasDailyLimit = (item) => {
+  return (
+    item?.daily_limit !== null &&
+    item?.daily_limit !== undefined &&
+    String(item.daily_limit).trim() !== ''
+  );
+};
+
+const toNumber = (value) => {
+  const numberValue =
+    Number(value);
+
+  return Number.isFinite(numberValue)
+    ? numberValue
+    : 0;
+};
+
+const getRemainingToday = (item) => {
+  return toNumber(
+    item?.remaining_today
+  );
+};
+
+const getMaxOrderQuantity = (item) => {
+  return toNumber(
+    item?.max_order_quantity
+  );
+};
+
+const getAllowedOrderQuantity = (item) => {
+  if (!item) {
+    return 0;
+  }
+
+  if (isCustomItem(item)) {
+    return 1;
+  }
+
+  const maxOrderQuantity =
+    getMaxOrderQuantity(item);
+
+  const remainingToday =
+    getRemainingToday(item);
+
+  if (
+    maxOrderQuantity > 0 &&
+    remainingToday > 0
+  ) {
+    return Math.min(
+      maxOrderQuantity,
+      remainingToday
+    );
+  }
+
+  if (maxOrderQuantity > 0) {
+    return maxOrderQuantity;
+  }
+
+  if (remainingToday > 0) {
+    return remainingToday;
+  }
+
+  return 0;
+};
+
+const isValidDailyInventoryMenuItem = (item) => {
+  const inventoryType =
+    normalizeInventoryType(
+      item?.inventory_type
+    );
+
+  const available =
+    isAvailableTrue(
+      item?.is_available
+    );
+
+  if (!available) {
+    return false;
+  }
+
+  if (!hasInventoryType(item)) {
+    return false;
+  }
+
+  if (inventoryType === 'custom') {
+    return true;
+  }
+
+  if (
+    !VALID_NORMAL_INVENTORY_TYPES.includes(
+      inventoryType
+    )
+  ) {
+    return false;
+  }
+
+  if (!hasDailyLimit(item)) {
+    return false;
+  }
+
+  const remainingToday =
+    getRemainingToday(item);
+
+  const maxOrderQuantity =
+    getMaxOrderQuantity(item);
+
+  return (
+    remainingToday > 0 ||
+    maxOrderQuantity > 0
+  );
+};
+
+const validateDailyInventoryCartItems = (
+  cartItems = [],
+  getEnrichedItem
+) => {
+  for (const cartItem of cartItems) {
+    const item =
+      typeof getEnrichedItem === 'function'
+        ? getEnrichedItem(cartItem)
+        : cartItem;
+
+    const customItem =
+      isCustomItem(item);
+
+    if (customItem) {
+      if (
+        Number(cartItem.quantity || 0) !== 1
+      ) {
+        return {
+          valid: false,
+          message:
+            'Chef Oppa Special requests must have quantity of 1 only.',
+        };
+      }
+
+      if (
+        !isAvailableTrue(
+          item?.is_available
+        ) ||
+        normalizeInventoryType(
+          item?.inventory_type
+        ) !== 'custom'
+      ) {
+        return {
+          valid: false,
+          message:
+            'Chef Oppa Special is currently not enabled.',
+        };
+      }
+
+      continue;
+    }
+
+    if (
+      !isValidDailyInventoryMenuItem(item)
+    ) {
+      return {
+        valid: false,
+        message:
+          `${item?.name || cartItem?.name || 'An item'} is no longer enabled in Daily Menu Inventory.`,
+      };
+    }
+
+    const allowedQuantity =
+      getAllowedOrderQuantity(item);
+
+    const requestedQuantity =
+      Number(cartItem.quantity || 0);
+
+    if (allowedQuantity <= 0) {
+      return {
+        valid: false,
+        message:
+          `${item?.name || cartItem?.name || 'An item'} is sold out for today.`,
+      };
+    }
+
+    if (
+      requestedQuantity >
+      allowedQuantity
+    ) {
+      return {
+        valid: false,
+        message:
+          `${item?.name || cartItem?.name || 'An item'} only has ${allowedQuantity} available today.`,
+      };
+    }
+  }
+
+  return {
+    valid: true,
+    message: '',
+  };
+};
+
 export default function OrderConfirmScreen({
   route,
   navigation,
@@ -257,6 +488,7 @@ export default function OrderConfirmScreen({
     clearCart,
     setActiveOrderId,
     refreshCartInventory,
+    getEnrichedItem,
   } = useCart();
 
   const {
@@ -283,8 +515,18 @@ export default function OrderConfirmScreen({
 
   const hasCustomRequest =
     useMemo(() => {
-      return cartItems.some(isCustomItem);
-    }, [cartItems]);
+      return cartItems.some((item) => {
+        const enrichedItem =
+          getEnrichedItem
+            ? getEnrichedItem(item)
+            : item;
+
+        return isCustomItem(enrichedItem);
+      });
+    }, [
+      cartItems,
+      getEnrichedItem,
+    ]);
 
   const [selectedPayment, setSelectedPayment] =
     useState('Pay Later');
@@ -459,6 +701,20 @@ export default function OrderConfirmScreen({
     return option;
   };
 
+  const validateBeforeConfirm = async () => {
+    const inventoryCheck =
+      await refreshCartInventory();
+
+    if (!inventoryCheck.valid) {
+      return inventoryCheck;
+    }
+
+    return validateDailyInventoryCartItems(
+      cartItems,
+      getEnrichedItem
+    );
+  };
+
   const handleFinalConfirm = async () => {
     if (!cartItems || cartItems.length === 0) {
       Alert.alert(
@@ -475,6 +731,19 @@ export default function OrderConfirmScreen({
       Alert.alert(
         'Table Error',
         'No table number found. Please login again using the assigned table account.'
+      );
+
+      return;
+    }
+
+    const inventoryCheck =
+      await validateBeforeConfirm();
+
+    if (!inventoryCheck.valid) {
+      Alert.alert(
+        'Limited Stock',
+        inventoryCheck.message ||
+          'Some items are no longer available today.'
       );
 
       return;
@@ -612,12 +881,25 @@ export default function OrderConfirmScreen({
       }
 
       const inventoryCheck =
-        await refreshCartInventory();
+        await validateBeforeConfirm();
 
       if (!inventoryCheck.valid) {
         Alert.alert(
           'Limited Stock',
-          inventoryCheck.message
+          inventoryCheck.message ||
+            'Some items are no longer available today.'
+        );
+
+        return;
+      }
+
+      if (
+        hasCustomRequest &&
+        selectedPaymentOption.label === 'QR PH'
+      ) {
+        Alert.alert(
+          'QR PH Not Available',
+          'Chef Oppa Special requests must be confirmed by staff. QR PH payment is not available for custom requests.'
         );
 
         return;
@@ -747,8 +1029,13 @@ export default function OrderConfirmScreen({
     item,
     index
   ) => {
+    const enrichedItem =
+      getEnrichedItem
+        ? getEnrichedItem(item)
+        : item;
+
     const customItem =
-      isCustomItem(item);
+      isCustomItem(enrichedItem);
 
     const quantity =
       customItem
@@ -774,6 +1061,24 @@ export default function OrderConfirmScreen({
           item.id ||
           index
       );
+
+    const allowedQuantity =
+      customItem
+        ? 1
+        : getAllowedOrderQuantity(
+            enrichedItem
+          );
+
+    const invalidToday =
+      !customItem &&
+      !isValidDailyInventoryMenuItem(
+        enrichedItem
+      );
+
+    const overLimit =
+      !customItem &&
+      allowedQuantity > 0 &&
+      quantity > allowedQuantity;
 
     return (
       <View
@@ -823,17 +1128,61 @@ export default function OrderConfirmScreen({
               ) : null}
             </>
           ) : (
-            <Text
-              style={[
-                styles.itemUnitPrice,
-                {
-                  fontSize:
-                    responsive.itemUnit,
-                },
-              ]}
-            >
-              ₱{formatMoney(price)} each
-            </Text>
+            <>
+              <Text
+                style={[
+                  styles.itemUnitPrice,
+                  {
+                    fontSize:
+                      responsive.itemUnit,
+                  },
+                ]}
+              >
+                ₱{formatMoney(price)} each
+              </Text>
+
+              {allowedQuantity > 0 ? (
+                <Text
+                  style={[
+                    styles.itemLimitText,
+                    {
+                      fontSize:
+                        responsive.noticeText,
+                    },
+                  ]}
+                >
+                  Available today: {allowedQuantity}
+                </Text>
+              ) : null}
+
+              {invalidToday ? (
+                <Text
+                  style={[
+                    styles.invalidItemText,
+                    {
+                      fontSize:
+                        responsive.noticeText,
+                    },
+                  ]}
+                >
+                  Not enabled in Daily Menu Inventory
+                </Text>
+              ) : null}
+
+              {overLimit ? (
+                <Text
+                  style={[
+                    styles.invalidItemText,
+                    {
+                      fontSize:
+                        responsive.noticeText,
+                    },
+                  ]}
+                >
+                  Quantity exceeds today&apos;s limit
+                </Text>
+              ) : null}
+            </>
           )}
         </View>
 
@@ -983,7 +1332,7 @@ export default function OrderConfirmScreen({
             },
           ]}
         >
-          Chef Oppa Special requests are not included in the total yet. Final price and availability will be confirmed by staff.
+          Chef Oppa Special requests are not included in the total yet. Final price and availability will be confirmed by staff. QR PH is disabled for custom requests.
         </Text>
       ) : null}
     </View>
@@ -1466,6 +1815,18 @@ const styles =
       fontWeight: '700',
       color: '#777',
       marginTop: 3,
+    },
+
+    itemLimitText: {
+      fontWeight: '900',
+      color: '#666',
+      marginTop: 4,
+    },
+
+    invalidItemText: {
+      fontWeight: '900',
+      color: '#b00020',
+      marginTop: 4,
     },
 
     customPriceText: {

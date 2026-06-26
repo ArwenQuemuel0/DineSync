@@ -25,10 +25,225 @@ import {
   isCustomItem,
 } from '../utils/inventory';
 
-const CartContext = createContext();
+const CartContext =
+  createContext();
 
 export const useCart = () =>
   useContext(CartContext);
+
+const VALID_NORMAL_INVENTORY_TYPES = [
+  'per_order',
+  'per_head',
+];
+
+const normalizeText = (value) => {
+  return String(value || '')
+    .trim()
+    .toLowerCase();
+};
+
+const normalizeInventoryType = (
+  value
+) => {
+  return normalizeText(value)
+    .replace(/[-\s]+/g, '_');
+};
+
+const isAvailableTrue = (value) => {
+  return (
+    value === true ||
+    value === 1 ||
+    value === '1' ||
+    normalizeText(value) === 'true' ||
+    normalizeText(value) === 'yes' ||
+    normalizeText(value) === 'available'
+  );
+};
+
+const hasInventoryType = (item) => {
+  return (
+    item?.inventory_type !== null &&
+    item?.inventory_type !== undefined &&
+    String(item.inventory_type).trim() !== ''
+  );
+};
+
+const hasDailyLimit = (item) => {
+  return (
+    item?.daily_limit !== null &&
+    item?.daily_limit !== undefined &&
+    String(item.daily_limit).trim() !== ''
+  );
+};
+
+const toNumber = (value) => {
+  const numberValue =
+    Number(value);
+
+  return Number.isFinite(numberValue)
+    ? numberValue
+    : 0;
+};
+
+const getRemainingToday = (item) => {
+  return toNumber(
+    item?.remaining_today
+  );
+};
+
+const getSafeMaxOrderQuantity = (
+  item
+) => {
+  const importedMax =
+    getMaxOrderQuantity(item);
+
+  if (
+    importedMax !== null &&
+    importedMax !== undefined &&
+    Number.isFinite(
+      Number(importedMax)
+    )
+  ) {
+    return Number(importedMax);
+  }
+
+  return toNumber(
+    item?.max_order_quantity
+  );
+};
+
+const getAllowedOrderQuantity = (
+  item
+) => {
+  if (!item) {
+    return 0;
+  }
+
+  if (isCustomItem(item)) {
+    return 1;
+  }
+
+  const maxOrderQuantity =
+    getSafeMaxOrderQuantity(item);
+
+  const remainingToday =
+    getRemainingToday(item);
+
+  if (
+    maxOrderQuantity > 0 &&
+    remainingToday > 0
+  ) {
+    return Math.min(
+      maxOrderQuantity,
+      remainingToday
+    );
+  }
+
+  if (maxOrderQuantity > 0) {
+    return maxOrderQuantity;
+  }
+
+  if (remainingToday > 0) {
+    return remainingToday;
+  }
+
+  return 0;
+};
+
+const isValidDailyInventoryMenuItem = (
+  item
+) => {
+  const inventoryType =
+    normalizeInventoryType(
+      item?.inventory_type
+    );
+
+  const available =
+    isAvailableTrue(
+      item?.is_available
+    );
+
+  if (!available) {
+    return false;
+  }
+
+  if (!hasInventoryType(item)) {
+    return false;
+  }
+
+  if (inventoryType === 'custom') {
+    return true;
+  }
+
+  if (
+    !VALID_NORMAL_INVENTORY_TYPES.includes(
+      inventoryType
+    )
+  ) {
+    return false;
+  }
+
+  if (!hasDailyLimit(item)) {
+    return false;
+  }
+
+  const remainingToday =
+    getRemainingToday(item);
+
+  const maxOrderQuantity =
+    getSafeMaxOrderQuantity(item);
+
+  return (
+    remainingToday > 0 ||
+    maxOrderQuantity > 0
+  );
+};
+
+const getDailyInventoryMessage = (
+  item
+) => {
+  const inventoryType =
+    normalizeInventoryType(
+      item?.inventory_type
+    );
+
+  if (
+    !isAvailableTrue(
+      item?.is_available
+    )
+  ) {
+    return 'This item is currently unavailable.';
+  }
+
+  if (!hasInventoryType(item)) {
+    return 'This item is not enabled in Daily Menu Inventory.';
+  }
+
+  if (
+    inventoryType !== 'custom' &&
+    !VALID_NORMAL_INVENTORY_TYPES.includes(
+      inventoryType
+    )
+  ) {
+    return 'This item has an invalid inventory type.';
+  }
+
+  if (
+    inventoryType !== 'custom' &&
+    !hasDailyLimit(item)
+  ) {
+    return 'This item has no daily limit set.';
+  }
+
+  if (
+    inventoryType !== 'custom' &&
+    getAllowedOrderQuantity(item) <= 0
+  ) {
+    return 'This item is sold out for today.';
+  }
+
+  return 'This item is not available today.';
+};
 
 const mergeAndClampCartItem = (
   cartItem,
@@ -43,7 +258,7 @@ const mergeAndClampCartItem = (
     ...menuInventory,
     max_order_quantity:
       menuInventory.max_order_quantity ??
-      getMaxOrderQuantity(cartItem),
+      getSafeMaxOrderQuantity(cartItem),
   };
 
   if (isCustomItem(merged)) {
@@ -64,15 +279,19 @@ const mergeAndClampCartItem = (
   }
 
   const max =
-    getMaxOrderQuantity(merged);
+    getAllowedOrderQuantity(merged);
 
   const quantity =
     Number(cartItem.quantity) || 0;
 
-  if (
-    max !== null &&
-    quantity > max
-  ) {
+  if (max <= 0) {
+    return {
+      ...merged,
+      quantity: 0,
+    };
+  }
+
+  if (quantity > max) {
     return {
       ...merged,
       quantity: max,
@@ -81,6 +300,84 @@ const mergeAndClampCartItem = (
 
   return merged;
 };
+
+const filterRemovedOrZeroQuantityItems =
+  (items) => {
+    return items.filter((item) => {
+      if (isCustomItem(item)) {
+        return true;
+      }
+
+      return (
+        Number(item.quantity || 0) > 0 &&
+        isValidDailyInventoryMenuItem(item)
+      );
+    });
+  };
+
+const validateDailyInventoryCartItems =
+  (cartItems = []) => {
+    for (const cartItem of cartItems) {
+      const customItem =
+        isCustomItem(cartItem);
+
+      if (customItem) {
+        if (
+          Number(cartItem.quantity || 0) !== 1
+        ) {
+          return {
+            valid: false,
+            message:
+              'Chef Oppa Special requests must have quantity of 1 only.',
+          };
+        }
+
+        continue;
+      }
+
+      if (
+        !isValidDailyInventoryMenuItem(
+          cartItem
+        )
+      ) {
+        return {
+          valid: false,
+          message:
+            `${cartItem?.name || 'An item'} is no longer enabled in Daily Menu Inventory.`,
+        };
+      }
+
+      const allowedQuantity =
+        getAllowedOrderQuantity(cartItem);
+
+      const requestedQuantity =
+        Number(cartItem.quantity || 0);
+
+      if (allowedQuantity <= 0) {
+        return {
+          valid: false,
+          message:
+            `${cartItem?.name || 'An item'} is sold out for today.`,
+        };
+      }
+
+      if (
+        requestedQuantity >
+        allowedQuantity
+      ) {
+        return {
+          valid: false,
+          message:
+            `${cartItem?.name || 'An item'} only has ${allowedQuantity} available today.`,
+        };
+      }
+    }
+
+    return {
+      valid: true,
+      message: '',
+    };
+  };
 
 export const CartProvider = ({
   children,
@@ -105,7 +402,8 @@ export const CartProvider = ({
     useRef(inventoryByItemId);
 
   useEffect(() => {
-    cartItemsRef.current = cartItems;
+    cartItemsRef.current =
+      cartItems;
   }, [cartItems]);
 
   useEffect(() => {
@@ -113,161 +411,219 @@ export const CartProvider = ({
       inventoryByItemId;
   }, [inventoryByItemId]);
 
-  const applyMenuInventory = useCallback(
-    (menuItems = []) => {
-      const inventoryMap =
-        buildInventoryMap(menuItems);
+  const applyMenuInventory =
+    useCallback(
+      (menuItems = []) => {
+        const visibleMenuItems =
+          Array.isArray(menuItems)
+            ? menuItems.filter(
+                isValidDailyInventoryMenuItem
+              )
+            : [];
 
-      inventoryRef.current =
-        inventoryMap;
-
-      setInventoryByItemId(
-        inventoryMap
-      );
-
-      let clamped = false;
-
-      setCartItems((prevItems) => {
-        const nextItems =
-          prevItems.map(
-            (cartItem) => {
-              const id =
-                getItemId(cartItem);
-
-              const menuInventory =
-                inventoryMap[id];
-
-              const beforeQty =
-                Number(
-                  cartItem.quantity
-                ) || 0;
-
-              const updated =
-                mergeAndClampCartItem(
-                  cartItem,
-                  menuInventory
-                );
-
-              const afterQty =
-                Number(
-                  updated.quantity
-                ) || 0;
-
-              if (
-                beforeQty !== afterQty
-              ) {
-                clamped = true;
-              }
-
-              return updated;
-            }
+        const inventoryMap =
+          buildInventoryMap(
+            visibleMenuItems
           );
 
-        cartItemsRef.current =
-          nextItems;
+        inventoryRef.current =
+          inventoryMap;
 
-        return nextItems;
-      });
-
-      return {
-        inventoryMap,
-        clamped,
-      };
-    },
-    []
-  );
-
-  const syncMenuInventory = useCallback(
-    (menuItems = []) => {
-      const result =
-        applyMenuInventory(
-          menuItems
+        setInventoryByItemId(
+          inventoryMap
         );
 
-      if (result.clamped) {
-        Alert.alert(
-          'Limited Stock',
-          'Some items in your cart were adjusted to match current inventory.'
-        );
-      }
-    },
-    [applyMenuInventory]
-  );
+        let clamped = false;
+        let removed = false;
 
-  const mergeInventoryItems = useCallback(
-    (menuItems = []) => {
-      if (
-        !Array.isArray(menuItems) ||
-        menuItems.length === 0
-      ) {
-        return;
-      }
+        setCartItems((prevItems) => {
+          const nextItemsBeforeFilter =
+            prevItems.map(
+              (cartItem) => {
+                const id =
+                  getItemId(cartItem);
 
-      const mergedMap = {
-        ...inventoryRef.current,
-        ...buildInventoryMap(menuItems),
-      };
+                const menuInventory =
+                  inventoryMap[id];
 
-      inventoryRef.current =
-        mergedMap;
+                const beforeQty =
+                  Number(
+                    cartItem.quantity
+                  ) || 0;
 
-      setInventoryByItemId(
-        mergedMap
-      );
+                const updated =
+                  mergeAndClampCartItem(
+                    cartItem,
+                    menuInventory
+                  );
 
-      let clamped = false;
+                const afterQty =
+                  Number(
+                    updated.quantity
+                  ) || 0;
 
-      setCartItems((prevItems) => {
-        const nextItems =
-          prevItems.map(
-            (cartItem) => {
-              const id =
-                getItemId(cartItem);
+                if (
+                  beforeQty !==
+                  afterQty
+                ) {
+                  clamped = true;
+                }
 
-              const menuInventory =
-                mergedMap[id];
-
-              const beforeQty =
-                Number(
-                  cartItem.quantity
-                ) || 0;
-
-              const updated =
-                mergeAndClampCartItem(
-                  cartItem,
-                  menuInventory
-                );
-
-              const afterQty =
-                Number(
-                  updated.quantity
-                ) || 0;
-
-              if (
-                beforeQty !== afterQty
-              ) {
-                clamped = true;
+                return updated;
               }
+            );
 
-              return updated;
-            }
+          const nextItems =
+            filterRemovedOrZeroQuantityItems(
+              nextItemsBeforeFilter
+            );
+
+          if (
+            nextItems.length !==
+            nextItemsBeforeFilter.length
+          ) {
+            removed = true;
+          }
+
+          cartItemsRef.current =
+            nextItems;
+
+          return nextItems;
+        });
+
+        return {
+          inventoryMap,
+          clamped,
+          removed,
+        };
+      },
+      []
+    );
+
+  const syncMenuInventory =
+    useCallback(
+      (menuItems = []) => {
+        const result =
+          applyMenuInventory(
+            menuItems
           );
 
-        cartItemsRef.current =
-          nextItems;
+        if (
+          result.clamped ||
+          result.removed
+        ) {
+          Alert.alert(
+            'Limited Stock',
+            result.removed
+              ? 'Some items in your cart were removed because they are no longer available today.'
+              : 'Some items in your cart were adjusted to match current inventory.'
+          );
+        }
+      },
+      [applyMenuInventory]
+    );
 
-        return nextItems;
-      });
+  const mergeInventoryItems =
+    useCallback(
+      (menuItems = []) => {
+        if (
+          !Array.isArray(menuItems) ||
+          menuItems.length === 0
+        ) {
+          return;
+        }
 
-      if (clamped) {
-        Alert.alert(
-          'Limited Stock',
-          'Some items in your cart were adjusted to match current inventory.'
+        const validMenuItems =
+          menuItems.filter(
+            isValidDailyInventoryMenuItem
+          );
+
+        const mergedMap = {
+          ...inventoryRef.current,
+          ...buildInventoryMap(
+            validMenuItems
+          ),
+        };
+
+        inventoryRef.current =
+          mergedMap;
+
+        setInventoryByItemId(
+          mergedMap
         );
-      }
-    },
-    []
-  );
+
+        let clamped = false;
+        let removed = false;
+
+        setCartItems((prevItems) => {
+          const nextItemsBeforeFilter =
+            prevItems.map(
+              (cartItem) => {
+                const id =
+                  getItemId(cartItem);
+
+                const menuInventory =
+                  mergedMap[id];
+
+                const beforeQty =
+                  Number(
+                    cartItem.quantity
+                  ) || 0;
+
+                const updated =
+                  mergeAndClampCartItem(
+                    cartItem,
+                    menuInventory
+                  );
+
+                const afterQty =
+                  Number(
+                    updated.quantity
+                  ) || 0;
+
+                if (
+                  beforeQty !==
+                  afterQty
+                ) {
+                  clamped = true;
+                }
+
+                return updated;
+              }
+            );
+
+          const nextItems =
+            filterRemovedOrZeroQuantityItems(
+              nextItemsBeforeFilter
+            );
+
+          if (
+            nextItems.length !==
+            nextItemsBeforeFilter.length
+          ) {
+            removed = true;
+          }
+
+          cartItemsRef.current =
+            nextItems;
+
+          return nextItems;
+        });
+
+        if (
+          clamped ||
+          removed
+        ) {
+          Alert.alert(
+            'Limited Stock',
+            removed
+              ? 'Some items in your cart were removed because they are no longer available today.'
+              : 'Some items in your cart were adjusted to match current inventory.'
+          );
+        }
+      },
+      []
+    );
 
   const refreshCartInventory =
     useCallback(async () => {
@@ -280,9 +636,18 @@ export const CartProvider = ({
           response.data
         )
       ) {
-        return validateCartInventory(
-          cartItemsRef.current,
-          inventoryRef.current
+        const baseValidation =
+          validateCartInventory(
+            cartItemsRef.current,
+            inventoryRef.current
+          );
+
+        if (!baseValidation.valid) {
+          return baseValidation;
+        }
+
+        return validateDailyInventoryCartItems(
+          cartItemsRef.current
         );
       }
 
@@ -290,52 +655,66 @@ export const CartProvider = ({
         response.data
       );
 
-      return validateCartInventory(
-        cartItemsRef.current,
-        inventoryRef.current
+      const baseValidation =
+        validateCartInventory(
+          cartItemsRef.current,
+          inventoryRef.current
+        );
+
+      if (!baseValidation.valid) {
+        return baseValidation;
+      }
+
+      return validateDailyInventoryCartItems(
+        cartItemsRef.current
       );
     }, [applyMenuInventory]);
 
-  const resolveLiveItem = useCallback(
-    (item) => {
-      const itemId =
-        getItemId(item);
+  const resolveLiveItem =
+    useCallback(
+      (item) => {
+        const itemId =
+          getItemId(item);
 
-      if (!itemId) {
+        if (!itemId) {
+          return {
+            ...item,
+            ...pickInventoryFields(item),
+          };
+        }
+
+        const fromMap =
+          inventoryRef.current[itemId];
+
+        if (fromMap) {
+          return {
+            ...item,
+            ...fromMap,
+          };
+        }
+
         return {
           ...item,
           ...pickInventoryFields(item),
         };
-      }
+      },
+      [inventoryByItemId]
+    );
 
-      const fromMap =
-        inventoryRef.current[itemId];
-
-      if (fromMap) {
-        return {
-          ...item,
-          ...fromMap,
-        };
-      }
-
-      return {
-        ...item,
-        ...pickInventoryFields(item),
-      };
-    },
-    [inventoryByItemId]
-  );
-
-  const getEnrichedItem = useCallback(
-    (item) =>
-      resolveLiveItem(
-        enrichCartItem(
-          item,
-          inventoryRef.current
-        )
-      ),
-    [resolveLiveItem, inventoryByItemId]
-  );
+  const getEnrichedItem =
+    useCallback(
+      (item) =>
+        resolveLiveItem(
+          enrichCartItem(
+            item,
+            inventoryRef.current
+          )
+        ),
+      [
+        resolveLiveItem,
+        inventoryByItemId,
+      ]
+    );
 
   const addToCart = (
     item,
@@ -373,6 +752,21 @@ export const CartProvider = ({
       isCustomItem(orderableItem);
 
     if (
+      !isValidDailyInventoryMenuItem(
+        orderableItem
+      )
+    ) {
+      Alert.alert(
+        'Unavailable',
+        getDailyInventoryMessage(
+          orderableItem
+        )
+      );
+
+      return false;
+    }
+
+    if (
       isOutOfStock(orderableItem) ||
       !isItemOrderable(orderableItem)
     ) {
@@ -384,18 +778,18 @@ export const CartProvider = ({
       return false;
     }
 
-    const max =
-      getMaxOrderQuantity(
+    const allowedQuantity =
+      getAllowedOrderQuantity(
         orderableItem
       );
 
     if (
-      max === null &&
+      allowedQuantity <= 0 &&
       !customItem
     ) {
       Alert.alert(
-        'Inventory Error',
-        'Unable to verify inventory for this item.'
+        'Sold Out',
+        'This item is sold out for today.'
       );
 
       return false;
@@ -407,6 +801,7 @@ export const CartProvider = ({
       '';
 
     let limitReached = false;
+    let alreadyAddedCustom = false;
 
     setCartItems((prevItems) => {
       const existing =
@@ -429,11 +824,23 @@ export const CartProvider = ({
           : orderableItem;
 
       if (
+        customItem &&
+        currentQty >= 1
+      ) {
+        alreadyAddedCustom = true;
+        return prevItems;
+      }
+
+      if (
         !customItem &&
-        !canIncreaseQuantity(
-          enrichedExisting,
-          currentQty,
-          addQty
+        (
+          currentQty + addQty >
+            allowedQuantity ||
+          !canIncreaseQuantity(
+            enrichedExisting,
+            currentQty,
+            addQty
+          )
         )
       ) {
         limitReached = true;
@@ -461,16 +868,20 @@ export const CartProvider = ({
                   quantity: nextQty,
                   price: customItem
                     ? 0
-                    : Number(liveItem.price) || 0,
+                    : Number(
+                        liveItem.price
+                      ) || 0,
                   notes: customItem
                     ? requestText
                     : cartItem.notes,
-                  special_request: customItem
-                    ? requestText
-                    : cartItem.special_request,
-                  inventory_type: customItem
-                    ? 'custom'
-                    : liveItem.inventory_type,
+                  special_request:
+                    customItem
+                      ? requestText
+                      : cartItem.special_request,
+                  inventory_type:
+                    customItem
+                      ? 'custom'
+                      : liveItem.inventory_type,
                 }
               : cartItem
         );
@@ -487,16 +898,21 @@ export const CartProvider = ({
               : addQty,
             price: customItem
               ? 0
-              : Number(liveItem.price) || 0,
+              : Number(
+                  liveItem.price
+                ) || 0,
             notes: customItem
               ? requestText
               : liveItem.notes || '',
-            special_request: customItem
-              ? requestText
-              : liveItem.special_request || '',
-            inventory_type: customItem
-              ? 'custom'
-              : liveItem.inventory_type,
+            special_request:
+              customItem
+                ? requestText
+                : liveItem.special_request ||
+                  '',
+            inventory_type:
+              customItem
+                ? 'custom'
+                : liveItem.inventory_type,
           },
         ];
       }
@@ -507,12 +923,22 @@ export const CartProvider = ({
       return nextItems;
     });
 
+    if (alreadyAddedCustom) {
+      Alert.alert(
+        'Already Added',
+        'Chef Oppa Special can only be added once per order.'
+      );
+
+      return false;
+    }
+
     if (limitReached) {
       Alert.alert(
         'Limited Stock',
         getQuantityLimitMessage(
           orderableItem
-        )
+        ) ||
+          `You can only order up to ${allowedQuantity} of this item today.`
       );
 
       return false;
@@ -530,6 +956,7 @@ export const CartProvider = ({
     }
 
     let limitReached = false;
+    let invalidInventory = false;
     let limitItem = null;
 
     setCartItems((prevItems) => {
@@ -559,7 +986,23 @@ export const CartProvider = ({
         ) || 0;
 
       if (
-        isOutOfStock(enrichedItem)
+        !isValidDailyInventoryMenuItem(
+          enrichedItem
+        )
+      ) {
+        invalidInventory = true;
+        limitItem = enrichedItem;
+        return prevItems;
+      }
+
+      const allowedQuantity =
+        getAllowedOrderQuantity(
+          enrichedItem
+        );
+
+      if (
+        isOutOfStock(enrichedItem) ||
+        allowedQuantity <= 0
       ) {
         limitReached = true;
         limitItem = enrichedItem;
@@ -567,6 +1010,8 @@ export const CartProvider = ({
       }
 
       if (
+        currentQty + 1 >
+          allowedQuantity ||
         !canIncreaseQuantity(
           enrichedItem,
           currentQty,
@@ -596,7 +1041,30 @@ export const CartProvider = ({
       return nextItems;
     });
 
-    return !limitReached;
+    if (invalidInventory) {
+      Alert.alert(
+        'Unavailable',
+        getDailyInventoryMessage(
+          limitItem
+        )
+      );
+
+      return false;
+    }
+
+    if (limitReached) {
+      Alert.alert(
+        'Limited Stock',
+        getQuantityLimitMessage(
+          limitItem ||
+            { max_order_quantity: 0 }
+        )
+      );
+
+      return false;
+    }
+
+    return true;
   };
 
   const removeFromCart = (id) => {
@@ -629,7 +1097,8 @@ export const CartProvider = ({
     const normalizedId =
       id == null ? null : String(id);
 
-    const nextQty = Number(quantity);
+    const nextQty =
+      Number(quantity);
 
     if (
       !normalizedId ||
@@ -639,6 +1108,7 @@ export const CartProvider = ({
     }
 
     let limitReached = false;
+    let invalidInventory = false;
     let limitItem = null;
 
     setCartItems((prevItems) => {
@@ -681,7 +1151,8 @@ export const CartProvider = ({
                   ...enrichedItem,
                   quantity: 1,
                   price: 0,
-                  inventory_type: 'custom',
+                  inventory_type:
+                    'custom',
                 }
               : item
           );
@@ -692,20 +1163,25 @@ export const CartProvider = ({
         return nextItems;
       }
 
-      if (isOutOfStock(enrichedItem)) {
-        limitReached = true;
+      if (
+        !isValidDailyInventoryMenuItem(
+          enrichedItem
+        )
+      ) {
+        invalidInventory = true;
         limitItem = enrichedItem;
         return prevItems;
       }
 
-      const max =
-        getMaxOrderQuantity(
+      const allowedQuantity =
+        getAllowedOrderQuantity(
           enrichedItem
         );
 
       if (
-        max === null ||
-        nextQty > max
+        isOutOfStock(enrichedItem) ||
+        allowedQuantity <= 0 ||
+        nextQty > allowedQuantity
       ) {
         limitReached = true;
         limitItem = enrichedItem;
@@ -729,6 +1205,17 @@ export const CartProvider = ({
       return nextItems;
     });
 
+    if (invalidInventory) {
+      Alert.alert(
+        'Unavailable',
+        getDailyInventoryMessage(
+          limitItem
+        )
+      );
+
+      return false;
+    }
+
     if (limitReached) {
       Alert.alert(
         'Limited Stock',
@@ -747,11 +1234,21 @@ export const CartProvider = ({
   const getCartItems = () =>
     cartItemsRef.current;
 
-  const validateCurrentCart = () =>
-    validateCartInventory(
-      cartItemsRef.current,
-      inventoryRef.current
+  const validateCurrentCart = () => {
+    const baseValidation =
+      validateCartInventory(
+        cartItemsRef.current,
+        inventoryRef.current
+      );
+
+    if (!baseValidation.valid) {
+      return baseValidation;
+    }
+
+    return validateDailyInventoryCartItems(
+      cartItemsRef.current
     );
+  };
 
   const clearCart = () => {
     cartItemsRef.current = [];

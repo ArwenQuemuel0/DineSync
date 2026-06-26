@@ -58,6 +58,22 @@ const ASSIGNED_TABLE_STATUSES = [
   'active',
 ];
 
+const VALID_NORMAL_INVENTORY_TYPES = [
+  'per_order',
+  'per_head',
+];
+
+const normalizeText = (value) => {
+  return String(value || '')
+    .trim()
+    .toLowerCase();
+};
+
+const normalizeInventoryType = (value) => {
+  return normalizeText(value)
+    .replace(/[-\s]+/g, '_');
+};
+
 const hasValidActiveSession = (sessionId) => {
   return (
     sessionId !== null &&
@@ -96,6 +112,101 @@ const getStrictOrderPermission = (
     providerCanOrder === true &&
     hasActiveSession &&
     tableIsAssignedByStaff
+  );
+};
+
+const isAvailableTrue = (value) => {
+  return (
+    value === true ||
+    value === 1 ||
+    value === '1' ||
+    normalizeText(value) === 'true' ||
+    normalizeText(value) === 'yes' ||
+    normalizeText(value) === 'available'
+  );
+};
+
+const hasInventoryType = (item) => {
+  return (
+    item?.inventory_type !== null &&
+    item?.inventory_type !== undefined &&
+    String(item.inventory_type).trim() !== ''
+  );
+};
+
+const hasDailyLimit = (item) => {
+  return (
+    item?.daily_limit !== null &&
+    item?.daily_limit !== undefined &&
+    String(item.daily_limit).trim() !== ''
+  );
+};
+
+const toNumber = (value) => {
+  const numberValue =
+    Number(value);
+
+  return Number.isFinite(numberValue)
+    ? numberValue
+    : 0;
+};
+
+const getRemainingToday = (item) => {
+  return toNumber(
+    item?.remaining_today
+  );
+};
+
+const getMaxOrderQuantity = (item) => {
+  return toNumber(
+    item?.max_order_quantity
+  );
+};
+
+const isValidDailyInventoryMenuItem = (item) => {
+  const inventoryType =
+    normalizeInventoryType(
+      item?.inventory_type
+    );
+
+  const available =
+    isAvailableTrue(
+      item?.is_available
+    );
+
+  if (!available) {
+    return false;
+  }
+
+  if (!hasInventoryType(item)) {
+    return false;
+  }
+
+  if (inventoryType === 'custom') {
+    return true;
+  }
+
+  if (
+    !VALID_NORMAL_INVENTORY_TYPES.includes(
+      inventoryType
+    )
+  ) {
+    return false;
+  }
+
+  if (!hasDailyLimit(item)) {
+    return false;
+  }
+
+  const remainingToday =
+    getRemainingToday(item);
+
+  const maxOrderQuantity =
+    getMaxOrderQuantity(item);
+
+  return (
+    remainingToday > 0 ||
+    maxOrderQuantity > 0
   );
 };
 
@@ -598,12 +709,30 @@ export default function MenuScreen({
       );
 
       if (response.success) {
+        const rawItems =
+          response.data || [];
+
+        const visibleItems =
+          rawItems.filter(
+            isValidDailyInventoryMenuItem
+          );
+
+        console.log(
+          'MOBILE MENU FILTER:',
+          {
+            raw_count:
+              rawItems.length,
+            visible_count:
+              visibleItems.length,
+          }
+        );
+
         setMenuItems(
-          response.data || []
+          visibleItems
         );
 
         syncMenuInventory(
-          response.data || []
+          visibleItems
         );
       } else {
         Alert.alert(
@@ -722,6 +851,17 @@ export default function MenuScreen({
       return;
     }
 
+    if (
+      !isValidDailyInventoryMenuItem(item)
+    ) {
+      Alert.alert(
+        'Unavailable',
+        'This item is not enabled in Daily Menu Inventory.'
+      );
+
+      return;
+    }
+
     if (!isItemOrderable(item)) {
       Alert.alert(
         'Unavailable',
@@ -741,7 +881,41 @@ export default function MenuScreen({
   const handleIncreaseQuantity = (
     item
   ) => {
-    if (isCustomItem(item)) {
+    const enrichedItem =
+      getEnrichedItem(item);
+
+    if (isCustomItem(enrichedItem)) {
+      return;
+    }
+
+    if (
+      !isValidDailyInventoryMenuItem(
+        enrichedItem
+      )
+    ) {
+      Alert.alert(
+        'Unavailable',
+        'This item is no longer enabled in Daily Menu Inventory.'
+      );
+
+      return;
+    }
+
+    if (
+      !canIncreaseQuantity(
+        enrichedItem,
+        item.quantity,
+        1
+      )
+    ) {
+      Alert.alert(
+        'Limited Stock',
+        getAvailabilityDisplayText(
+          enrichedItem
+        ) ||
+          'You reached the available quantity for this item.'
+      );
+
       return;
     }
 
@@ -806,6 +980,30 @@ export default function MenuScreen({
       return;
     }
 
+    const invalidDailyInventoryItems =
+      cartItems.filter((cartItem) => {
+        const enrichedItem =
+          getEnrichedItem(cartItem);
+
+        return (
+          !isCustomItem(enrichedItem) &&
+          !isValidDailyInventoryMenuItem(
+            enrichedItem
+          )
+        );
+      });
+
+    if (
+      invalidDailyInventoryItems.length > 0
+    ) {
+      Alert.alert(
+        'Unavailable Item',
+        'Some items in your cart are no longer enabled in Daily Menu Inventory. Please remove them before confirming your order.'
+      );
+
+      return;
+    }
+
     if (!tableNumber && !user?.table_number) {
       Alert.alert(
         'Table Error',
@@ -831,6 +1029,9 @@ export default function MenuScreen({
     'All',
     ...new Set(
       menuItems
+        .filter(
+          isValidDailyInventoryMenuItem
+        )
         .map((m) => m.category)
         .filter(Boolean)
     ),
@@ -838,6 +1039,9 @@ export default function MenuScreen({
 
   const filteredItems =
     menuItems
+      .filter(
+        isValidDailyInventoryMenuItem
+      )
       .filter((item) => {
         const byCategory =
           selectedCategory === 'All' ||
@@ -903,14 +1107,20 @@ export default function MenuScreen({
     const customItem =
       isCustomItem(item);
 
+    const isValidForMobile =
+      isValidDailyInventoryMenuItem(item);
+
     const isAvailable =
+      isValidForMobile &&
       isItemOrderable(item);
 
     const isLowStock =
       shouldShowLowStockWarning(item);
 
     const availabilityText =
-      getAvailabilityDisplayText(item);
+      customItem
+        ? 'Custom request available'
+        : getAvailabilityDisplayText(item);
 
     const bestSeller =
       isBestSeller(item);
@@ -1092,8 +1302,15 @@ export default function MenuScreen({
     const customCartItem =
       isCustomItem(enrichedItem);
 
+    const validDailyInventoryItem =
+      customCartItem ||
+      isValidDailyInventoryMenuItem(
+        enrichedItem
+      );
+
     const atMaxQuantity =
-      customCartItem
+      customCartItem ||
+      !validDailyInventoryItem
         ? true
         : !canIncreaseQuantity(
             enrichedItem,
@@ -1137,6 +1354,13 @@ export default function MenuScreen({
                 ? 'To be confirmed'
                 : `₱${formatMoney(item.price)}`}
             </Text>
+
+            {!customCartItem &&
+            !validDailyInventoryItem ? (
+              <Text style={styles.cartInvalidText}>
+                No longer available today
+              </Text>
+            ) : null}
 
             {customCartItem &&
             item.special_request ? (
@@ -1572,6 +1796,17 @@ export default function MenuScreen({
                       ? 'center'
                       : undefined,
                 }}
+                ListEmptyComponent={() => (
+                  <View style={styles.emptyMenuBox}>
+                    <Text style={styles.emptyMenuTitle}>
+                      No available menu items
+                    </Text>
+
+                    <Text style={styles.emptyMenuText}>
+                      Menu items must be enabled in Daily Menu Inventory before they appear here.
+                    </Text>
+                  </View>
+                )}
               />
             </View>
 
@@ -2188,6 +2423,31 @@ const styles =
       fontWeight: '700',
     },
 
+    emptyMenuBox: {
+      minHeight: 220,
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingHorizontal: 24,
+      paddingVertical: 30,
+    },
+
+    emptyMenuTitle: {
+      fontSize: 22,
+      fontWeight: '900',
+      color: '#333',
+      textAlign: 'center',
+      marginBottom: 8,
+    },
+
+    emptyMenuText: {
+      fontSize: 15,
+      fontWeight: '700',
+      color: '#777',
+      textAlign: 'center',
+      lineHeight: 22,
+      maxWidth: 420,
+    },
+
     cartSidebar: {
       backgroundColor: '#fff',
       borderLeftColor: '#ddd',
@@ -2258,6 +2518,13 @@ const styles =
       fontWeight: '700',
       color: '#f68c45',
       marginTop: 4,
+    },
+
+    cartInvalidText: {
+      marginTop: 5,
+      color: '#b00020',
+      fontSize: 12,
+      fontWeight: '900',
     },
 
     cartRequestText: {

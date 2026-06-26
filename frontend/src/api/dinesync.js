@@ -9,7 +9,17 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 const BACKEND_PORT = 3000;
 
 // =========================
-// AUTO GET HOST IP
+// API BASE URL
+// =========================
+//
+// Development using Expo:
+// const BASE_URL = `http://${host}:${BACKEND_PORT}/api`;
+//
+// APK / Hosted backend:
+// const BASE_URL = 'https://api.dinesync.shop/api';
+//
+// For now, auto local IP muna.
+// Kapag final APK na, palitan mo BASE_URL sa hosted API.
 // =========================
 
 const debuggerHost =
@@ -22,12 +32,11 @@ const host =
     ?.split(':')
     ?.shift() || 'localhost';
 
-// =========================
-// AUTO BUILD API URL
-// =========================
-
 const BASE_URL =
   `http://${host}:${BACKEND_PORT}/api`;
+
+// Final APK hosted backend version:
+// const BASE_URL = 'https://api.dinesync.shop/api';
 
 console.log(
   '=============================='
@@ -79,9 +88,24 @@ api.interceptors.request.use(
 );
 
 // =========================
-// NORMALIZE MENU ITEM
-// For AI dish recommendations
+// PARSERS / NORMALIZERS
 // =========================
+
+const VALID_NORMAL_INVENTORY_TYPES = [
+  'per_order',
+  'per_head',
+];
+
+const normalizeText = (value) => {
+  return String(value || '')
+    .trim()
+    .toLowerCase();
+};
+
+const normalizeInventoryType = (value) => {
+  return normalizeText(value)
+    .replace(/[-\s]+/g, '_');
+};
 
 const parseNumeric = (value) => {
   if (
@@ -100,22 +124,123 @@ const parseNumeric = (value) => {
     : null;
 };
 
+const toNumber = (value) => {
+  const numeric =
+    Number(value);
+
+  return Number.isFinite(numeric)
+    ? numeric
+    : 0;
+};
+
+const isAvailableTrue = (value) => {
+  return (
+    value === true ||
+    value === 1 ||
+    value === '1' ||
+    normalizeText(value) === 'true' ||
+    normalizeText(value) === 'yes' ||
+    normalizeText(value) === 'available'
+  );
+};
+
+const hasInventoryType = (item) => {
+  return (
+    item?.inventory_type !== null &&
+    item?.inventory_type !== undefined &&
+    String(item.inventory_type).trim() !== ''
+  );
+};
+
+const hasDailyLimit = (item) => {
+  return (
+    item?.daily_limit !== null &&
+    item?.daily_limit !== undefined &&
+    String(item.daily_limit).trim() !== ''
+  );
+};
+
+const getRemainingToday = (item) => {
+  return toNumber(
+    item?.remaining_today
+  );
+};
+
+const getMaxOrderQuantity = (item) => {
+  return toNumber(
+    item?.max_order_quantity
+  );
+};
+
+const getAllowedOrderQuantity = (item) => {
+  if (!item) {
+    return 0;
+  }
+
+  if (isCustomCartItem(item)) {
+    return 1;
+  }
+
+  const maxOrderQuantity =
+    getMaxOrderQuantity(item);
+
+  const remainingToday =
+    getRemainingToday(item);
+
+  if (
+    maxOrderQuantity > 0 &&
+    remainingToday > 0
+  ) {
+    return Math.min(
+      maxOrderQuantity,
+      remainingToday
+    );
+  }
+
+  if (maxOrderQuantity > 0) {
+    return maxOrderQuantity;
+  }
+
+  if (remainingToday > 0) {
+    return remainingToday;
+  }
+
+  return 0;
+};
+
 const normalizeMenuItem = (item) => {
   const inventoryType =
     item?.inventory_type
-      ? String(item.inventory_type)
-          .trim()
-          .toLowerCase()
+      ? normalizeInventoryType(
+          item.inventory_type
+        )
       : null;
+
+  const dailyLimit =
+    parseNumeric(
+      item?.daily_limit
+    );
+
+  const soldToday =
+    parseNumeric(
+      item?.sold_today
+    );
+
+  const remainingToday =
+    parseNumeric(
+      item?.remaining_today
+    );
 
   const maxOrderQuantity =
     parseNumeric(
       item?.max_order_quantity
     );
 
-  const remainingToday =
+  const availableQuantity =
+    remainingToday ??
+    maxOrderQuantity ??
     parseNumeric(
-      item?.remaining_today
+      item?.available_quantity
     );
 
   return {
@@ -135,14 +260,10 @@ const normalizeMenuItem = (item) => {
       inventoryType,
 
     daily_limit:
-      parseNumeric(
-        item?.daily_limit
-      ),
+      dailyLimit,
 
     sold_today:
-      parseNumeric(
-        item?.sold_today
-      ),
+      soldToday,
 
     remaining_today:
       remainingToday,
@@ -151,11 +272,7 @@ const normalizeMenuItem = (item) => {
       maxOrderQuantity,
 
     available_quantity:
-      remainingToday ??
-      maxOrderQuantity ??
-      parseNumeric(
-        item?.available_quantity
-      ),
+      availableQuantity,
 
     daily_inventory_label:
       item?.daily_inventory_label
@@ -187,6 +304,197 @@ const normalizeMenuItem = (item) => {
         ? String(item.meal_type).trim()
         : null,
   };
+};
+
+const isCustomCartItem = (item) => {
+  const category =
+    String(item?.category || '')
+      .trim()
+      .toLowerCase();
+
+  const inventoryType =
+    normalizeInventoryType(
+      item?.inventory_type
+    );
+
+  const name =
+    String(item?.name || '')
+      .trim()
+      .toLowerCase();
+
+  return (
+    category === 'chef oppa special' ||
+    inventoryType === 'custom' ||
+    name.includes(
+      'custom chef oppa special'
+    )
+  );
+};
+
+const isValidDailyInventoryMenuItem = (item) => {
+  const inventoryType =
+    normalizeInventoryType(
+      item?.inventory_type
+    );
+
+  const available =
+    isAvailableTrue(
+      item?.is_available
+    );
+
+  if (!available) {
+    return false;
+  }
+
+  if (!hasInventoryType(item)) {
+    return false;
+  }
+
+  if (inventoryType === 'custom') {
+    return true;
+  }
+
+  if (
+    !VALID_NORMAL_INVENTORY_TYPES.includes(
+      inventoryType
+    )
+  ) {
+    return false;
+  }
+
+  if (!hasDailyLimit(item)) {
+    return false;
+  }
+
+  const remainingToday =
+    getRemainingToday(item);
+
+  const maxOrderQuantity =
+    getMaxOrderQuantity(item);
+
+  return (
+    remainingToday > 0 ||
+    maxOrderQuantity > 0
+  );
+};
+
+const getDailyInventoryErrorMessage = (item) => {
+  const inventoryType =
+    normalizeInventoryType(
+      item?.inventory_type
+    );
+
+  if (
+    !isAvailableTrue(
+      item?.is_available
+    )
+  ) {
+    return `${item?.name || 'This item'} is currently unavailable.`;
+  }
+
+  if (!hasInventoryType(item)) {
+    return `${item?.name || 'This item'} is not enabled in Daily Menu Inventory.`;
+  }
+
+  if (
+    inventoryType !== 'custom' &&
+    !VALID_NORMAL_INVENTORY_TYPES.includes(
+      inventoryType
+    )
+  ) {
+    return `${item?.name || 'This item'} has an invalid inventory type.`;
+  }
+
+  if (
+    inventoryType !== 'custom' &&
+    !hasDailyLimit(item)
+  ) {
+    return `${item?.name || 'This item'} has no daily limit set.`;
+  }
+
+  if (
+    inventoryType !== 'custom' &&
+    getAllowedOrderQuantity(item) <= 0
+  ) {
+    return `${item?.name || 'This item'} is sold out for today.`;
+  }
+
+  return `${item?.name || 'This item'} is not available today.`;
+};
+
+const validateCartBeforeOrder = (
+  cartItems = []
+) => {
+  if (
+    !Array.isArray(cartItems) ||
+    cartItems.length === 0
+  ) {
+    throw new Error(
+      'Please add at least one item before confirming your order.'
+    );
+  }
+
+  for (const item of cartItems) {
+    const normalizedItem =
+      normalizeMenuItem(item);
+
+    const custom =
+      isCustomCartItem(normalizedItem);
+
+    const quantity =
+      custom
+        ? 1
+        : Number(
+            normalizedItem.quantity || 0
+          );
+
+    if (
+      !isValidDailyInventoryMenuItem(
+        normalizedItem
+      )
+    ) {
+      throw new Error(
+        getDailyInventoryErrorMessage(
+          normalizedItem
+        )
+      );
+    }
+
+    if (custom) {
+      if (quantity !== 1) {
+        throw new Error(
+          'Chef Oppa Special request quantity must be 1 only.'
+        );
+      }
+
+      continue;
+    }
+
+    const allowedQuantity =
+      getAllowedOrderQuantity(
+        normalizedItem
+      );
+
+    if (allowedQuantity <= 0) {
+      throw new Error(
+        `${normalizedItem?.name || 'This item'} is sold out for today.`
+      );
+    }
+
+    if (quantity <= 0) {
+      throw new Error(
+        `${normalizedItem?.name || 'This item'} has invalid quantity.`
+      );
+    }
+
+    if (quantity > allowedQuantity) {
+      throw new Error(
+        `${normalizedItem?.name || 'This item'} only has ${allowedQuantity} available today.`
+      );
+    }
+  }
+
+  return true;
 };
 
 export const extractApiErrorMessage = (
@@ -318,8 +626,8 @@ export const getTableOrderHistory = async () => {
 
 // =========================
 // GET MENU
-// Includes flavor_tags and meal_type
-// for AI dish recommendations
+// Daily Menu Inventory rule:
+// Only return items enabled for mobile.
 // =========================
 
 export const getMenu = async () => {
@@ -335,10 +643,28 @@ export const getMenu = async () => {
     response.data?.success &&
     Array.isArray(response.data.data)
   ) {
-    response.data.data =
+    const normalizedItems =
       response.data.data.map(
         normalizeMenuItem
       );
+
+    const visibleItems =
+      normalizedItems.filter(
+        isValidDailyInventoryMenuItem
+      );
+
+    console.log(
+      'MOBILE DAILY MENU FILTER:',
+      {
+        raw_count:
+          normalizedItems.length,
+        visible_count:
+          visibleItems.length,
+      }
+    );
+
+    response.data.data =
+      visibleItems;
   }
 
   return response.data;
@@ -357,31 +683,6 @@ export const getTable = async (
     );
 
   return response.data;
-};
-
-const isCustomCartItem = (item) => {
-  const category =
-    String(item?.category || '')
-      .trim()
-      .toLowerCase();
-
-  const inventoryType =
-    String(item?.inventory_type || '')
-      .trim()
-      .toLowerCase();
-
-  const name =
-    String(item?.name || '')
-      .trim()
-      .toLowerCase();
-
-  return (
-    category === 'chef oppa special' ||
-    inventoryType === 'custom' ||
-    name.includes(
-      'custom chef oppa special'
-    )
-  );
 };
 
 const normalizePaymentMethodForOrder = (
@@ -454,8 +755,6 @@ const getInitialOrderStatus = (
 // PLACE ORDER
 // =========================
 //
-// Payment rules:
-//
 // Pay Later:
 // payment_method = "Pay Later"
 // payment_status = "pending"
@@ -474,6 +773,11 @@ const getInitialOrderStatus = (
 // status = "awaiting_payment"
 // Create order first, then backend returns Xendit checkout link.
 // Does not go to KDS until payment is confirmed.
+//
+// Chef Oppa Special/custom:
+// quantity = 1
+// price = 0
+// QR PH disabled from Confirm screen
 // =========================
 
 export const placeOrder = async (
@@ -487,10 +791,28 @@ export const placeOrder = async (
     );
   }
 
+  validateCartBeforeOrder(
+    cartItems
+  );
+
   const normalizedPaymentMethod =
     normalizePaymentMethodForOrder(
       paymentMethod
     );
+
+  const hasCustomRequest =
+    cartItems.some(
+      isCustomCartItem
+    );
+
+  if (
+    hasCustomRequest &&
+    normalizedPaymentMethod === 'Digital Payment'
+  ) {
+    throw new Error(
+      'QR PH is not available for Chef Oppa Special requests.'
+    );
+  }
 
   const initialStatus =
     getInitialOrderStatus(
@@ -527,19 +849,24 @@ export const placeOrder = async (
 
   const items =
     cartItems.map((item) => {
+      const normalizedItem =
+        normalizeMenuItem(item);
+
       const custom =
-        isCustomCartItem(item);
+        isCustomCartItem(
+          normalizedItem
+        );
 
       const specialRequest =
-        item.special_request ||
-        item.notes ||
+        normalizedItem.special_request ||
+        normalizedItem.notes ||
         '';
 
       if (custom) {
         return {
           menu_item_id:
-            item.menu_item_id ||
-            item.id,
+            normalizedItem.menu_item_id ||
+            normalizedItem.id,
 
           quantity: 1,
 
@@ -555,29 +882,44 @@ export const placeOrder = async (
 
       return {
         menu_item_id:
-          item.menu_item_id ||
-          item.id,
+          normalizedItem.menu_item_id ||
+          normalizedItem.id,
 
         quantity:
-          Number(item.quantity) || 1,
+          Number(
+            normalizedItem.quantity
+          ) || 1,
 
         price:
-          Number(item.price) || 0,
+          Number(
+            normalizedItem.price
+          ) || 0,
       };
     });
 
   const totalAmount =
     cartItems.reduce(
       (sum, item) => {
-        if (isCustomCartItem(item)) {
+        const normalizedItem =
+          normalizeMenuItem(item);
+
+        if (
+          isCustomCartItem(
+            normalizedItem
+          )
+        ) {
           return sum;
         }
 
         const price =
-          Number(item.price) || 0;
+          Number(
+            normalizedItem.price
+          ) || 0;
 
         const quantity =
-          Number(item.quantity) || 0;
+          Number(
+            normalizedItem.quantity
+          ) || 0;
 
         return sum + price * quantity;
       },
@@ -671,8 +1013,8 @@ export const getActiveTableOrders =
 
 // =========================
 // AI DISH RECOMMENDATIONS
-// Sends selected item and cart items
-// with flavor_tags and meal_type included
+// Only return recommended dishes enabled
+// by Daily Menu Inventory.
 // =========================
 
 export const getDishRecommendations =
@@ -685,7 +1027,9 @@ export const getDishRecommendations =
         '/ai/recommend-dishes',
         {
           selected_item:
-            normalizeMenuItem(selectedItem),
+            normalizeMenuItem(
+              selectedItem
+            ),
 
           cart_items:
             cartItems.map(
@@ -700,9 +1044,14 @@ export const getDishRecommendations =
         response.data.data
       )
     ) {
-      response.data.data =
+      const normalizedItems =
         response.data.data.map(
           normalizeMenuItem
+        );
+
+      response.data.data =
+        normalizedItems.filter(
+          isValidDailyInventoryMenuItem
         );
     }
 
