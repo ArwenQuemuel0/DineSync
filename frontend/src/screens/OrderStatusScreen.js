@@ -41,6 +41,10 @@ import {
   normalizePaymentStatus,
 } from '../utils/orderStatus';
 
+const APP_TIME_ZONE =
+  process.env.EXPO_PUBLIC_APP_TIMEZONE ||
+  'Asia/Manila';
+
 export default function OrderStatusScreen({
   route,
   navigation,
@@ -544,7 +548,10 @@ export default function OrderStatusScreen({
   const formatDateTime = (value) => {
     if (!value) return '';
 
-    const date = new Date(value);
+    const date =
+      value instanceof Date
+        ? value
+        : new Date(value);
 
     if (
       Number.isNaN(
@@ -554,10 +561,10 @@ export default function OrderStatusScreen({
       return '';
     }
 
-    return date.toLocaleString(
+    return new Intl.DateTimeFormat(
       'en-PH',
       {
-        timeZone: 'Asia/Manila',
+        timeZone: APP_TIME_ZONE,
         year: 'numeric',
         month: 'numeric',
         day: 'numeric',
@@ -566,7 +573,7 @@ export default function OrderStatusScreen({
         second: '2-digit',
         hour12: true,
       }
-    );
+    ).format(date);
   };
 
   const normalizePaymentMethod = (

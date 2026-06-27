@@ -3,24 +3,10 @@ import Constants from 'expo-constants';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // =========================
-// NODE BACKEND PORT
+// DEV NODE BACKEND API
 // =========================
 
 const BACKEND_PORT = 3000;
-
-// =========================
-// API BASE URL
-// =========================
-//
-// Development using Expo:
-// const BASE_URL = `http://${host}:${BACKEND_PORT}/api`;
-//
-// APK / Hosted backend:
-// const BASE_URL = 'https://api.dinesync.shop/api';
-//
-// For now, auto local IP muna.
-// Kapag final APK na, palitan mo BASE_URL sa hosted API.
-// =========================
 
 const debuggerHost =
   Constants.expoConfig?.hostUri ||
@@ -35,15 +21,12 @@ const host =
 const BASE_URL =
   `http://${host}:${BACKEND_PORT}/api`;
 
-// Final APK hosted backend version:
-// const BASE_URL = 'https://api.dinesync.shop/api';
-
 console.log(
   '=============================='
 );
 
 console.log(
-  'DINESYNC NODE API:',
+  'DINESYNC DEV NODE API:',
   BASE_URL
 );
 
@@ -53,7 +36,7 @@ console.log(
 
 const api = axios.create({
   baseURL: BASE_URL,
-  timeout: 15000,
+  timeout: 20000,
   headers: {
     Accept: 'application/json',
     'Content-Type': 'application/json',
@@ -88,13 +71,35 @@ api.interceptors.request.use(
 );
 
 // =========================
-// PARSERS / NORMALIZERS
+// HELPERS
 // =========================
 
 const VALID_NORMAL_INVENTORY_TYPES = [
   'per_order',
   'per_head',
 ];
+
+const MENU_CACHE_KEYS = [
+  'menu',
+  'menuItems',
+  'cachedMenu',
+  'cachedMenuItems',
+  'dinesync_menu',
+  'dinesync_menu_items',
+];
+
+const clearKnownMenuCaches = async () => {
+  try {
+    await AsyncStorage.multiRemove(
+      MENU_CACHE_KEYS
+    );
+  } catch (error) {
+    console.log(
+      'CLEAR MENU CACHE WARNING:',
+      error?.message || error
+    );
+  }
+};
 
 const normalizeText = (value) => {
   return String(value || '')
@@ -124,7 +129,7 @@ const parseNumeric = (value) => {
     : null;
 };
 
-const toNumber = (value) => {
+const toNumberOrZero = (value) => {
   const numeric =
     Number(value);
 
@@ -160,19 +165,28 @@ const hasDailyLimit = (item) => {
   );
 };
 
-const getRemainingToday = (item) => {
-  return toNumber(
-    item?.remaining_today
+const isCustomCartItem = (item) => {
+  const category =
+    normalizeText(item?.category);
+
+  const inventoryType =
+    normalizeInventoryType(
+      item?.inventory_type
+    );
+
+  const name =
+    normalizeText(item?.name);
+
+  return (
+    category === 'chef oppa special' ||
+    inventoryType === 'custom' ||
+    name.includes(
+      'custom chef oppa special'
+    )
   );
 };
 
-const getMaxOrderQuantity = (item) => {
-  return toNumber(
-    item?.max_order_quantity
-  );
-};
-
-const getAllowedOrderQuantity = (item) => {
+const getMobileMaxQuantity = (item) => {
   if (!item) {
     return 0;
   }
@@ -181,31 +195,16 @@ const getAllowedOrderQuantity = (item) => {
     return 1;
   }
 
-  const maxOrderQuantity =
-    getMaxOrderQuantity(item);
-
-  const remainingToday =
-    getRemainingToday(item);
-
-  if (
-    maxOrderQuantity > 0 &&
-    remainingToday > 0
-  ) {
-    return Math.min(
-      maxOrderQuantity,
-      remainingToday
+  const maxQuantity =
+    Number(
+      item?.max_order_quantity ??
+        item?.remaining_today ??
+        1
     );
-  }
 
-  if (maxOrderQuantity > 0) {
-    return maxOrderQuantity;
-  }
-
-  if (remainingToday > 0) {
-    return remainingToday;
-  }
-
-  return 0;
+  return Number.isFinite(maxQuantity)
+    ? Math.max(0, maxQuantity)
+    : 1;
 };
 
 const normalizeMenuItem = (item) => {
@@ -237,8 +236,8 @@ const normalizeMenuItem = (item) => {
     );
 
   const availableQuantity =
-    remainingToday ??
     maxOrderQuantity ??
+    remainingToday ??
     parseNumeric(
       item?.available_quantity
     );
@@ -283,52 +282,35 @@ const normalizeMenuItem = (item) => {
 
     stock_label:
       item?.stock_label
-        ? String(item.stock_label).trim()
+        ? String(
+            item.stock_label
+          ).trim()
         : null,
 
     is_available:
       item?.is_available,
 
     flavor_tags:
-      Array.isArray(item?.flavor_tags)
+      Array.isArray(
+        item?.flavor_tags
+      )
         ? item.flavor_tags
         : item?.flavor_tags
           ? String(item.flavor_tags)
               .split(',')
-              .map((tag) => tag.trim())
+              .map((tag) =>
+                tag.trim()
+              )
               .filter(Boolean)
           : [],
 
     meal_type:
       item?.meal_type
-        ? String(item.meal_type).trim()
+        ? String(
+            item.meal_type
+          ).trim()
         : null,
   };
-};
-
-const isCustomCartItem = (item) => {
-  const category =
-    String(item?.category || '')
-      .trim()
-      .toLowerCase();
-
-  const inventoryType =
-    normalizeInventoryType(
-      item?.inventory_type
-    );
-
-  const name =
-    String(item?.name || '')
-      .trim()
-      .toLowerCase();
-
-  return (
-    category === 'chef oppa special' ||
-    inventoryType === 'custom' ||
-    name.includes(
-      'custom chef oppa special'
-    )
-  );
 };
 
 const isValidDailyInventoryMenuItem = (item) => {
@@ -337,12 +319,11 @@ const isValidDailyInventoryMenuItem = (item) => {
       item?.inventory_type
     );
 
-  const available =
-    isAvailableTrue(
+  if (
+    !isAvailableTrue(
       item?.is_available
-    );
-
-  if (!available) {
+    )
+  ) {
     return false;
   }
 
@@ -366,16 +347,7 @@ const isValidDailyInventoryMenuItem = (item) => {
     return false;
   }
 
-  const remainingToday =
-    getRemainingToday(item);
-
-  const maxOrderQuantity =
-    getMaxOrderQuantity(item);
-
-  return (
-    remainingToday > 0 ||
-    maxOrderQuantity > 0
-  );
+  return getMobileMaxQuantity(item) > 0;
 };
 
 const getDailyInventoryErrorMessage = (item) => {
@@ -414,7 +386,7 @@ const getDailyInventoryErrorMessage = (item) => {
 
   if (
     inventoryType !== 'custom' &&
-    getAllowedOrderQuantity(item) <= 0
+    getMobileMaxQuantity(item) <= 0
   ) {
     return `${item?.name || 'This item'} is sold out for today.`;
   }
@@ -439,13 +411,15 @@ const validateCartBeforeOrder = (
       normalizeMenuItem(item);
 
     const custom =
-      isCustomCartItem(normalizedItem);
+      isCustomCartItem(
+        normalizedItem
+      );
 
     const quantity =
       custom
         ? 1
-        : Number(
-            normalizedItem.quantity || 0
+        : toNumberOrZero(
+            normalizedItem.quantity
           );
 
     if (
@@ -470,12 +444,12 @@ const validateCartBeforeOrder = (
       continue;
     }
 
-    const allowedQuantity =
-      getAllowedOrderQuantity(
+    const maxQuantity =
+      getMobileMaxQuantity(
         normalizedItem
       );
 
-    if (allowedQuantity <= 0) {
+    if (maxQuantity <= 0) {
       throw new Error(
         `${normalizedItem?.name || 'This item'} is sold out for today.`
       );
@@ -487,9 +461,9 @@ const validateCartBeforeOrder = (
       );
     }
 
-    if (quantity > allowedQuantity) {
+    if (quantity > maxQuantity) {
       throw new Error(
-        `${normalizedItem?.name || 'This item'} only has ${allowedQuantity} available today.`
+        `${normalizedItem?.name || 'This item'} only has ${maxQuantity} available today.`
       );
     }
   }
@@ -567,7 +541,7 @@ export const loginUser = async (
 };
 
 // =========================
-// TABLE ONLINE
+// TABLE ONLINE / HEARTBEAT / OFFLINE
 // =========================
 
 export const tableOnline = async () => {
@@ -577,20 +551,12 @@ export const tableOnline = async () => {
   return response.data;
 };
 
-// =========================
-// TABLE HEARTBEAT
-// =========================
-
 export const tableHeartbeat = async () => {
   const response =
     await api.post('/table/heartbeat');
 
   return response.data;
 };
-
-// =========================
-// TABLE OFFLINE
-// =========================
 
 export const tableOffline = async () => {
   const response =
@@ -601,7 +567,6 @@ export const tableOffline = async () => {
 
 // =========================
 // TABLE STATUS
-// GET /api/table/status
 // =========================
 
 export const getTableStatus = async () => {
@@ -613,8 +578,6 @@ export const getTableStatus = async () => {
 
 // =========================
 // TABLE ORDER HISTORY
-// Uses logged-in table token/session
-// Backend detects table number
 // =========================
 
 export const getTableOrderHistory = async () => {
@@ -625,17 +588,21 @@ export const getTableOrderHistory = async () => {
 };
 
 // =========================
-// GET MENU
-// Daily Menu Inventory rule:
-// Only return items enabled for mobile.
+// GET MENU FROM DEV NODE API
 // =========================
 
 export const getMenu = async () => {
+  await clearKnownMenuCaches();
+
   const response =
-    await api.get('/menu');
+    await api.get('/menu', {
+      params: {
+        _ts: Date.now(),
+      },
+    });
 
   console.log(
-    'MENU RESPONSE:',
+    'DEV NODE MENU RESPONSE:',
     response.data
   );
 
@@ -663,6 +630,42 @@ export const getMenu = async () => {
       }
     );
 
+    const bibimbap =
+      visibleItems.find(
+        (item) =>
+          String(item.name || '')
+            .trim()
+            .toLowerCase() ===
+          'bibimbap'
+      );
+
+    if (bibimbap) {
+      const maxQuantity =
+        getMobileMaxQuantity(
+          bibimbap
+        );
+
+      console.log(
+        'API ITEM:',
+        bibimbap
+      );
+
+      console.log(
+        'MAX ORDER QUANTITY:',
+        bibimbap?.max_order_quantity
+      );
+
+      console.log(
+        'REMAINING TODAY:',
+        bibimbap?.remaining_today
+      );
+
+      console.log(
+        'FINAL MAX QUANTITY:',
+        maxQuantity
+      );
+    }
+
     response.data.data =
       visibleItems;
   }
@@ -684,6 +687,10 @@ export const getTable = async (
 
   return response.data;
 };
+
+// =========================
+// PAYMENT NORMALIZATION
+// =========================
 
 const normalizePaymentMethodForOrder = (
   paymentMethod
@@ -754,31 +761,6 @@ const getInitialOrderStatus = (
 // =========================
 // PLACE ORDER
 // =========================
-//
-// Pay Later:
-// payment_method = "Pay Later"
-// payment_status = "pending"
-// status = "pending"
-// Goes to KDS immediately.
-//
-// Pay at Counter:
-// payment_method = "Pay at Counter"
-// payment_status = "pending"
-// status = "awaiting_payment"
-// Does not go to KDS yet.
-//
-// QR PH:
-// payment_method = "Digital Payment"
-// payment_status = "pending"
-// status = "awaiting_payment"
-// Create order first, then backend returns Xendit checkout link.
-// Does not go to KDS until payment is confirmed.
-//
-// Chef Oppa Special/custom:
-// quantity = 1
-// price = 0
-// QR PH disabled from Confirm screen
-// =========================
 
 export const placeOrder = async (
   cartItems,
@@ -828,24 +810,6 @@ export const placeOrder = async (
       initialStatus,
     }
   );
-
-  if (
-    normalizedPaymentMethod === 'Digital Payment' &&
-    initialStatus !== 'awaiting_payment'
-  ) {
-    throw new Error(
-      'Digital Payment must create an awaiting_payment order.'
-    );
-  }
-
-  if (
-    normalizedPaymentMethod === 'Pay Later' &&
-    initialStatus !== 'pending'
-  ) {
-    throw new Error(
-      'Pay Later must create a pending order.'
-    );
-  }
 
   const items =
     cartItems.map((item) => {
@@ -971,50 +935,50 @@ export const placeOrder = async (
 // PROCESS PAYMENT
 // =========================
 
-export const processPayment =
-  async (paymentData) => {
-    const response =
-      await api.post(
-        '/payments',
-        paymentData
-      );
+export const processPayment = async (
+  paymentData
+) => {
+  const response =
+    await api.post(
+      '/payments',
+      paymentData
+    );
 
-    return response.data;
-  };
+  return response.data;
+};
 
 // =========================
 // GET ORDER STATUS
 // =========================
 
-export const getOrderStatus =
-  async (orderId) => {
-    const response =
-      await api.get(
-        `/orders/${orderId}`
-      );
+export const getOrderStatus = async (
+  orderId
+) => {
+  const response =
+    await api.get(
+      `/orders/${orderId}`
+    );
 
-    return response.data;
-  };
+  return response.data;
+};
 
 // =========================
 // GET ACTIVE TABLE ORDERS
-// Connected to database through Node backend
 // =========================
 
-export const getActiveTableOrders =
-  async (tableNumber) => {
-    const response =
-      await api.get(
-        `/orders/table/${tableNumber}/active`
-      );
+export const getActiveTableOrders = async (
+  tableNumber
+) => {
+  const response =
+    await api.get(
+      `/orders/table/${tableNumber}/active`
+    );
 
-    return response.data;
-  };
+  return response.data;
+};
 
 // =========================
 // AI DISH RECOMMENDATIONS
-// Only return recommended dishes enabled
-// by Daily Menu Inventory.
 // =========================
 
 export const getDishRecommendations =

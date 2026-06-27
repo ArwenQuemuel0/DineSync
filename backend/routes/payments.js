@@ -10,6 +10,88 @@ const {
 } = require('../supabaseClient');
 
 // =========================
+// DATE / TIME HELPERS
+// IMPORTANT:
+// Backend stores UTC.
+// Mobile displays using Asia/Manila.
+// =========================
+
+const getUtcNowIso = () => {
+  return new Date().toISOString();
+};
+
+const normalizeUtcIsoDate = (value) => {
+  if (!value) {
+    return null;
+  }
+
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime())
+      ? null
+      : value.toISOString();
+  }
+
+  const stringValue =
+    String(value).trim();
+
+  if (!stringValue) {
+    return null;
+  }
+
+  const hasTimezone =
+    /z$/i.test(stringValue) ||
+    /[+-]\d{2}:\d{2}$/.test(stringValue);
+
+  const safeValue =
+    hasTimezone
+      ? stringValue
+      : `${stringValue}Z`;
+
+  const date =
+    new Date(safeValue);
+
+  if (
+    Number.isNaN(
+      date.getTime()
+    )
+  ) {
+    return stringValue;
+  }
+
+  return date.toISOString();
+};
+
+const normalizeDateFields = (row) => {
+  if (!row) {
+    return row;
+  }
+
+  return {
+    ...row,
+
+    created_at:
+      normalizeUtcIsoDate(
+        row.created_at
+      ),
+
+    updated_at:
+      normalizeUtcIsoDate(
+        row.updated_at
+      ),
+
+    paid_at:
+      normalizeUtcIsoDate(
+        row.paid_at
+      ),
+
+    xendit_expiry_date:
+      normalizeUtcIsoDate(
+        row.xendit_expiry_date
+      ),
+  };
+};
+
+// =========================
 // HELPERS
 // =========================
 
@@ -64,10 +146,6 @@ const extractOrderIdFromExternalId = (externalId) => {
     String(externalId || '')
       .trim();
 
-  // New required format:
-  // ORDER-{order_id}-{timestamp}
-  // Example:
-  // ORDER-68-202606241806
   const newFormatMatch =
     value.match(/^ORDER-(\d+)-\d+$/);
 
@@ -75,8 +153,6 @@ const extractOrderIdFromExternalId = (externalId) => {
     return Number(newFormatMatch[1]);
   }
 
-  // Old fallback format:
-  // ORDER-{order_id}
   const oldFormatMatch =
     value.match(/^ORDER-(\d+)$/);
 
@@ -137,13 +213,6 @@ const getPayloadExpiryDate = (payload) => {
 // =========================
 // PROCESS PAYMENT
 // POST /api/payments
-//
-// Used by Service Staff Payments page.
-// Cash settlement for Pay at Counter should:
-// payment_method = "Cash"
-// payment_status = "paid"
-// paid_at = current datetime
-// status = "pending" only if previous status was awaiting_payment
 // =========================
 
 router.post('/', async (req, res) => {
@@ -186,7 +255,7 @@ router.post('/', async (req, res) => {
         .toUpperCase()}`;
 
     const now =
-      new Date().toISOString();
+      getUtcNowIso();
 
     // =========================
     // MOCK DATABASE
@@ -207,20 +276,21 @@ router.post('/', async (req, res) => {
         });
       }
 
-      const newPayment = {
-        id: db.payments.length + 1,
-        order_id: parsedOrderId,
-        payment_method:
-          normalizedPaymentMethod,
-        amount:
-          totalAmount ||
-          Number(order.total_amount || 0),
-        status: 'Paid',
-        reference_number:
-          referenceNumber,
-        created_at: now,
-        updated_at: now,
-      };
+      const newPayment =
+        normalizeDateFields({
+          id: db.payments.length + 1,
+          order_id: parsedOrderId,
+          payment_method:
+            normalizedPaymentMethod,
+          amount:
+            totalAmount ||
+            Number(order.total_amount || 0),
+          status: 'Paid',
+          reference_number:
+            referenceNumber,
+          created_at: now,
+          updated_at: now,
+        });
 
       db.payments.push(newPayment);
 
@@ -246,7 +316,8 @@ router.post('/', async (req, res) => {
         message:
           'Payment recorded successfully.',
         data: newPayment,
-        order,
+        order:
+          normalizeDateFields(order),
       });
     }
 
@@ -324,10 +395,6 @@ router.post('/', async (req, res) => {
 
     // =========================
     // UPDATE ORDER PAYMENT
-    //
-    // IMPORTANT:
-    // Do not change kitchen status except:
-    // awaiting_payment -> pending after payment is confirmed.
     // =========================
 
     const orderUpdatePayload = {
@@ -373,8 +440,14 @@ router.post('/', async (req, res) => {
       success: true,
       message:
         'Payment recorded successfully.',
-      data: paymentRow,
-      order: updatedOrder,
+      data:
+        normalizeDateFields(
+          paymentRow
+        ),
+      order:
+        normalizeDateFields(
+          updatedOrder
+        ),
     });
   } catch (error) {
     console.error(
@@ -394,26 +467,6 @@ router.post('/', async (req, res) => {
 // =========================
 // XENDIT WEBHOOK CALLBACK
 // POST /api/payments/webhook
-//
-// Backup/older webhook route.
-//
-// Recommended main webhook route:
-// POST /api/webhooks/xendit
-//
-// This backup route also supports:
-// ORDER-{order_id}-{timestamp}
-// Example:
-// ORDER-68-202606241806
-//
-// Digital Payment / QR PH rule:
-// paid:
-// payment_status = paid
-// paid_at = current datetime
-// status = pending only if current status is awaiting_payment
-//
-// expired/failed:
-// payment_status only
-// status remains awaiting_payment
 // =========================
 
 router.post('/webhook', async (req, res) => {
@@ -484,7 +537,7 @@ router.post('/webhook', async (req, res) => {
       mapXenditStatus(status);
 
     const now =
-      new Date().toISOString();
+      getUtcNowIso();
 
     const xenditInvoiceId =
       id || null;
@@ -493,7 +546,9 @@ router.post('/webhook', async (req, res) => {
       getPayloadInvoiceUrl(payload);
 
     const xenditExpiryDate =
-      getPayloadExpiryDate(payload);
+      normalizeUtcIsoDate(
+        getPayloadExpiryDate(payload)
+      );
 
     console.log(
       '[WEBHOOK] Mapping Xendit invoice:',
@@ -580,26 +635,27 @@ router.post('/webhook', async (req, res) => {
           );
 
         if (!alreadyPaid) {
-          const newPayment = {
-            id: db.payments.length + 1,
-            order_id: orderId,
-            payment_method:
-              'Digital Payment',
-            amount:
-              Number(amount) ||
-              Number(
-                order.total_amount || 0
-              ),
-            status: 'Paid',
-            reference_number:
-              xenditInvoiceId ||
-              `TXN-${Math.random()
-                .toString(36)
-                .substr(2, 9)
-                .toUpperCase()}`,
-            created_at: now,
-            updated_at: now,
-          };
+          const newPayment =
+            normalizeDateFields({
+              id: db.payments.length + 1,
+              order_id: orderId,
+              payment_method:
+                'Digital Payment',
+              amount:
+                Number(amount) ||
+                Number(
+                  order.total_amount || 0
+                ),
+              status: 'Paid',
+              reference_number:
+                xenditInvoiceId ||
+                `TXN-${Math.random()
+                  .toString(36)
+                  .substr(2, 9)
+                  .toUpperCase()}`,
+              created_at: now,
+              updated_at: now,
+            });
 
           db.payments.push(newPayment);
 
@@ -608,6 +664,9 @@ router.post('/webhook', async (req, res) => {
           );
         }
       }
+
+      const normalizedOrder =
+        normalizeDateFields(order);
 
       return res.json({
         success: true,
@@ -618,11 +677,13 @@ router.post('/webhook', async (req, res) => {
         payment_status:
           mappedStatus,
         order_status:
-          order.status,
+          normalizedOrder.status,
         xendit_invoice_id:
-          order.xendit_invoice_id,
+          normalizedOrder.xendit_invoice_id,
         xendit_external_id:
-          order.xendit_external_id,
+          normalizedOrder.xendit_external_id,
+        order:
+          normalizedOrder,
       });
     }
 
@@ -657,7 +718,6 @@ router.post('/webhook', async (req, res) => {
 
     // =========================
     // UPDATE ORDER PAYMENT STATUS
-    // and preserve/save Xendit invoice details.
     // =========================
 
     const orderUpdatePayload = {
@@ -689,7 +749,9 @@ router.post('/webhook', async (req, res) => {
     ) {
       orderUpdatePayload.xendit_expiry_date =
         xenditExpiryDate ||
-        existingOrder.xendit_expiry_date;
+        normalizeUtcIsoDate(
+          existingOrder.xendit_expiry_date
+        );
     }
 
     if (mappedStatus === 'paid') {
@@ -734,19 +796,24 @@ router.post('/webhook', async (req, res) => {
       });
     }
 
+    const normalizedUpdatedOrder =
+      normalizeDateFields(
+        updatedOrder
+      );
+
     console.log(
       '[WEBHOOK] Order updated:',
       {
         order_id:
-          updatedOrder.id,
+          normalizedUpdatedOrder.id,
         status:
-          updatedOrder.status,
+          normalizedUpdatedOrder.status,
         payment_status:
-          updatedOrder.payment_status,
+          normalizedUpdatedOrder.payment_status,
         xendit_invoice_id:
-          updatedOrder.xendit_invoice_id,
+          normalizedUpdatedOrder.xendit_invoice_id,
         xendit_external_id:
-          updatedOrder.xendit_external_id,
+          normalizedUpdatedOrder.xendit_external_id,
       }
     );
 
@@ -829,15 +896,15 @@ router.post('/webhook', async (req, res) => {
       payment_status:
         mappedStatus,
       order_status:
-        updatedOrder?.status,
+        normalizedUpdatedOrder?.status,
       xendit_invoice_id:
-        updatedOrder?.xendit_invoice_id,
+        normalizedUpdatedOrder?.xendit_invoice_id,
       xendit_external_id:
-        updatedOrder?.xendit_external_id,
+        normalizedUpdatedOrder?.xendit_external_id,
       xendit_invoice_url:
-        updatedOrder?.xendit_invoice_url,
+        normalizedUpdatedOrder?.xendit_invoice_url,
       order:
-        updatedOrder,
+        normalizedUpdatedOrder,
     });
   } catch (error) {
     console.error(

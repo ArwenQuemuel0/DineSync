@@ -8,6 +8,88 @@ const {
 } = require('../supabaseClient');
 
 // =========================
+// DATE / TIME HELPERS
+// IMPORTANT:
+// Backend stores UTC.
+// Mobile displays using Asia/Manila.
+// =========================
+
+const getUtcNowIso = () => {
+  return new Date().toISOString();
+};
+
+const normalizeUtcIsoDate = (value) => {
+  if (!value) {
+    return null;
+  }
+
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime())
+      ? null
+      : value.toISOString();
+  }
+
+  const stringValue =
+    String(value).trim();
+
+  if (!stringValue) {
+    return null;
+  }
+
+  const hasTimezone =
+    /z$/i.test(stringValue) ||
+    /[+-]\d{2}:\d{2}$/.test(stringValue);
+
+  const safeValue =
+    hasTimezone
+      ? stringValue
+      : `${stringValue}Z`;
+
+  const date =
+    new Date(safeValue);
+
+  if (
+    Number.isNaN(
+      date.getTime()
+    )
+  ) {
+    return stringValue;
+  }
+
+  return date.toISOString();
+};
+
+const normalizeDateFields = (row) => {
+  if (!row) {
+    return row;
+  }
+
+  return {
+    ...row,
+
+    created_at:
+      normalizeUtcIsoDate(
+        row.created_at
+      ),
+
+    updated_at:
+      normalizeUtcIsoDate(
+        row.updated_at
+      ),
+
+    paid_at:
+      normalizeUtcIsoDate(
+        row.paid_at
+      ),
+
+    xendit_expiry_date:
+      normalizeUtcIsoDate(
+        row.xendit_expiry_date
+      ),
+  };
+};
+
+// =========================
 // STATUS MAPPER
 // =========================
 
@@ -157,7 +239,7 @@ router.post('/xendit', async (req, res) => {
       );
 
     const now =
-      new Date().toISOString();
+      getUtcNowIso();
 
     const xenditInvoiceId =
       payload.id || null;
@@ -166,7 +248,9 @@ router.post('/xendit', async (req, res) => {
       getPayloadInvoiceUrl(payload);
 
     const xenditExpiryDate =
-      getPayloadExpiryDate(payload);
+      normalizeUtcIsoDate(
+        getPayloadExpiryDate(payload)
+      );
 
     console.log(
       'XENDIT WEBHOOK RECEIVED:',
@@ -280,7 +364,9 @@ router.post('/xendit', async (req, res) => {
     ) {
       orderUpdatePayload.xendit_expiry_date =
         xenditExpiryDate ||
-        existingOrder.xendit_expiry_date;
+        normalizeUtcIsoDate(
+          existingOrder.xendit_expiry_date
+        );
     }
 
     if (paymentStatus === 'paid') {
@@ -308,7 +394,7 @@ router.post('/xendit', async (req, res) => {
       .update(orderUpdatePayload)
       .eq('id', orderId)
       .select(
-        'id, order_number, table_number, status, payment_status, payment_method, paid_at, total_amount, xendit_invoice_id, xendit_external_id, xendit_invoice_url, xendit_expiry_date, updated_at'
+        'id, order_number, table_number, status, payment_status, payment_method, paid_at, total_amount, xendit_invoice_id, xendit_external_id, xendit_invoice_url, xendit_expiry_date, created_at, updated_at'
       )
       .single();
 
@@ -326,19 +412,24 @@ router.post('/xendit', async (req, res) => {
       });
     }
 
+    const normalizedUpdatedOrder =
+      normalizeDateFields(
+        updatedOrder
+      );
+
     console.log(
       'XENDIT WEBHOOK ORDER UPDATED:',
       {
         order_id:
-          updatedOrder.id,
+          normalizedUpdatedOrder.id,
         status:
-          updatedOrder.status,
+          normalizedUpdatedOrder.status,
         payment_status:
-          updatedOrder.payment_status,
+          normalizedUpdatedOrder.payment_status,
         xendit_invoice_id:
-          updatedOrder.xendit_invoice_id,
+          normalizedUpdatedOrder.xendit_invoice_id,
         xendit_external_id:
-          updatedOrder.xendit_external_id,
+          normalizedUpdatedOrder.xendit_external_id,
       }
     );
 
@@ -427,15 +518,15 @@ router.post('/xendit', async (req, res) => {
       payment_status:
         paymentStatus,
       order_status:
-        updatedOrder?.status,
+        normalizedUpdatedOrder?.status,
       xendit_invoice_id:
-        updatedOrder?.xendit_invoice_id,
+        normalizedUpdatedOrder?.xendit_invoice_id,
       xendit_external_id:
-        updatedOrder?.xendit_external_id,
+        normalizedUpdatedOrder?.xendit_external_id,
       xendit_invoice_url:
-        updatedOrder?.xendit_invoice_url,
+        normalizedUpdatedOrder?.xendit_invoice_url,
       order:
-        updatedOrder,
+        normalizedUpdatedOrder,
     });
   } catch (error) {
     console.log(

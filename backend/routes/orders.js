@@ -10,10 +10,6 @@ const {
 } = require('../supabaseClient');
 
 const {
-  computeMaxServingsFromRecipes,
-} = require('../utils/inventoryServings');
-
-const {
   TABLE_ASSIGNMENT_MESSAGE,
   normalizeTableStatus,
 } = require('../utils/tableStatus');
@@ -25,6 +21,170 @@ const { createInvoice } = require('../utils/xendit');
 // =========================
 
 const DEFAULT_TABLE_NUMBER = 1;
+
+// =========================
+// DAILY INVENTORY SETTINGS
+// =========================
+
+const VALID_NORMAL_INVENTORY_TYPES = [
+  'per_order',
+  'per_head',
+];
+
+const MANILA_UTC_OFFSET_HOURS = 8;
+
+// =========================
+// BASIC HELPERS
+// =========================
+
+const normalizeText = (value) => {
+  return String(value || '')
+    .trim()
+    .toLowerCase();
+};
+
+const normalizeInventoryType = (value) => {
+  return normalizeText(value)
+    .replace(/[-\s]+/g, '_');
+};
+
+const toNumberOrNull = (value) => {
+  if (
+    value === null ||
+    value === undefined ||
+    value === ''
+  ) {
+    return null;
+  }
+
+  const numeric =
+    Number(value);
+
+  return Number.isFinite(numeric)
+    ? numeric
+    : null;
+};
+
+const toNumberOrZero = (value) => {
+  const numeric =
+    Number(value);
+
+  return Number.isFinite(numeric)
+    ? numeric
+    : 0;
+};
+
+const isAvailableTrue = (value) => {
+  return (
+    value === true ||
+    value === 1 ||
+    value === '1' ||
+    normalizeText(value) === 'true' ||
+    normalizeText(value) === 'yes' ||
+    normalizeText(value) === 'available'
+  );
+};
+
+const isChefOppaSpecialItem = (item) => {
+  const category =
+    normalizeText(item?.category);
+
+  const inventoryType =
+    normalizeInventoryType(
+      item?.inventory_type
+    );
+
+  const name =
+    normalizeText(item?.name);
+
+  return (
+    category === 'chef oppa special' ||
+    inventoryType === 'custom' ||
+    name.includes(
+      'custom chef oppa special'
+    )
+  );
+};
+
+// =========================
+// DATE / TIME HELPERS
+// IMPORTANT:
+// Backend stores UTC.
+// Mobile displays using Asia/Manila.
+// This prevents Supabase timestamp strings without "Z"
+// from being interpreted incorrectly by React Native.
+// =========================
+
+const getUtcNowIso = () => {
+  return new Date().toISOString();
+};
+
+const normalizeUtcIsoDate = (value) => {
+  if (!value) {
+    return null;
+  }
+
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime())
+      ? null
+      : value.toISOString();
+  }
+
+  const stringValue =
+    String(value).trim();
+
+  if (!stringValue) {
+    return null;
+  }
+
+  const hasTimezone =
+    /z$/i.test(stringValue) ||
+    /[+-]\d{2}:\d{2}$/.test(stringValue);
+
+  const safeValue =
+    hasTimezone
+      ? stringValue
+      : `${stringValue}Z`;
+
+  const date =
+    new Date(safeValue);
+
+  if (
+    Number.isNaN(
+      date.getTime()
+    )
+  ) {
+    return stringValue;
+  }
+
+  return date.toISOString();
+};
+
+const normalizeOrderDateFields = (order) => {
+  if (!order) {
+    return order;
+  }
+
+  return {
+    ...order,
+    created_at:
+      normalizeUtcIsoDate(
+        order.created_at
+      ),
+    updated_at:
+      normalizeUtcIsoDate(
+        order.updated_at
+      ),
+    paid_at:
+      normalizeUtcIsoDate(
+        order.paid_at
+      ),
+    xendit_expiry_date:
+      normalizeUtcIsoDate(
+        order.xendit_expiry_date
+      ),
+  };
+};
 
 // =========================
 // PAYMENT METHOD HELPERS
@@ -85,14 +245,17 @@ const forceDigitalPaymentIfXendit = (order) => {
     return order;
   }
 
-  if (hasXenditInvoice(order)) {
+  const normalizedOrder =
+    normalizeOrderDateFields(order);
+
+  if (hasXenditInvoice(normalizedOrder)) {
     return {
-      ...order,
+      ...normalizedOrder,
       payment_method: 'Digital Payment',
     };
   }
 
-  return order;
+  return normalizedOrder;
 };
 
 const shouldCreateXenditInvoice = (paymentMethod) => {
@@ -175,73 +338,368 @@ const getTableNumberFromToken = (req) => {
 };
 
 // =========================
+// MANILA TODAY RANGE
+// =========================
+
+const getManilaTodayUtcRange = () => {
+  const now =
+    new Date();
+
+  const manilaNow =
+    new Date(
+      now.getTime() +
+        MANILA_UTC_OFFSET_HOURS *
+          60 *
+          60 *
+          1000
+    );
+
+  const year =
+    manilaNow.getUTCFullYear();
+
+  const month =
+    manilaNow.getUTCMonth();
+
+  const day =
+    manilaNow.getUTCDate();
+
+  const startUtc =
+    new Date(
+      Date.UTC(
+        year,
+        month,
+        day,
+        -MANILA_UTC_OFFSET_HOURS,
+        0,
+        0,
+        0
+      )
+    );
+
+  const endUtc =
+    new Date(
+      startUtc.getTime() +
+        24 * 60 * 60 * 1000
+    );
+
+  return {
+    startIso:
+      startUtc.toISOString(),
+    endIso:
+      endUtc.toISOString(),
+  };
+};
+
+// =========================
+// SOLD TODAY HELPERS
+// =========================
+
+const getSoldTodayMap = async () => {
+  const {
+    startIso,
+    endIso,
+  } = getManilaTodayUtcRange();
+
+  const {
+    data: orders,
+    error: ordersError,
+  } = await supabase
+    .from('orders')
+    .select('id, status, created_at')
+    .gte('created_at', startIso)
+    .lt('created_at', endIso);
+
+  if (ordersError) {
+    console.log(
+      'SOLD TODAY ORDERS ERROR:',
+      ordersError
+    );
+
+    return {};
+  }
+
+  const validOrderIds =
+    (orders || [])
+      .filter((order) => {
+        const status =
+          normalizeText(order.status);
+
+        return ![
+          'cancelled',
+          'canceled',
+          'failed',
+          'voided',
+        ].includes(status);
+      })
+      .map((order) => order.id)
+      .filter(Boolean);
+
+  if (validOrderIds.length === 0) {
+    return {};
+  }
+
+  const {
+    data: orderItems,
+    error: orderItemsError,
+  } = await supabase
+    .from('order_items')
+    .select('order_id, menu_item_id, quantity')
+    .in('order_id', validOrderIds);
+
+  if (orderItemsError) {
+    console.log(
+      'SOLD TODAY ORDER ITEMS ERROR:',
+      orderItemsError
+    );
+
+    return {};
+  }
+
+  const soldTodayMap = {};
+
+  (orderItems || []).forEach((item) => {
+    const menuItemId =
+      item.menu_item_id;
+
+    const quantity =
+      Number(item.quantity) || 0;
+
+    if (!menuItemId) {
+      return;
+    }
+
+    if (!soldTodayMap[menuItemId]) {
+      soldTodayMap[menuItemId] = 0;
+    }
+
+    soldTodayMap[menuItemId] += quantity;
+  });
+
+  return soldTodayMap;
+};
+
+// =========================
+// DAILY INVENTORY VALIDATION
+// =========================
+
+const validateDailyInventoryItems = async (
+  items = []
+) => {
+  const soldTodayMap =
+    await getSoldTodayMap();
+
+  for (const item of items) {
+    const menuItemId =
+      item.menu_item_id ||
+      item.id;
+
+    const orderedQty =
+      Number(item.quantity);
+
+    if (
+      !menuItemId ||
+      !orderedQty ||
+      orderedQty <= 0
+    ) {
+      return {
+        valid: false,
+        status: 400,
+        message:
+          'Invalid order item quantity.',
+      };
+    }
+
+    const {
+      data: menuItem,
+      error: menuItemError,
+    } = await supabase
+      .from('menu_items')
+      .select(
+        'id, name, category, price, is_available, inventory_type, daily_limit'
+      )
+      .eq('id', menuItemId)
+      .single();
+
+    if (
+      menuItemError ||
+      !menuItem
+    ) {
+      return {
+        valid: false,
+        status: 404,
+        message:
+          'Menu item not found.',
+      };
+    }
+
+    const isCustom =
+      isChefOppaSpecialItem(
+        menuItem
+      );
+
+    if (isCustom) {
+      if (orderedQty !== 1) {
+        return {
+          valid: false,
+          status: 422,
+          message:
+            'Chef Oppa Special request quantity must be 1 only.',
+        };
+      }
+
+      continue;
+    }
+
+    const inventoryType =
+      normalizeInventoryType(
+        menuItem.inventory_type
+      );
+
+    const dailyLimit =
+      toNumberOrNull(
+        menuItem.daily_limit
+      );
+
+    if (
+      !VALID_NORMAL_INVENTORY_TYPES.includes(
+        inventoryType
+      ) ||
+      dailyLimit === null
+    ) {
+      return {
+        valid: false,
+        status: 422,
+        message:
+          `${menuItem.name} is not enabled in Daily Menu Inventory.`,
+      };
+    }
+
+    if (
+      !isAvailableTrue(
+        menuItem.is_available
+      )
+    ) {
+      return {
+        valid: false,
+        status: 422,
+        message:
+          `${menuItem.name} is currently unavailable.`,
+      };
+    }
+
+    const soldToday =
+      Number(
+        soldTodayMap[menuItem.id] || 0
+      );
+
+    const remainingToday =
+      Math.max(
+        0,
+        dailyLimit - soldToday
+      );
+
+    if (remainingToday <= 0) {
+      return {
+        valid: false,
+        status: 422,
+        message:
+          `${menuItem.name} is sold out for today.`,
+      };
+    }
+
+    if (orderedQty > remainingToday) {
+      return {
+        valid: false,
+        status: 422,
+        message:
+          `${menuItem.name} only has ${remainingToday} orders left today.`,
+      };
+    }
+  }
+
+  return {
+    valid: true,
+    status: 200,
+    message: '',
+  };
+};
+
+// =========================
+// GET BEST SELLER IDS
+// =========================
+
+const getBestSellerIds = async () => {
+  if (!isConfigured) {
+    return [];
+  }
+
+  const {
+    data,
+    error,
+  } = await supabase
+    .from('order_items')
+    .select(`
+      menu_item_id,
+      quantity,
+      menu_items (
+        id,
+        name,
+        price,
+        category,
+        image
+      )
+    `);
+
+  if (error) {
+    console.log(
+      'BEST SELLERS ERROR:',
+      error
+    );
+
+    return [];
+  }
+
+  const salesMap = {};
+
+  for (const row of data || []) {
+    const item = row.menu_items;
+
+    if (!item) {
+      continue;
+    }
+
+    const itemId = item.id;
+
+    if (!salesMap[itemId]) {
+      salesMap[itemId] = {
+        ...item,
+        total_sales: 0,
+      };
+    }
+
+    salesMap[itemId].total_sales +=
+      Number(row.quantity || 0);
+  }
+
+  return Object.values(salesMap)
+    .sort(
+      (a, b) =>
+        b.total_sales -
+        a.total_sales
+    )
+    .slice(0, 3);
+};
+
+// =========================
 // BEST SELLERS
-// IMPORTANT: This must be before router.get('/:id')
 // =========================
 
 router.get(
   '/best-sellers/list',
   async (req, res) => {
     try {
-      if (!isConfigured) {
-        return res.json({
-          success: true,
-          data: [],
-        });
-      }
-
-      const {
-        data,
-        error,
-      } = await supabase
-        .from('order_items')
-        .select(`
-          menu_item_id,
-          quantity,
-          menu_items (
-            id,
-            name,
-            price,
-            category,
-            image
-          )
-        `);
-
-      if (error) {
-        return res.status(500).json({
-          success: false,
-          message: error.message,
-        });
-      }
-
-      const salesMap = {};
-
-      for (const row of data || []) {
-        const item = row.menu_items;
-
-        if (!item) continue;
-
-        const itemId = item.id;
-
-        if (!salesMap[itemId]) {
-          salesMap[itemId] = {
-            ...item,
-            total_sales: 0,
-          };
-        }
-
-        salesMap[itemId].total_sales +=
-          Number(row.quantity || 0);
-      }
-
       const bestSellers =
-        Object.values(salesMap)
-          .sort(
-            (a, b) =>
-              b.total_sales -
-              a.total_sales
-          )
-          .slice(0, 3);
+        await getBestSellerIds();
 
       return res.json({
         success: true,
@@ -255,7 +713,8 @@ router.get(
 
       return res.status(500).json({
         success: false,
-        message: error.message,
+        message:
+          error.message,
       });
     }
   }
@@ -264,11 +723,6 @@ router.get(
 // =========================
 // GET ACTIVE ORDERS BY TABLE
 // GET /api/orders/table/:tableNumber/active
-// IMPORTANT: This must be before router.get('/:id')
-//
-// KDS VISIBILITY RULE:
-// Only pending, preparing, ready.
-// Never awaiting_payment.
 // =========================
 
 router.get(
@@ -296,7 +750,7 @@ router.get(
 
               return (
                 Number(order.table_number) ===
-                tableNumber &&
+                  tableNumber &&
                 [
                   'pending',
                   'preparing',
@@ -392,8 +846,13 @@ router.get(
         throw ordersError;
       }
 
-      const orderIds =
+      const normalizedOrders =
         (orders || []).map(
+          forceDigitalPaymentIfXendit
+        );
+
+      const orderIds =
+        normalizedOrders.map(
           (order) => order.id
         );
 
@@ -455,61 +914,56 @@ router.get(
       }
 
       const enrichedOrders =
-        (orders || []).map(
-          (order) => {
-            const fixedOrder =
-              forceDigitalPaymentIfXendit(order);
+        normalizedOrders.map((order) => {
+          const items =
+            (orderItems || [])
+              .filter(
+                (item) =>
+                  Number(item.order_id) ===
+                  Number(order.id)
+              )
+              .map((item) => {
+                const menuItem =
+                  menuItems.find(
+                    (menu) =>
+                      Number(menu.id) ===
+                      Number(
+                        item.menu_item_id
+                      )
+                  );
 
-            const items =
-              (orderItems || [])
-                .filter(
-                  (item) =>
-                    Number(item.order_id) ===
-                    Number(order.id)
-                )
-                .map((item) => {
-                  const menuItem =
-                    menuItems.find(
-                      (menu) =>
-                        Number(menu.id) ===
-                        Number(
-                          item.menu_item_id
-                        )
-                    );
+                const price =
+                  Number(
+                    item.price ||
+                    menuItem?.price ||
+                    0
+                  );
 
-                  const price =
-                    Number(
-                      item.price ||
-                      menuItem?.price ||
-                      0
-                    );
+                const quantity =
+                  Number(
+                    item.quantity || 0
+                  );
 
-                  const quantity =
-                    Number(
-                      item.quantity || 0
-                    );
+                return {
+                  ...item,
+                  name:
+                    item.name ||
+                    menuItem?.name ||
+                    'Menu Item',
+                  price,
+                  quantity,
+                  subtotal:
+                    price * quantity,
+                  menu_item:
+                    menuItem || null,
+                };
+              });
 
-                  return {
-                    ...item,
-                    name:
-                      item.name ||
-                      menuItem?.name ||
-                      'Menu Item',
-                    price,
-                    quantity,
-                    subtotal:
-                      price * quantity,
-                    menu_item:
-                      menuItem || null,
-                  };
-                });
-
-            return {
-              ...fixedOrder,
-              items,
-            };
-          }
-        );
+          return {
+            ...order,
+            items,
+          };
+        });
 
       return res.json({
         success: true,
@@ -558,7 +1012,7 @@ router.post('/', async (req, res) => {
     const paymentMethod =
       normalizePaymentMethod(
         req.body.payment_method ||
-        req.body.paymentMethod
+          req.body.paymentMethod
       );
 
     const needInvoice =
@@ -609,17 +1063,17 @@ router.post('/', async (req, res) => {
       });
     }
 
-    if (!items || items.length === 0) {
+    if (
+      !items ||
+      !Array.isArray(items) ||
+      items.length === 0
+    ) {
       return res.status(400).json({
         success: false,
         message:
           'Order must contain items.',
       });
     }
-
-    // =========================
-    // COMPUTE TOTAL AMOUNT
-    // =========================
 
     const totalAmount =
       items.reduce(
@@ -649,8 +1103,8 @@ router.post('/', async (req, res) => {
         const notes =
           String(
             item.special_request ||
-            item.notes ||
-            ''
+              item.notes ||
+              ''
           ).trim();
 
         return notes.length > 0;
@@ -662,10 +1116,6 @@ router.post('/', async (req, res) => {
           'Invalid order total amount.',
       });
     }
-
-    // =========================
-    // MOCK DATABASE
-    // =========================
 
     if (!isConfigured) {
       const mockOrderId =
@@ -679,49 +1129,58 @@ router.post('/', async (req, res) => {
                 .substring(2, 11)
                 .toUpperCase()}`,
             xendit_external_id:
-              buildMockExternalId(mockOrderId),
+              buildMockExternalId(
+                mockOrderId
+              ),
             xendit_invoice_url:
               `https://checkout-staging.xendit.co/web/mock_inv_${Date.now()}`,
             xendit_expiry_date:
-              new Date(
-                Date.now() +
-                24 * 60 * 60 * 1000
-              ).toISOString(),
+              getUtcNowIso(),
           }
         : {
-            xendit_invoice_id: null,
-            xendit_external_id: null,
-            xendit_invoice_url: null,
-            xendit_expiry_date: null,
+            xendit_invoice_id:
+              null,
+            xendit_external_id:
+              null,
+            xendit_invoice_url:
+              null,
+            xendit_expiry_date:
+              null,
           };
 
-      const newOrder = {
-        id: mockOrderId,
-        order_number:
-          `ORD-${Date.now()}`,
-        table_number:
-          finalTableNumber,
-        table_session_id: null,
-        items,
-        total_amount:
-          totalAmount,
-        status:
-          needInvoice
-            ? 'awaiting_payment'
-            : newOrderStatus,
-        payment_method:
-          needInvoice
-            ? 'Digital Payment'
-            : paymentMethod,
-        payment_status:
-          'pending',
-        paid_at: null,
-        created_at:
-          new Date().toISOString(),
-        updated_at:
-          new Date().toISOString(),
-        ...invoiceData,
-      };
+      const now =
+        getUtcNowIso();
+
+      const newOrder =
+        normalizeOrderDateFields({
+          id: mockOrderId,
+          order_number:
+            `ORD-${Date.now()}`,
+          table_number:
+            finalTableNumber,
+          table_session_id:
+            null,
+          items,
+          total_amount:
+            totalAmount,
+          status:
+            needInvoice
+              ? 'awaiting_payment'
+              : newOrderStatus,
+          payment_method:
+            needInvoice
+              ? 'Digital Payment'
+              : paymentMethod,
+          payment_status:
+            'pending',
+          paid_at:
+            null,
+          created_at:
+            now,
+          updated_at:
+            now,
+          ...invoiceData,
+        });
 
       db.orders.push(newOrder);
 
@@ -729,8 +1188,10 @@ router.post('/', async (req, res) => {
         success: true,
         message:
           'Order created successfully.',
-        data: newOrder,
-        order_id: newOrder.id,
+        data:
+          newOrder,
+        order_id:
+          newOrder.id,
         payment_status:
           newOrder.payment_status,
         payment_method:
@@ -744,10 +1205,6 @@ router.post('/', async (req, res) => {
       });
     }
 
-    // =========================
-    // FIND RESTAURANT TABLE
-    // =========================
-
     const {
       data: restaurantTable,
       error: tableError,
@@ -760,7 +1217,10 @@ router.post('/', async (req, res) => {
       )
       .single();
 
-    if (tableError || !restaurantTable) {
+    if (
+      tableError ||
+      !restaurantTable
+    ) {
       console.log(
         'RESTAURANT TABLE ERROR:',
         tableError
@@ -777,10 +1237,6 @@ router.post('/', async (req, res) => {
       normalizeTableStatus(
         restaurantTable.status
       );
-
-    // =========================
-    // FIND ACTIVE TABLE SESSION
-    // =========================
 
     const {
       data: activeSession,
@@ -812,152 +1268,29 @@ router.post('/', async (req, res) => {
       });
     }
 
-    // =========================
-    // CHECK INVENTORY FIRST
-    // =========================
+    const inventoryValidation =
+      await validateDailyInventoryItems(
+        items
+      );
 
-    for (const item of items) {
-      const menuItemId =
-        item.menu_item_id ||
-        item.id;
-
-      const orderedQty =
-        Number(item.quantity);
-
-      if (
-        !menuItemId ||
-        !orderedQty ||
-        orderedQty <= 0
-      ) {
-        return res.status(400).json({
+    if (!inventoryValidation.valid) {
+      return res
+        .status(
+          inventoryValidation.status ||
+            422
+        )
+        .json({
           success: false,
           message:
-            'Invalid order item quantity.',
+            inventoryValidation.message,
         });
-      }
-
-      const {
-        data: menuItem,
-        error: menuItemError,
-      } = await supabase
-        .from('menu_items')
-        .select('id, name, category')
-        .eq('id', menuItemId)
-        .single();
-
-      if (menuItemError || !menuItem) {
-        return res.status(404).json({
-          success: false,
-          message:
-            'Menu item not found.',
-        });
-      }
-
-      const isChefOppaSpecial =
-        String(menuItem.category || '')
-          .trim()
-          .toLowerCase() ===
-        'chef oppa special';
-
-      if (isChefOppaSpecial) {
-        continue;
-      }
-
-      const maxServings =
-        await computeMaxServingsFromRecipes(
-          supabase,
-          menuItemId
-        );
-
-      if (maxServings <= 0) {
-        return res.status(422).json({
-          success: false,
-          message:
-            `${menuItem.name} is out of stock.`,
-        });
-      }
-
-      if (orderedQty > maxServings) {
-        return res.status(422).json({
-          success: false,
-          message:
-            `${menuItem.name} only has ${maxServings} orders left.`,
-        });
-      }
-
-      const {
-        data: recipeRows,
-        error: recipeError,
-      } = await supabase
-        .from('menu_item_ingredients')
-        .select('*')
-        .eq('menu_item_id', menuItemId);
-
-      if (
-        recipeError ||
-        !recipeRows ||
-        recipeRows.length === 0
-      ) {
-        return res.status(422).json({
-          success: false,
-          message:
-            `${menuItem.name} is out of stock.`,
-        });
-      }
-
-      for (const recipe of recipeRows) {
-        const ingredientId =
-          recipe.ingredient_id;
-
-        const quantityRequired =
-          Number(
-            recipe.quantity_required
-          );
-
-        const totalNeeded =
-          quantityRequired * orderedQty;
-
-        const {
-          data: ingredientRow,
-          error: ingredientError,
-        } = await supabase
-          .from('ingredients')
-          .select('id, name, current_stock')
-          .eq('id', ingredientId)
-          .single();
-
-        if (ingredientError || !ingredientRow) {
-          return res.status(400).json({
-            success: false,
-            message:
-              `${menuItem.name} has missing ingredient data.`,
-          });
-        }
-
-        const currentStock =
-          Number(
-            ingredientRow.current_stock
-          );
-
-        if (currentStock < totalNeeded) {
-          return res.status(422).json({
-            success: false,
-            message:
-              `Cannot place order. Not enough stock for ${ingredientRow.name}.`,
-          });
-        }
-      }
     }
-
-    // =========================
-    // CREATE ORDER
-    // =========================
 
     const orderNumber =
       `ORD-${Date.now()}`;
 
     const now =
-      new Date().toISOString();
+      getUtcNowIso();
 
     const orderPayload = {
       order_number:
@@ -997,7 +1330,10 @@ router.post('/', async (req, res) => {
       )
       .single();
 
-    if (orderError || !createdOrder) {
+    if (
+      orderError ||
+      !createdOrder
+    ) {
       console.log(
         'ORDER INSERT ERROR:',
         orderError
@@ -1014,13 +1350,10 @@ router.post('/', async (req, res) => {
     const orderId =
       createdOrder.id;
 
-    // =========================
-    // CREATE ORDER ITEMS
-    // =========================
-
     const orderItemsPayload =
       items.map((item) => ({
-        order_id: orderId,
+        order_id:
+          orderId,
         menu_item_id:
           item.menu_item_id ||
           item.id,
@@ -1058,10 +1391,6 @@ router.post('/', async (req, res) => {
       });
     }
 
-    // =========================
-    // UPDATE RESTAURANT TABLE
-    // =========================
-
     const {
       error: tableUpdateError,
     } = await supabase
@@ -1072,7 +1401,7 @@ router.post('/', async (req, res) => {
         notes:
           'Tablet order',
         updated_at:
-          new Date().toISOString(),
+          getUtcNowIso(),
       })
       .eq(
         'table_number',
@@ -1092,198 +1421,6 @@ router.post('/', async (req, res) => {
           'Order created but failed to update table assignment.',
       });
     }
-
-    // =========================
-    // INVENTORY DEDUCTION
-    // =========================
-
-    for (const item of items) {
-      const menuItemId =
-        item.menu_item_id ||
-        item.id;
-
-      const orderedQty =
-        Number(item.quantity);
-
-      const {
-        data: menuItem,
-        error: menuItemError,
-      } = await supabase
-        .from('menu_items')
-        .select('id, category')
-        .eq('id', menuItemId)
-        .single();
-
-      if (menuItemError || !menuItem) {
-        continue;
-      }
-
-      const isChefOppaSpecial =
-        String(menuItem.category || '')
-          .trim()
-          .toLowerCase() ===
-        'chef oppa special';
-
-      if (isChefOppaSpecial) {
-        continue;
-      }
-
-      const {
-        data: recipeRows,
-        error: recipeError,
-      } = await supabase
-        .from('menu_item_ingredients')
-        .select('*')
-        .eq('menu_item_id', menuItemId);
-
-      if (recipeError) {
-        console.log(
-          'RECIPE ERROR:',
-          recipeError
-        );
-
-        continue;
-      }
-
-      for (const recipe of recipeRows || []) {
-        const ingredientId =
-          recipe.ingredient_id;
-
-        const totalNeeded =
-          Number(
-            recipe.quantity_required
-          ) * orderedQty;
-
-        const {
-          data: ingredientRow,
-          error: ingredientError,
-        } = await supabase
-          .from('ingredients')
-          .select('id,current_stock')
-          .eq('id', ingredientId)
-          .single();
-
-        if (
-          ingredientError ||
-          !ingredientRow
-        ) {
-          console.log(
-            'INGREDIENT ERROR:',
-            ingredientError
-          );
-
-          continue;
-        }
-
-        const newStock =
-          Number(
-            ingredientRow.current_stock
-          ) - totalNeeded;
-
-        const {
-          error: updateError,
-        } = await supabase
-          .from('ingredients')
-          .update({
-            current_stock:
-              newStock,
-          })
-          .eq('id', ingredientId);
-
-        if (updateError) {
-          console.log(
-            'INGREDIENT UPDATE ERROR:',
-            updateError
-          );
-        }
-
-        let remainingNeeded =
-          totalNeeded;
-
-        const {
-          data: batchRows,
-          error: batchError,
-        } = await supabase
-          .from('inventory_batches')
-          .select('*')
-          .eq(
-            'ingredient_id',
-            ingredientId
-          )
-          .eq('status', 'active')
-          .order('received_date', {
-            ascending: true,
-          });
-
-        if (batchError) {
-          console.log(
-            'BATCH ERROR:',
-            batchError
-          );
-
-          continue;
-        }
-
-        for (const batch of batchRows || []) {
-          if (remainingNeeded <= 0) {
-            break;
-          }
-
-          const available =
-            Number(
-              batch.quantity_remaining
-            );
-
-          if (available <= 0) {
-            continue;
-          }
-
-          const deductAmount =
-            Math.min(
-              available,
-              remainingNeeded
-            );
-
-          const updatedRemaining =
-            available - deductAmount;
-
-          await supabase
-            .from('inventory_batches')
-            .update({
-              quantity_remaining:
-                updatedRemaining,
-            })
-            .eq('id', batch.id);
-
-          remainingNeeded -=
-            deductAmount;
-        }
-
-        const {
-          error: usageError,
-        } = await supabase
-          .from('ingredient_usages')
-          .insert({
-            ingredient_id:
-              ingredientId,
-            order_id:
-              orderId,
-            quantity_used:
-              totalNeeded,
-          });
-
-        if (usageError) {
-          console.log(
-            'USAGE ERROR:',
-            usageError
-          );
-        }
-      }
-    }
-
-    // =========================
-    // CREATE XENDIT INVOICE
-    // =========================
 
     if (needInvoice) {
       try {
@@ -1308,7 +1445,7 @@ router.post('/', async (req, res) => {
           xendit_invoice_url:
             invoice.invoice_url,
           updated_at:
-            new Date().toISOString(),
+            getUtcNowIso(),
         };
 
         if (invoice.expiry_date) {
@@ -1385,8 +1522,8 @@ router.post('/', async (req, res) => {
         console.log(
           'XENDIT INVOICE CREATION ERROR:',
           invoiceError.response?.data ||
-          invoiceError.message ||
-          invoiceError
+            invoiceError.message ||
+            invoiceError
         );
 
         return res.status(500).json({
@@ -1405,10 +1542,6 @@ router.post('/', async (req, res) => {
       forceDigitalPaymentIfXendit(
         createdOrder
       );
-
-    // =========================
-    // SUCCESS RESPONSE
-    // =========================
 
     return res.status(201).json({
       success: true,
@@ -1476,11 +1609,12 @@ router.get('/:id', async (req, res) => {
     }
 
     if (!isConfigured) {
-      const order = db.orders.find(
-        (o) =>
-          Number(o.id) ===
-          Number(orderId)
-      );
+      const order =
+        db.orders.find(
+          (o) =>
+            Number(o.id) ===
+            Number(orderId)
+        );
 
       if (order) {
         return res.json({
@@ -1494,7 +1628,8 @@ router.get('/:id', async (req, res) => {
 
       return res.status(404).json({
         success: false,
-        message: 'Not found',
+        message:
+          'Not found',
       });
     }
 
@@ -1506,13 +1641,20 @@ router.get('/:id', async (req, res) => {
       .select(
         'id, order_number, table_number, table_session_id, status, payment_status, payment_method, total_amount, created_at, updated_at, paid_at, xendit_invoice_id, xendit_external_id, xendit_invoice_url, xendit_expiry_date'
       )
-      .eq('id', orderId)
+      .eq(
+        'id',
+        orderId
+      )
       .single();
 
-    if (orderError || !orderRow) {
+    if (
+      orderError ||
+      !orderRow
+    ) {
       return res.status(404).json({
         success: false,
-        message: 'Not found',
+        message:
+          'Not found',
       });
     }
 
@@ -1535,17 +1677,25 @@ router.get('/:id', async (req, res) => {
           payment_method:
             'Digital Payment',
           updated_at:
-            new Date().toISOString(),
+            getUtcNowIso(),
         })
-        .eq('id', orderId)
+        .eq(
+          'id',
+          orderId
+        )
         .select(
           'id, order_number, table_number, table_session_id, status, payment_status, payment_method, total_amount, created_at, updated_at, paid_at, xendit_invoice_id, xendit_external_id, xendit_invoice_url, xendit_expiry_date'
         )
         .single();
 
-      if (!correctionError && correctedOrder) {
+      if (
+        !correctionError &&
+        correctedOrder
+      ) {
         fixedOrderRow =
-          correctedOrder;
+          forceDigitalPaymentIfXendit(
+            correctedOrder
+          );
       }
     }
 
@@ -1555,7 +1705,10 @@ router.get('/:id', async (req, res) => {
     } = await supabase
       .from('order_items')
       .select('*')
-      .eq('order_id', orderId);
+      .eq(
+        'order_id',
+        orderId
+      );
 
     if (itemsError) {
       throw itemsError;
@@ -1597,46 +1750,51 @@ router.get('/:id', async (req, res) => {
     }
 
     const enrichedItems =
-      (orderItems || []).map((item) => {
-        const menuItem =
-          menuItems.find(
-            (menu) =>
-              Number(menu.id) ===
-              Number(item.menu_item_id)
-          );
+      (orderItems || []).map(
+        (item) => {
+          const menuItem =
+            menuItems.find(
+              (menu) =>
+                Number(menu.id) ===
+                Number(
+                  item.menu_item_id
+                )
+            );
 
-        const price =
-          Number(
-            item.price ||
-            menuItem?.price ||
-            0
-          );
+          const price =
+            Number(
+              item.price ||
+              menuItem?.price ||
+              0
+            );
 
-        const quantity =
-          Number(
-            item.quantity || 0
-          );
+          const quantity =
+            Number(
+              item.quantity || 0
+            );
 
-        return {
-          ...item,
-          name:
-            item.name ||
-            menuItem?.name ||
-            'Menu Item',
-          price,
-          quantity,
-          subtotal:
-            price * quantity,
-          menu_item:
-            menuItem || null,
-        };
-      });
+          return {
+            ...item,
+            name:
+              item.name ||
+              menuItem?.name ||
+              'Menu Item',
+            price,
+            quantity,
+            subtotal:
+              price * quantity,
+            menu_item:
+              menuItem || null,
+          };
+        }
+      );
 
     return res.json({
       success: true,
       data: {
         ...fixedOrderRow,
-        items: enrichedItems,
+        items:
+          enrichedItems,
       },
       order_id:
         fixedOrderRow.id,

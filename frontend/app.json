@@ -1,13 +1,13 @@
 {
   "expo": {
-    "name": "DineSync",
+    "name": "DineSync+",
     "slug": "dinesync",
     "version": "1.0.0",
     "orientation": "default",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/dinesync-icon.png",
     "userInterfaceStyle": "automatic",
     "splash": {
-      "image": "./assets/splash-icon.png",
+      "image": "./assets/dinesync-icon.png",
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
@@ -19,7 +19,7 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
+        "foregroundImage": "./assets/dinesync-icon.png",
         "backgroundColor": "#ffffff"
       }
     },

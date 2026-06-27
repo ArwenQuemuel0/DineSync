@@ -10,6 +10,95 @@ const {
 } = require('../utils/tableStatus');
 
 // =========================
+// DATE / TIME HELPERS
+// IMPORTANT:
+// Backend stores UTC.
+// Mobile displays using Asia/Manila.
+// This prevents timestamp strings without timezone
+// from being parsed incorrectly by React Native.
+// =========================
+
+const getUtcNowIso = () => {
+  return new Date().toISOString();
+};
+
+const normalizeUtcIsoDate = (value) => {
+  if (!value) {
+    return null;
+  }
+
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime())
+      ? null
+      : value.toISOString();
+  }
+
+  const stringValue =
+    String(value).trim();
+
+  if (!stringValue) {
+    return null;
+  }
+
+  const hasTimezone =
+    /z$/i.test(stringValue) ||
+    /[+-]\d{2}:\d{2}$/.test(stringValue);
+
+  const safeValue =
+    hasTimezone
+      ? stringValue
+      : `${stringValue}Z`;
+
+  const date =
+    new Date(safeValue);
+
+  if (
+    Number.isNaN(
+      date.getTime()
+    )
+  ) {
+    return stringValue;
+  }
+
+  return date.toISOString();
+};
+
+const normalizeDateFields = (row) => {
+  if (!row) {
+    return row;
+  }
+
+  return {
+    ...row,
+
+    created_at:
+      normalizeUtcIsoDate(
+        row.created_at
+      ),
+
+    updated_at:
+      normalizeUtcIsoDate(
+        row.updated_at
+      ),
+
+    last_seen_at:
+      normalizeUtcIsoDate(
+        row.last_seen_at
+      ),
+
+    paid_at:
+      normalizeUtcIsoDate(
+        row.paid_at
+      ),
+
+    xendit_expiry_date:
+      normalizeUtcIsoDate(
+        row.xendit_expiry_date
+      ),
+  };
+};
+
+// =========================
 // PAYMENT DISPLAY SAFETY
 // If an order has Xendit fields, it is QR PH / Digital Payment.
 // This prevents old/missing payment_method rows from showing Pay Later.
@@ -28,14 +117,17 @@ const forceDigitalPaymentIfXendit = (order) => {
     return order;
   }
 
-  if (hasXenditInvoice(order)) {
+  const normalizedOrder =
+    normalizeDateFields(order);
+
+  if (hasXenditInvoice(normalizedOrder)) {
     return {
-      ...order,
+      ...normalizedOrder,
       payment_method: 'Digital Payment',
     };
   }
 
-  return order;
+  return normalizedOrder;
 };
 
 // =========================
@@ -143,7 +235,8 @@ const getLoggedInTableUser = async (req) => {
 
   return {
     error: null,
-    user,
+    user:
+      normalizeDateFields(user),
   };
 };
 
@@ -175,7 +268,10 @@ const getRestaurantTableByNumber = async (
 
   return {
     error: null,
-    restaurantTable,
+    restaurantTable:
+      normalizeDateFields(
+        restaurantTable
+      ),
   };
 };
 
@@ -213,7 +309,7 @@ const getActiveTableSession = async (
     error: null,
     session:
       data && data.length > 0
-        ? data[0]
+        ? normalizeDateFields(data[0])
         : null,
   };
 };
@@ -226,7 +322,7 @@ const createTableSession = async (
   restaurantTable
 ) => {
   const now =
-    new Date().toISOString();
+    getUtcNowIso();
 
   const sessionPayload = {
     restaurant_table_id:
@@ -258,7 +354,8 @@ const createTableSession = async (
 
   return {
     error: null,
-    session: data,
+    session:
+      normalizeDateFields(data),
   };
 };
 
@@ -365,7 +462,7 @@ router.post('/online', async (req, res) => {
     }
 
     const now =
-      new Date().toISOString();
+      getUtcNowIso();
 
     const {
       data: updatedUser,
@@ -386,13 +483,18 @@ router.post('/online', async (req, res) => {
       throw userUpdateError;
     }
 
+    const normalizedUpdatedUser =
+      normalizeDateFields(
+        updatedUser
+      );
+
     const {
       error: statusError,
       payload: tableStatus,
     } =
       await fetchTableStatusForUser(
         supabase,
-        updatedUser,
+        normalizedUpdatedUser,
         getRestaurantTableByNumber,
         getActiveTableSession
       );
@@ -405,14 +507,15 @@ router.post('/online', async (req, res) => {
     }
 
     console.log(
-      `TABLET ${updatedUser.table_number} IS NOW ONLINE`
+      `TABLET ${normalizedUpdatedUser.table_number} IS NOW ONLINE`
     );
 
     return res.json({
       success: true,
       message:
         'Tablet marked as online.',
-      data: updatedUser,
+      data:
+        normalizedUpdatedUser,
       ...tableStatus,
     });
   } catch (error) {
@@ -458,7 +561,7 @@ router.post('/heartbeat', async (req, res) => {
     }
 
     const now =
-      new Date().toISOString();
+      getUtcNowIso();
 
     const {
       data,
@@ -479,13 +582,16 @@ router.post('/heartbeat', async (req, res) => {
       throw error;
     }
 
+    const normalizedData =
+      normalizeDateFields(data);
+
     const {
       error: statusError,
       payload: tableStatus,
     } =
       await fetchTableStatusForUser(
         supabase,
-        data,
+        normalizedData,
         getRestaurantTableByNumber,
         getActiveTableSession
       );
@@ -501,7 +607,8 @@ router.post('/heartbeat', async (req, res) => {
       success: true,
       message:
         'Tablet heartbeat received.',
-      data,
+      data:
+        normalizedData,
       ...tableStatus,
     });
   } catch (error) {
@@ -547,7 +654,7 @@ router.post('/offline', async (req, res) => {
     }
 
     const now =
-      new Date().toISOString();
+      getUtcNowIso();
 
     const {
       error: tableError,
@@ -591,7 +698,8 @@ router.post('/offline', async (req, res) => {
       success: true,
       message:
         'Tablet marked as offline. Table session preserved.',
-      data,
+      data:
+        normalizeDateFields(data),
     });
   } catch (error) {
     console.error(
@@ -754,8 +862,13 @@ router.get('/order-history', async (req, res) => {
       throw ordersError;
     }
 
-    const orderIds =
+    const normalizedOrders =
       (orders || []).map(
+        forceDigitalPaymentIfXendit
+      );
+
+    const orderIds =
+      normalizedOrders.map(
         (order) => order.id
       );
 
@@ -764,7 +877,9 @@ router.get('/order-history', async (req, res) => {
         success: true,
         data: [],
         session:
-          activeSession,
+          normalizeDateFields(
+            activeSession
+          ),
       });
     }
 
@@ -819,12 +934,7 @@ router.get('/order-history', async (req, res) => {
     }
 
     const enrichedOrders =
-      (orders || []).map((order) => {
-        const fixedOrder =
-          forceDigitalPaymentIfXendit(
-            order
-          );
-
+      normalizedOrders.map((order) => {
         const items =
           (orderItems || [])
             .filter(
@@ -870,7 +980,7 @@ router.get('/order-history', async (req, res) => {
             });
 
         return {
-          ...fixedOrder,
+          ...order,
           items,
         };
       });
@@ -880,7 +990,9 @@ router.get('/order-history', async (req, res) => {
       data:
         enrichedOrders,
       session:
-        activeSession,
+        normalizeDateFields(
+          activeSession
+        ),
     });
   } catch (error) {
     console.error(

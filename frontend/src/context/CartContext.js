@@ -13,11 +13,8 @@ import { getMenu } from '../api/dinesync';
 
 import {
   getItemId,
-  getMaxOrderQuantity,
   isItemOrderable,
   isOutOfStock,
-  canIncreaseQuantity,
-  getQuantityLimitMessage,
   validateCartInventory,
   pickInventoryFields,
   buildInventoryMap,
@@ -76,45 +73,24 @@ const hasDailyLimit = (item) => {
   );
 };
 
-const toNumber = (value) => {
+const toNumberOrNull = (value) => {
+  if (
+    value === null ||
+    value === undefined ||
+    value === ''
+  ) {
+    return null;
+  }
+
   const numberValue =
     Number(value);
 
   return Number.isFinite(numberValue)
     ? numberValue
-    : 0;
+    : null;
 };
 
-const getRemainingToday = (item) => {
-  return toNumber(
-    item?.remaining_today
-  );
-};
-
-const getSafeMaxOrderQuantity = (
-  item
-) => {
-  const importedMax =
-    getMaxOrderQuantity(item);
-
-  if (
-    importedMax !== null &&
-    importedMax !== undefined &&
-    Number.isFinite(
-      Number(importedMax)
-    )
-  ) {
-    return Number(importedMax);
-  }
-
-  return toNumber(
-    item?.max_order_quantity
-  );
-};
-
-const getAllowedOrderQuantity = (
-  item
-) => {
+const getMobileMaxQuantity = (item) => {
   if (!item) {
     return 0;
   }
@@ -124,30 +100,30 @@ const getAllowedOrderQuantity = (
   }
 
   const maxOrderQuantity =
-    getSafeMaxOrderQuantity(item);
+    toNumberOrNull(
+      item?.max_order_quantity
+    );
 
   const remainingToday =
-    getRemainingToday(item);
-
-  if (
-    maxOrderQuantity > 0 &&
-    remainingToday > 0
-  ) {
-    return Math.min(
-      maxOrderQuantity,
-      remainingToday
+    toNumberOrNull(
+      item?.remaining_today
     );
-  }
 
-  if (maxOrderQuantity > 0) {
-    return maxOrderQuantity;
-  }
+  const fallbackQuantity =
+    toNumberOrNull(
+      item?.available_quantity
+    );
 
-  if (remainingToday > 0) {
-    return remainingToday;
-  }
+  const selectedQuantity =
+    maxOrderQuantity ??
+    remainingToday ??
+    fallbackQuantity ??
+    1;
 
-  return 0;
+  return Math.max(
+    0,
+    Number(selectedQuantity) || 0
+  );
 };
 
 const isValidDailyInventoryMenuItem = (
@@ -187,16 +163,7 @@ const isValidDailyInventoryMenuItem = (
     return false;
   }
 
-  const remainingToday =
-    getRemainingToday(item);
-
-  const maxOrderQuantity =
-    getSafeMaxOrderQuantity(item);
-
-  return (
-    remainingToday > 0 ||
-    maxOrderQuantity > 0
-  );
+  return getMobileMaxQuantity(item) > 0;
 };
 
 const getDailyInventoryMessage = (
@@ -237,12 +204,21 @@ const getDailyInventoryMessage = (
 
   if (
     inventoryType !== 'custom' &&
-    getAllowedOrderQuantity(item) <= 0
+    getMobileMaxQuantity(item) <= 0
   ) {
     return 'This item is sold out for today.';
   }
 
   return 'This item is not available today.';
+};
+
+const getQuantityLimitMessage = (
+  item
+) => {
+  const maxQuantity =
+    getMobileMaxQuantity(item);
+
+  return `You can only order up to ${maxQuantity} of this item today.`;
 };
 
 const mergeAndClampCartItem = (
@@ -258,7 +234,16 @@ const mergeAndClampCartItem = (
     ...menuInventory,
     max_order_quantity:
       menuInventory.max_order_quantity ??
-      getSafeMaxOrderQuantity(cartItem),
+      cartItem.max_order_quantity,
+    remaining_today:
+      menuInventory.remaining_today ??
+      cartItem.remaining_today,
+    daily_limit:
+      menuInventory.daily_limit ??
+      cartItem.daily_limit,
+    inventory_type:
+      menuInventory.inventory_type ??
+      cartItem.inventory_type,
   };
 
   if (isCustomItem(merged)) {
@@ -278,23 +263,23 @@ const mergeAndClampCartItem = (
     };
   }
 
-  const max =
-    getAllowedOrderQuantity(merged);
+  const maxQuantity =
+    getMobileMaxQuantity(merged);
 
   const quantity =
     Number(cartItem.quantity) || 0;
 
-  if (max <= 0) {
+  if (maxQuantity <= 0) {
     return {
       ...merged,
       quantity: 0,
     };
   }
 
-  if (quantity > max) {
+  if (quantity > maxQuantity) {
     return {
       ...merged,
-      quantity: max,
+      quantity: maxQuantity,
     };
   }
 
@@ -347,13 +332,13 @@ const validateDailyInventoryCartItems =
         };
       }
 
-      const allowedQuantity =
-        getAllowedOrderQuantity(cartItem);
+      const maxQuantity =
+        getMobileMaxQuantity(cartItem);
 
       const requestedQuantity =
         Number(cartItem.quantity || 0);
 
-      if (allowedQuantity <= 0) {
+      if (maxQuantity <= 0) {
         return {
           valid: false,
           message:
@@ -363,12 +348,12 @@ const validateDailyInventoryCartItems =
 
       if (
         requestedQuantity >
-        allowedQuantity
+        maxQuantity
       ) {
         return {
           valid: false,
           message:
-            `${cartItem?.name || 'An item'} only has ${allowedQuantity} available today.`,
+            `${cartItem?.name || 'An item'} only has ${maxQuantity} available today.`,
         };
       }
     }
@@ -778,13 +763,13 @@ export const CartProvider = ({
       return false;
     }
 
-    const allowedQuantity =
-      getAllowedOrderQuantity(
+    const maxQuantity =
+      getMobileMaxQuantity(
         orderableItem
       );
 
     if (
-      allowedQuantity <= 0 &&
+      maxQuantity <= 0 &&
       !customItem
     ) {
       Alert.alert(
@@ -815,14 +800,6 @@ export const CartProvider = ({
         ? Number(existing.quantity) || 0
         : 0;
 
-      const enrichedExisting =
-        existing
-          ? resolveLiveItem({
-              ...existing,
-              ...inventoryFields,
-            })
-          : orderableItem;
-
       if (
         customItem &&
         currentQty >= 1
@@ -833,15 +810,8 @@ export const CartProvider = ({
 
       if (
         !customItem &&
-        (
-          currentQty + addQty >
-            allowedQuantity ||
-          !canIncreaseQuantity(
-            enrichedExisting,
-            currentQty,
-            addQty
-          )
-        )
+        currentQty + addQty >
+          maxQuantity
       ) {
         limitReached = true;
         return prevItems;
@@ -850,7 +820,10 @@ export const CartProvider = ({
       const nextQty =
         customItem
           ? 1
-          : currentQty + addQty;
+          : Math.min(
+              currentQty + addQty,
+              maxQuantity
+            );
 
       let nextItems;
 
@@ -895,7 +868,10 @@ export const CartProvider = ({
             menu_item_id: itemId,
             quantity: customItem
               ? 1
-              : addQty,
+              : Math.min(
+                  addQty,
+                  maxQuantity
+                ),
             price: customItem
               ? 0
               : Number(
@@ -937,8 +913,7 @@ export const CartProvider = ({
         'Limited Stock',
         getQuantityLimitMessage(
           orderableItem
-        ) ||
-          `You can only order up to ${allowedQuantity} of this item today.`
+        )
       );
 
       return false;
@@ -995,14 +970,14 @@ export const CartProvider = ({
         return prevItems;
       }
 
-      const allowedQuantity =
-        getAllowedOrderQuantity(
+      const maxQuantity =
+        getMobileMaxQuantity(
           enrichedItem
         );
 
       if (
         isOutOfStock(enrichedItem) ||
-        allowedQuantity <= 0
+        maxQuantity <= 0
       ) {
         limitReached = true;
         limitItem = enrichedItem;
@@ -1011,12 +986,7 @@ export const CartProvider = ({
 
       if (
         currentQty + 1 >
-          allowedQuantity ||
-        !canIncreaseQuantity(
-          enrichedItem,
-          currentQty,
-          1
-        )
+        maxQuantity
       ) {
         limitReached = true;
         limitItem = enrichedItem;
@@ -1030,7 +1000,10 @@ export const CartProvider = ({
             ? {
                 ...enrichedItem,
                 quantity:
-                  currentQty + 1,
+                  Math.min(
+                    currentQty + 1,
+                    maxQuantity
+                  ),
               }
             : item
         );
@@ -1173,15 +1146,15 @@ export const CartProvider = ({
         return prevItems;
       }
 
-      const allowedQuantity =
-        getAllowedOrderQuantity(
+      const maxQuantity =
+        getMobileMaxQuantity(
           enrichedItem
         );
 
       if (
         isOutOfStock(enrichedItem) ||
-        allowedQuantity <= 0 ||
-        nextQty > allowedQuantity
+        maxQuantity <= 0 ||
+        nextQty > maxQuantity
       ) {
         limitReached = true;
         limitItem = enrichedItem;
@@ -1194,7 +1167,11 @@ export const CartProvider = ({
           normalizedId
             ? {
                 ...enrichedItem,
-                quantity: nextQty,
+                quantity:
+                  Math.min(
+                    nextQty,
+                    maxQuantity
+                  ),
               }
             : item
         );

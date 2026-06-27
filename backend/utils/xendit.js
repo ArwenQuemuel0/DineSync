@@ -2,6 +2,11 @@
 // XENDIT CONFIG HELPERS
 // =========================
 
+const APP_TIME_ZONE =
+  process.env.APP_TIMEZONE ||
+  process.env.TZ ||
+  'Asia/Manila';
+
 const getXenditSecretKey = () => {
   return process.env.XENDIT_SECRET_KEY;
 };
@@ -54,6 +59,61 @@ const getKeyFingerprint = () => {
 };
 
 // =========================
+// MANILA TIMESTAMP HELPER
+// Required format:
+// YYYYMMDDHHmm
+// =========================
+
+const getManilaTimestamp = () => {
+  const parts =
+    new Intl.DateTimeFormat(
+      'en-CA',
+      {
+        timeZone:
+          APP_TIME_ZONE,
+        year:
+          'numeric',
+        month:
+          '2-digit',
+        day:
+          '2-digit',
+        hour:
+          '2-digit',
+        minute:
+          '2-digit',
+        hour12:
+          false,
+      }
+    ).formatToParts(new Date());
+
+  const getPart = (type) => {
+    return (
+      parts.find(
+        (part) =>
+          part.type === type
+      )?.value || ''
+    );
+  };
+
+  const year =
+    getPart('year');
+
+  const month =
+    getPart('month');
+
+  const day =
+    getPart('day');
+
+  const hour =
+    getPart('hour');
+
+  const minute =
+    getPart('minute');
+
+  return `${year}${month}${day}${hour}${minute}`;
+};
+
+// =========================
 // BUILD EXTERNAL ID
 // Required format:
 // ORDER-{order_id}-{timestamp}
@@ -63,32 +123,56 @@ const getKeyFingerprint = () => {
 // =========================
 
 const buildExternalId = (orderId) => {
-  const now =
-    new Date();
-
-  const year =
-    now.getFullYear();
-
-  const month =
-    String(now.getMonth() + 1)
-      .padStart(2, '0');
-
-  const day =
-    String(now.getDate())
-      .padStart(2, '0');
-
-  const hour =
-    String(now.getHours())
-      .padStart(2, '0');
-
-  const minute =
-    String(now.getMinutes())
-      .padStart(2, '0');
-
   const timestamp =
-    `${year}${month}${day}${hour}${minute}`;
+    getManilaTimestamp();
 
   return `ORDER-${orderId}-${timestamp}`;
+};
+
+// =========================
+// DATE NORMALIZER
+// Keep Xendit expiry date safe as ISO UTC
+// =========================
+
+const normalizeUtcIsoDate = (value) => {
+  if (!value) {
+    return null;
+  }
+
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime())
+      ? null
+      : value.toISOString();
+  }
+
+  const stringValue =
+    String(value).trim();
+
+  if (!stringValue) {
+    return null;
+  }
+
+  const hasTimezone =
+    /z$/i.test(stringValue) ||
+    /[+-]\d{2}:\d{2}$/.test(stringValue);
+
+  const safeValue =
+    hasTimezone
+      ? stringValue
+      : `${stringValue}Z`;
+
+  const date =
+    new Date(safeValue);
+
+  if (
+    Number.isNaN(
+      date.getTime()
+    )
+  ) {
+    return stringValue;
+  }
+
+  return date.toISOString();
 };
 
 // =========================
@@ -146,6 +230,8 @@ async function createInvoice(
         Number(amount),
       table_number:
         tableNumber,
+      timezone:
+        APP_TIME_ZONE,
     }
   );
 
@@ -249,6 +335,11 @@ async function createInvoice(
     );
   }
 
+  const normalizedExpiryDate =
+    normalizeUtcIsoDate(
+      data.expiry_date
+    );
+
   console.log(
     '[XENDIT] Invoice created successfully. SAVE THESE EXACT VALUES:',
     {
@@ -259,7 +350,7 @@ async function createInvoice(
       xendit_invoice_url:
         data.invoice_url,
       xendit_expiry_date:
-        data.expiry_date || null,
+        normalizedExpiryDate,
     }
   );
 
@@ -274,7 +365,7 @@ async function createInvoice(
       data.invoice_url,
 
     expiry_date:
-      data.expiry_date || null,
+      normalizedExpiryDate,
   };
 }
 

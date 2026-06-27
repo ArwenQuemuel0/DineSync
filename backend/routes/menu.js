@@ -7,10 +7,16 @@ const {
   isConfigured,
 } = require('../supabaseClient');
 
-const {
-  computeMaxServingsFromRecipes,
-  enrichMenuItemInventory,
-} = require('../utils/inventoryServings');
+// =========================
+// DAILY INVENTORY SETTINGS
+// =========================
+
+const VALID_NORMAL_INVENTORY_TYPES = [
+  'per_order',
+  'per_head',
+];
+
+const MANILA_UTC_OFFSET_HOURS = 8;
 
 // =========================
 // REQUIRE SUPABASE
@@ -29,13 +35,161 @@ const requireSupabase = (res) => {
 };
 
 // =========================
+// BASIC HELPERS
+// =========================
+
+const normalizeText = (value) => {
+  return String(value || '')
+    .trim()
+    .toLowerCase();
+};
+
+const normalizeInventoryType = (value) => {
+  return normalizeText(value)
+    .replace(/[-\s]+/g, '_');
+};
+
+const toNumberOrNull = (value) => {
+  if (
+    value === null ||
+    value === undefined ||
+    value === ''
+  ) {
+    return null;
+  }
+
+  const numeric =
+    Number(value);
+
+  return Number.isFinite(numeric)
+    ? numeric
+    : null;
+};
+
+const toNumberOrZero = (value) => {
+  const numeric =
+    Number(value);
+
+  return Number.isFinite(numeric)
+    ? numeric
+    : 0;
+};
+
+const isAvailableTrue = (value) => {
+  return (
+    value === true ||
+    value === 1 ||
+    value === '1' ||
+    normalizeText(value) === 'true' ||
+    normalizeText(value) === 'yes' ||
+    normalizeText(value) === 'available'
+  );
+};
+
+const isCustomMenuItem = (item) => {
+  const category =
+    normalizeText(item?.category);
+
+  const inventoryType =
+    normalizeInventoryType(
+      item?.inventory_type
+    );
+
+  const name =
+    normalizeText(item?.name);
+
+  return (
+    category === 'chef oppa special' ||
+    inventoryType === 'custom' ||
+    name.includes(
+      'custom chef oppa special'
+    )
+  );
+};
+
+const hasDailyInventorySetup = (item) => {
+  const inventoryType =
+    normalizeInventoryType(
+      item?.inventory_type
+    );
+
+  const dailyLimit =
+    toNumberOrNull(
+      item?.daily_limit
+    );
+
+  return (
+    VALID_NORMAL_INVENTORY_TYPES.includes(
+      inventoryType
+    ) &&
+    dailyLimit !== null
+  );
+};
+
+// =========================
+// MANILA DAY RANGE
+// =========================
+
+const getManilaTodayUtcRange = () => {
+  const now =
+    new Date();
+
+  const manilaNow =
+    new Date(
+      now.getTime() +
+        MANILA_UTC_OFFSET_HOURS *
+          60 *
+          60 *
+          1000
+    );
+
+  const year =
+    manilaNow.getUTCFullYear();
+
+  const month =
+    manilaNow.getUTCMonth();
+
+  const date =
+    manilaNow.getUTCDate();
+
+  const startUtc =
+    new Date(
+      Date.UTC(
+        year,
+        month,
+        date,
+        -MANILA_UTC_OFFSET_HOURS,
+        0,
+        0,
+        0
+      )
+    );
+
+  const endUtc =
+    new Date(
+      startUtc.getTime() +
+        24 * 60 * 60 * 1000
+    );
+
+  return {
+    startIso:
+      startUtc.toISOString(),
+
+    endIso:
+      endUtc.toISOString(),
+  };
+};
+
+// =========================
 // NORMALIZE FLAVOR TAGS
 // =========================
 
 const normalizeFlavorTags = (value) => {
   if (Array.isArray(value)) {
     return value
-      .map((tag) => String(tag).trim())
+      .map((tag) =>
+        String(tag).trim()
+      )
       .filter(Boolean);
   }
 
@@ -44,11 +198,14 @@ const normalizeFlavorTags = (value) => {
   }
 
   try {
-    const parsed = JSON.parse(value);
+    const parsed =
+      JSON.parse(value);
 
     if (Array.isArray(parsed)) {
       return parsed
-        .map((tag) => String(tag).trim())
+        .map((tag) =>
+          String(tag).trim()
+        )
         .filter(Boolean);
     }
   } catch (error) {
@@ -75,17 +232,56 @@ const normalizeMealType = (value) => {
 
 // =========================
 // NORMALIZE MENU ITEM
-// For mobile menu + AI recommendations
 // =========================
 
 const normalizeMenuItem = (item) => {
   return {
     ...item,
 
+    image:
+      item.image_url ||
+      item.image ||
+      null,
+
     image_url:
       item.image_url ||
       item.image ||
       null,
+
+    inventory_type:
+      item.inventory_type
+        ? normalizeInventoryType(
+            item.inventory_type
+          )
+        : null,
+
+    daily_limit:
+      toNumberOrNull(
+        item.daily_limit
+      ),
+
+    sold_today:
+      toNumberOrZero(
+        item.sold_today
+      ),
+
+    remaining_today:
+      item.remaining_today === null ||
+      item.remaining_today === undefined
+        ? null
+        : toNumberOrZero(
+            item.remaining_today
+          ),
+
+    max_order_quantity:
+      toNumberOrZero(
+        item.max_order_quantity
+      ),
+
+    available_quantity:
+      toNumberOrZero(
+        item.available_quantity
+      ),
 
     flavor_tags:
       normalizeFlavorTags(
@@ -96,6 +292,9 @@ const normalizeMenuItem = (item) => {
       normalizeMealType(
         item.meal_type
       ),
+
+    is_available:
+      item.is_available,
   };
 };
 
@@ -129,7 +328,9 @@ const getBestSellerIds = async () => {
     const quantity =
       Number(item.quantity) || 0;
 
-    if (!menuItemId) return;
+    if (!menuItemId) {
+      return;
+    }
 
     if (!salesCount[menuItemId]) {
       salesCount[menuItemId] = 0;
@@ -138,50 +339,223 @@ const getBestSellerIds = async () => {
     salesCount[menuItemId] += quantity;
   });
 
-  const bestSellerIds =
-    Object.entries(salesCount)
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 3)
-      .map(([menuItemId]) =>
-        Number(menuItemId)
-      );
-
-  return bestSellerIds;
+  return Object.entries(salesCount)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 3)
+    .map(([menuItemId]) =>
+      Number(menuItemId)
+    );
 };
 
 // =========================
-// COMPUTE AVAILABLE QUANTITY
-// FROM DATABASE STOCK
+// GET SOLD TODAY MAP
+// Uses orders created today in Asia/Manila
 // =========================
 
-const computeAvailableQuantity =
-  async (menuItem) => {
-    const maxOrderQuantity =
-      await computeMaxServingsFromRecipes(
-        supabase,
-        menuItem.id
-      );
+const getSoldTodayMap = async () => {
+  const {
+    startIso,
+    endIso,
+  } = getManilaTodayUtcRange();
 
-    if (maxOrderQuantity <= 0) {
-      return normalizeMenuItem({
-        ...menuItem,
-        available_quantity: 0,
-        max_order_quantity: 0,
-        stock_label:
-          menuItem.stock_label ||
-          'Out of stock',
-        is_available: false,
-      });
+  const {
+    data: orders,
+    error: ordersError,
+  } = await supabase
+    .from('orders')
+    .select('id, status, created_at')
+    .gte('created_at', startIso)
+    .lt('created_at', endIso);
+
+  if (ordersError) {
+    console.log(
+      'SOLD TODAY ORDERS ERROR:',
+      ordersError
+    );
+
+    return {};
+  }
+
+  const validOrderIds =
+    (orders || [])
+      .filter((order) => {
+        const status =
+          normalizeText(order.status);
+
+        return ![
+          'cancelled',
+          'canceled',
+          'failed',
+          'voided',
+        ].includes(status);
+      })
+      .map((order) => order.id)
+      .filter(Boolean);
+
+  if (validOrderIds.length === 0) {
+    return {};
+  }
+
+  const {
+    data: orderItems,
+    error: orderItemsError,
+  } = await supabase
+    .from('order_items')
+    .select('order_id, menu_item_id, quantity')
+    .in('order_id', validOrderIds);
+
+  if (orderItemsError) {
+    console.log(
+      'SOLD TODAY ORDER ITEMS ERROR:',
+      orderItemsError
+    );
+
+    return {};
+  }
+
+  const soldTodayMap = {};
+
+  (orderItems || []).forEach((item) => {
+    const menuItemId =
+      item.menu_item_id;
+
+    const quantity =
+      Number(item.quantity) || 0;
+
+    if (!menuItemId) {
+      return;
     }
 
+    if (!soldTodayMap[menuItemId]) {
+      soldTodayMap[menuItemId] = 0;
+    }
+
+    soldTodayMap[menuItemId] += quantity;
+  });
+
+  return soldTodayMap;
+};
+
+// =========================
+// DAILY MENU INVENTORY ENRICHMENT
+// IMPORTANT:
+// Do not use ingredient stock here.
+// Use daily_limit - sold_today.
+// =========================
+
+const enrichDailyMenuInventory = (
+  menuItem,
+  soldTodayMap = {}
+) => {
+  const custom =
+    isCustomMenuItem(menuItem);
+
+  if (custom) {
     return normalizeMenuItem({
       ...menuItem,
-      ...enrichMenuItemInventory(
-        menuItem,
-        maxOrderQuantity
-      ),
+      price: 0,
+      inventory_type: 'custom',
+      daily_limit: null,
+      sold_today: 0,
+      remaining_today: null,
+      available_quantity: 1,
+      max_order_quantity: 1,
+      stock_label: 'Staff confirms',
+      daily_inventory_label:
+        'Staff confirms',
+      is_available: true,
     });
-  };
+  }
+
+  const inventoryType =
+    normalizeInventoryType(
+      menuItem.inventory_type
+    );
+
+  const dailyLimit =
+    toNumberOrNull(
+      menuItem.daily_limit
+    );
+
+  if (
+    !VALID_NORMAL_INVENTORY_TYPES.includes(
+      inventoryType
+    ) ||
+    dailyLimit === null
+  ) {
+    return normalizeMenuItem({
+      ...menuItem,
+      inventory_type:
+        menuItem.inventory_type
+          ? inventoryType
+          : null,
+      daily_limit: dailyLimit,
+      sold_today: 0,
+      remaining_today: null,
+      available_quantity: 0,
+      max_order_quantity: 0,
+      stock_label: null,
+      daily_inventory_label: null,
+      is_available: false,
+    });
+  }
+
+  const soldToday =
+    Number(
+      soldTodayMap[menuItem.id] || 0
+    );
+
+  const remainingToday =
+    Math.max(
+      0,
+      dailyLimit - soldToday
+    );
+
+  const originalAvailable =
+    isAvailableTrue(
+      menuItem.is_available
+    );
+
+  const finalAvailable =
+    originalAvailable &&
+    remainingToday > 0;
+
+  const label =
+    remainingToday > 0
+      ? `${remainingToday} orders left today`
+      : 'Sold out today';
+
+  return normalizeMenuItem({
+    ...menuItem,
+
+    inventory_type:
+      inventoryType,
+
+    daily_limit:
+      dailyLimit,
+
+    sold_today:
+      soldToday,
+
+    remaining_today:
+      remainingToday,
+
+    available_quantity:
+      remainingToday,
+
+    max_order_quantity:
+      remainingToday,
+
+    stock_label:
+      label,
+
+    daily_inventory_label:
+      label,
+
+    is_available:
+      finalAvailable,
+  });
+};
 
 // =========================
 // GET ALL MENU ITEMS
@@ -193,7 +567,9 @@ router.get('/', async (req, res) => {
     const configError =
       requireSupabase(res);
 
-    if (configError) return;
+    if (configError) {
+      return;
+    }
 
     const {
       data: menuItems,
@@ -213,31 +589,35 @@ router.get('/', async (req, res) => {
       });
     }
 
-    const bestSellerIds =
-      await getBestSellerIds();
+    const [
+      bestSellerIds,
+      soldTodayMap,
+    ] = await Promise.all([
+      getBestSellerIds(),
+      getSoldTodayMap(),
+    ]);
 
     const enrichedMenuItems =
-      await Promise.all(
-        (menuItems || []).map(
-          async (item) => {
-            const enrichedItem =
-              await computeAvailableQuantity(
-                item
-              );
+      (menuItems || []).map((item) => {
+        const enrichedItem =
+          enrichDailyMenuInventory(
+            item,
+            soldTodayMap
+          );
 
-            return normalizeMenuItem({
-              ...enrichedItem,
-              is_best_seller:
-                bestSellerIds.includes(
-                  Number(item.id)
-                ),
-            });
-          }
-        )
-      );
+        return normalizeMenuItem({
+          ...enrichedItem,
+          is_best_seller:
+            bestSellerIds.includes(
+              Number(item.id)
+            ),
+        });
+      });
 
     return res.json({
       success: true,
+      debug_source:
+        'NODE_DAILY_MENU_ROUTE_UPDATED',
       data: enrichedMenuItems,
     });
   } catch (error) {
@@ -267,7 +647,9 @@ router.get(
       const configError =
         requireSupabase(res);
 
-      if (configError) return;
+      if (configError) {
+        return;
+      }
 
       const bestSellerIds =
         await getBestSellerIds();
@@ -296,9 +678,13 @@ router.get(
       if (error) {
         return res.status(500).json({
           success: false,
-          message: error.message,
+          message:
+            error.message,
         });
       }
+
+      const soldTodayMap =
+        await getSoldTodayMap();
 
       const sortedMenuItems =
         bestSellerIds
@@ -312,21 +698,18 @@ router.get(
           .filter(Boolean);
 
       const enrichedMenuItems =
-        await Promise.all(
-          sortedMenuItems.map(
-            async (item) => {
-              const enrichedItem =
-                await computeAvailableQuantity(
-                  item
-                );
+        sortedMenuItems.map((item) => {
+          const enrichedItem =
+            enrichDailyMenuInventory(
+              item,
+              soldTodayMap
+            );
 
-              return normalizeMenuItem({
-                ...enrichedItem,
-                is_best_seller: true,
-              });
-            }
-          )
-        );
+          return normalizeMenuItem({
+            ...enrichedItem,
+            is_best_seller: true,
+          });
+        });
 
       return res.json({
         success: true,
@@ -360,7 +743,9 @@ router.get(
       const configError =
         requireSupabase(res);
 
-      if (configError) return;
+      if (configError) {
+        return;
+      }
 
       const category =
         req.params.category;
@@ -382,32 +767,35 @@ router.get(
       if (error) {
         return res.status(500).json({
           success: false,
-          message: error.message,
+          message:
+            error.message,
         });
       }
 
-      const bestSellerIds =
-        await getBestSellerIds();
+      const [
+        bestSellerIds,
+        soldTodayMap,
+      ] = await Promise.all([
+        getBestSellerIds(),
+        getSoldTodayMap(),
+      ]);
 
       const enrichedMenuItems =
-        await Promise.all(
-          (menuItems || []).map(
-            async (item) => {
-              const enrichedItem =
-                await computeAvailableQuantity(
-                  item
-                );
+        (menuItems || []).map((item) => {
+          const enrichedItem =
+            enrichDailyMenuInventory(
+              item,
+              soldTodayMap
+            );
 
-              return normalizeMenuItem({
-                ...enrichedItem,
-                is_best_seller:
-                  bestSellerIds.includes(
-                    Number(item.id)
-                  ),
-              });
-            }
-          )
-        );
+          return normalizeMenuItem({
+            ...enrichedItem,
+            is_best_seller:
+              bestSellerIds.includes(
+                Number(item.id)
+              ),
+          });
+        });
 
       return res.json({
         success: true,
