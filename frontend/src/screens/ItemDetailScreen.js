@@ -1,7 +1,6 @@
 import React, {
   useCallback,
   useEffect,
-  useMemo,
   useState,
 } from 'react';
 
@@ -209,12 +208,21 @@ export default function ItemDetailScreen({
     useSafeAreaInsets();
 
   const responsive =
-    useMemo(() => {
+    React.useMemo(() => {
       const shortest =
         Math.min(width, height);
 
       const isPhone =
         shortest < 600;
+
+      const isLandscape =
+        width > height;
+
+      const compactVertical =
+        !isLandscape;
+
+      const compactLandscape =
+        isLandscape && height < 650;
 
       const base =
         shortest / 768;
@@ -241,13 +249,13 @@ export default function ItemDetailScreen({
       };
 
       const useSideCart =
-        width > height &&
+        isLandscape &&
         width >= 760 &&
-        height >= 520;
+        height >= 430;
 
       const cartWidth =
         useSideCart
-          ? clamp(width * 0.27, 250, 370)
+          ? clamp(width * 0.24, 230, 330)
           : '100%';
 
       const detailWidth =
@@ -255,81 +263,138 @@ export default function ItemDetailScreen({
           ? width - cartWidth
           : width;
 
+      const topBarHeight =
+        compactLandscape
+          ? scale(44, 40, 48)
+          : isPhone
+            ? scale(58, 52, 62)
+            : scale(64, 54, 68);
+
+      const cartPhoneMinHeight =
+        clamp(height * 0.09, 88, 112);
+
+      const cartPhoneListMaxHeight =
+        clamp(height * 0.045, 40, 56);
+
+      const detailAvailableHeight =
+        height -
+        topBarHeight -
+        scale(18, 12, 24);
+
+      const portraitCardMinHeight =
+        !useSideCart
+          ? Math.max(
+            0,
+            height -
+            topBarHeight -
+            cartPhoneMinHeight -
+            scale(42, 32, 50)
+          )
+          : undefined;
+
+      const landscapeCardMinHeight =
+        useSideCart
+          ? Math.max(
+            0,
+            detailAvailableHeight -
+            scale(18, 12, 24)
+          )
+          : undefined;
+
+      const detailCardMinHeight =
+        useSideCart
+          ? landscapeCardMinHeight
+          : portraitCardMinHeight;
+
       const imageSize =
-        isPhone
-          ? scale(132, 100, 142)
-          : scale(182, 130, 198);
+        compactLandscape
+          ? scale(82, 68, 92)
+          : compactVertical
+            ? isPhone
+              ? scale(98, 78, 110)
+              : scale(132, 106, 146)
+            : scale(148, 108, 164);
 
       const recommendationWidth =
         isPhone
-          ? clamp(width * 0.84, 290, 370)
+          ? clamp(width * 0.72, 250, 310)
           : useSideCart
-            ? clamp(detailWidth * 0.43, 390, 460)
-            : clamp(width * 0.42, 360, 460);
+            ? clamp(detailWidth * 0.43, 280, 380)
+            : clamp(width * 0.42, 285, 360);
 
       const recommendationRightWidth =
-        isPhone
-          ? scale(86, 76, 94)
-          : scale(102, 92, 112);
+        compactLandscape || compactVertical
+          ? scale(66, 56, 72)
+          : scale(94, 82, 100);
 
       const recommendationMinHeight =
-        isPhone
-          ? scale(112, 100, 120)
-          : scale(124, 112, 132);
-
-      const cartPhoneMinHeight =
-        clamp(height * 0.22, 210, 255);
-
-      const cartPhoneListMaxHeight =
-        clamp(height * 0.13, 92, 120);
+        compactLandscape
+          ? scale(64, 56, 72)
+          : compactVertical
+            ? scale(86, 76, 92)
+            : scale(108, 92, 116);
 
       return {
         isPhone,
+        compactVertical,
+        compactLandscape,
         useSideCart,
         cartWidth,
 
         topSafeExtra: 0,
 
         bottomSafeExtra:
-          Math.max(insets.bottom + 2, 6),
+          Math.max(insets.bottom + 2, 4),
 
-        topBarHeight:
-          isPhone
-            ? scale(58, 52, 62)
-            : scale(70, 58, 74),
+        topBarHeight,
 
         topBarPaddingH:
           isPhone
             ? scale(14, 10, 16)
-            : scale(24, 14, 26),
+            : scale(20, 12, 22),
 
         topText:
-          isPhone
-            ? scale(18, 15, 20)
-            : scale(28, 18, 28),
+          compactLandscape
+            ? scale(17, 14, 18)
+            : isPhone
+              ? scale(18, 15, 20)
+              : scale(26, 18, 28),
 
         tableText:
-          isPhone
+          compactLandscape
             ? scale(16, 13, 17)
-            : scale(22, 15, 22),
+            : isPhone
+              ? scale(16, 13, 17)
+              : scale(22, 15, 22),
 
         detailPadding:
-          useSideCart
-            ? scale(18, 12, 20)
-            : scale(12, 8, 14),
+          compactLandscape
+            ? scale(7, 5, 8)
+            : useSideCart
+              ? scale(12, 8, 14)
+              : scale(8, 5, 9),
 
         detailBottomPadding:
-          useSideCart
-            ? scale(8, 6, 10)
+          compactLandscape || compactVertical
+            ? scale(2, 0, 4)
             : scale(6, 4, 8),
 
         cardPadding:
-          useSideCart
-            ? scale(28, 18, 30)
-            : scale(16, 12, 18),
+          compactLandscape
+            ? scale(10, 7, 12)
+            : compactVertical
+              ? scale(14, 10, 16)
+              : scale(20, 14, 22),
 
         cardRadius:
           scale(24, 16, 26),
+
+        detailCardMinHeight,
+
+        cardJustifyContent:
+          compactLandscape || compactVertical
+            ? 'space-evenly'
+            : 'center',
 
         imageSize,
 
@@ -337,45 +402,67 @@ export default function ItemDetailScreen({
           imageSize / 2,
 
         emoji:
-          isPhone
-            ? scale(58, 42, 62)
-            : scale(78, 52, 82),
+          compactLandscape
+            ? scale(46, 36, 50)
+            : isPhone
+              ? scale(58, 42, 62)
+              : scale(78, 52, 82),
 
         itemName:
-          isPhone
-            ? scale(27, 22, 29)
-            : scale(38, 26, 40),
+          compactLandscape
+            ? scale(24, 19, 26)
+            : compactVertical
+              ? isPhone
+                ? scale(22, 18, 23)
+                : scale(31, 24, 33)
+              : scale(34, 26, 36),
 
         itemPrice:
-          isPhone
-            ? scale(23, 19, 25)
-            : scale(30, 22, 32),
+          compactLandscape
+            ? scale(18, 15, 20)
+            : compactVertical
+              ? isPhone
+                ? scale(18, 15, 19)
+                : scale(23, 19, 24)
+              : scale(28, 21, 30),
 
         category:
-          scale(17, 13, 18),
-
-        tagText:
-          scale(12, 10, 13),
-
-        stockText:
-          isPhone
-            ? scale(16, 13, 17)
-            : scale(19, 15, 20),
-
-        limitText:
-          isPhone
-            ? scale(14, 12, 15)
+          compactLandscape || compactVertical
+            ? scale(13, 10, 14)
             : scale(16, 13, 17),
 
+        tagText:
+          compactLandscape
+            ? scale(9, 7, 10)
+            : compactVertical
+              ? scale(10, 8, 11)
+              : scale(12, 10, 13),
+
+        stockText:
+          compactLandscape
+            ? scale(13, 10, 14)
+            : compactVertical
+              ? scale(15, 12, 16)
+              : scale(18, 14, 19),
+
+        limitText:
+          compactLandscape || compactVertical
+            ? scale(12, 10, 13)
+            : scale(15, 12, 16),
+
         description:
-          isPhone
-            ? scale(15, 13, 16)
-            : scale(18, 14, 18),
+          compactLandscape
+            ? scale(12, 10, 13)
+            : compactVertical
+              ? scale(14, 12, 15)
+              : scale(17, 13, 18),
 
         descriptionLine:
-          isPhone
-            ? scale(22, 19, 23)
-            : scale(26, 21, 27),
+          compactLandscape
+            ? scale(15, 13, 16)
+            : compactVertical
+              ? scale(19, 16, 20)
+              : scale(24, 20, 25),
 
         label:
           scale(17, 13, 18),
@@ -389,76 +476,154 @@ export default function ItemDetailScreen({
             : scale(105, 84, 110),
 
         buttonText:
-          isPhone
-            ? scale(18, 15, 19)
-            : scale(22, 16, 22),
+          compactLandscape || compactVertical
+            ? scale(15, 12, 16)
+            : scale(20, 15, 21),
 
         buttonPaddingV:
-          scale(14, 10, 14),
+          compactLandscape
+            ? scale(7, 5, 8)
+            : compactVertical
+              ? scale(8, 6, 9)
+              : scale(13, 10, 14),
 
         buttonPaddingH:
-          isPhone
-            ? scale(28, 22, 32)
-            : scale(44, 26, 44),
+          compactLandscape || compactVertical
+            ? scale(24, 18, 28)
+            : scale(40, 26, 44),
 
         recommendationTitle:
-          isPhone
-            ? scale(18, 16, 19)
-            : scale(22, 17, 22),
+          compactLandscape || compactVertical
+            ? scale(16, 13, 17)
+            : scale(20, 16, 21),
 
         recommendationWidth,
         recommendationRightWidth,
         recommendationMinHeight,
 
         recommendationCircle:
-          isPhone
-            ? scale(70, 56, 74)
-            : scale(82, 66, 88),
+          compactLandscape
+            ? scale(40, 32, 46)
+            : compactVertical
+              ? scale(50, 42, 56)
+              : scale(72, 58, 78),
 
         recommendationName:
-          isPhone
-            ? scale(16, 13, 17)
-            : scale(17, 14, 18),
+          compactLandscape
+            ? scale(12, 10, 13)
+            : compactVertical
+              ? scale(13, 10, 14)
+              : scale(16, 13, 17),
 
         recommendationLine:
-          isPhone
-            ? scale(20, 16, 21)
-            : scale(21, 17, 22),
+          compactLandscape
+            ? scale(14, 12, 15)
+            : compactVertical
+              ? scale(16, 13, 17)
+              : scale(20, 16, 21),
 
         recommendationPrice:
-          isPhone
-            ? scale(15, 12, 15)
-            : scale(16, 13, 16),
+          compactLandscape
+            ? scale(11, 9, 12)
+            : compactVertical
+              ? scale(12, 10, 13)
+              : scale(15, 12, 16),
 
         recommendationAddText:
-          isPhone
-            ? scale(14, 12, 14)
-            : scale(15, 13, 15),
+          compactLandscape
+            ? scale(11, 9, 12)
+            : compactVertical
+              ? scale(12, 10, 13)
+              : scale(14, 12, 15),
 
         recommendationAddPaddingH:
-          isPhone
-            ? scale(18, 14, 20)
-            : scale(22, 18, 24),
+          compactLandscape || compactVertical
+            ? scale(10, 8, 12)
+            : scale(20, 16, 22),
+
+        recommendationAddPaddingV:
+          compactLandscape
+            ? scale(4, 3, 5)
+            : compactVertical
+              ? scale(5, 4, 6)
+              : scale(7, 6, 8),
+
+        recommendationAddMinWidth:
+          compactLandscape || compactVertical
+            ? scale(48, 40, 54)
+            : scale(72, 64, 76),
+
+        imageMarginBottom:
+          compactLandscape ? 4 : compactVertical ? 6 : 14,
+
+        priceMarginTop:
+          compactLandscape || compactVertical ? 3 : 8,
+
+        categoryMarginTop:
+          compactLandscape || compactVertical ? 2 : 6,
+
+        tagMarginTop:
+          compactLandscape ? 4 : compactVertical ? 5 : 8,
+
+        stockMarginTop:
+          compactLandscape ? 4 : compactVertical ? 5 : 8,
+
+        limitMarginTop:
+          compactLandscape || compactVertical ? 3 : 6,
+
+        descriptionMarginTop:
+          compactLandscape ? 5 : compactVertical ? 7 : 14,
+
+        addButtonMarginTop:
+          compactLandscape ? 7 : compactVertical ? 9 : 20,
+
+        recommendationMarginTop:
+          compactLandscape ? 7 : compactVertical ? 10 : 22,
+
+        recommendationTitleMarginBottom:
+          compactLandscape ? 5 : compactVertical ? 6 : 12,
+
+        recommendationCardPaddingH:
+          compactLandscape ? 8 : compactVertical ? 9 : 14,
+
+        recommendationCardPaddingV:
+          compactLandscape ? 5 : compactVertical ? 6 : 10,
+
+        recommendationCardMarginH:
+          compactLandscape || compactVertical ? 5 : 8,
+
+        recommendationCircleMarginRight:
+          compactLandscape ? 7 : compactVertical ? 8 : 12,
 
         sidebarPaddingH:
-          scale(14, 10, 16),
+          compactLandscape
+            ? scale(10, 8, 12)
+            : scale(14, 10, 16),
 
         sidebarPaddingT:
           useSideCart
-            ? scale(16, 9, 16)
-            : scale(6, 4, 8),
+            ? scale(10, 7, 12)
+            : scale(5, 3, 6),
 
         cartIcon:
-          scale(24, 18, 24),
+          compactLandscape
+            ? scale(20, 16, 21)
+            : scale(22, 17, 23),
 
         cartTitle:
-          scale(22, 16, 22),
+          compactVertical
+            ? scale(16, 13, 17)
+            : scale(20, 15, 21),
 
         cartItemName:
-          scale(15, 12, 15),
+          compactVertical
+            ? scale(11, 9, 12)
+            : scale(14, 11, 15),
 
         cartItemPrice:
-          scale(14, 12, 14),
+          compactVertical
+            ? scale(11, 9, 12)
+            : scale(13, 11, 14),
 
         cartRequest:
           scale(13, 11, 13),
@@ -476,16 +641,24 @@ export default function ItemDetailScreen({
           scale(16, 13, 16),
 
         totalLabel:
-          scale(18, 14, 18),
+          compactVertical
+            ? scale(13, 11, 14)
+            : scale(17, 13, 18),
 
         totalValue:
-          scale(22, 17, 22),
+          compactVertical
+            ? scale(15, 12, 16)
+            : scale(20, 16, 21),
 
         checkoutText:
-          scale(16, 13, 16),
+          compactVertical
+            ? scale(12, 10, 13)
+            : scale(15, 12, 16),
 
         checkoutPadding:
-          scale(12, 8, 12),
+          compactVertical
+            ? scale(6, 5, 7)
+            : scale(10, 7, 11),
 
         errorText:
           scale(26, 18, 26),
@@ -495,8 +668,8 @@ export default function ItemDetailScreen({
 
         maxCardWidth:
           useSideCart
-            ? Math.min(detailWidth - 24, 950)
-            : clamp(width - 28, 300, 680),
+            ? Math.min(detailWidth - 16, 980)
+            : clamp(width - 28, 300, 700),
 
         cartPhoneMinHeight,
         cartPhoneListMaxHeight,
@@ -677,7 +850,7 @@ export default function ItemDetailScreen({
       console.log(
         'AI RECOMMENDATIONS ERROR:',
         error?.response?.data ||
-          error.message
+        error.message
       );
 
       setRecommendations([]);
@@ -781,7 +954,7 @@ export default function ItemDetailScreen({
     customItem
       ? currentCartQuantity < 1
       : allowedQuantity > 0 &&
-        currentCartQuantity < allowedQuantity;
+      currentCartQuantity < allowedQuantity;
 
   const isAvailable =
     isValidForMobile &&
@@ -820,7 +993,7 @@ export default function ItemDetailScreen({
       Alert.alert(
         'Table Not Assigned',
         tableCheck.message ||
-          assignmentMessage
+        assignmentMessage
       );
       return;
     }
@@ -907,7 +1080,7 @@ export default function ItemDetailScreen({
       Alert.alert(
         'Table Not Assigned',
         tableCheck.message ||
-          assignmentMessage
+        assignmentMessage
       );
       return;
     }
@@ -951,7 +1124,7 @@ export default function ItemDetailScreen({
       (
         allowedRecommendedQuantity <= 0 ||
         currentRecommendedQuantity >=
-          allowedRecommendedQuantity
+        allowedRecommendedQuantity
       )
     ) {
       Alert.alert(
@@ -1007,7 +1180,7 @@ export default function ItemDetailScreen({
     if (
       allowedCartQuantity <= 0 ||
       Number(cartItem.quantity || 0) >=
-        allowedCartQuantity
+      allowedCartQuantity
     ) {
       Alert.alert(
         'Limited Stock',
@@ -1029,7 +1202,7 @@ export default function ItemDetailScreen({
         getAvailabilityDisplayText(
           enrichedItem
         ) ||
-          'You reached the available quantity for this item.'
+        'You reached the available quantity for this item.'
       );
 
       return;
@@ -1077,7 +1250,7 @@ export default function ItemDetailScreen({
       Alert.alert(
         'Table Not Assigned',
         tableCheck.message ||
-          assignmentMessage
+        assignmentMessage
       );
       return;
     }
@@ -1134,7 +1307,7 @@ export default function ItemDetailScreen({
         return (
           allowedCartQuantity <= 0 ||
           Number(cartItem.quantity || 0) >
-            allowedCartQuantity
+          allowedCartQuantity
         );
       });
 
@@ -1209,9 +1382,15 @@ export default function ItemDetailScreen({
               responsive.recommendationWidth,
             minHeight:
               responsive.recommendationMinHeight,
+            paddingHorizontal:
+              responsive.recommendationCardPaddingH,
+            paddingVertical:
+              responsive.recommendationCardPaddingV,
+            marginHorizontal:
+              responsive.recommendationCardMarginH,
           },
           !recommendedAvailable &&
-            styles.recommendationCardDisabled,
+          styles.recommendationCardDisabled,
         ]}
       >
         <TouchableOpacity
@@ -1233,6 +1412,8 @@ export default function ItemDetailScreen({
                   responsive.recommendationCircle,
                 borderRadius:
                   responsive.recommendationCircle / 2,
+                marginRight:
+                  responsive.recommendationCircleMarginRight,
               },
             ]}
           >
@@ -1303,11 +1484,15 @@ export default function ItemDetailScreen({
               {
                 paddingHorizontal:
                   responsive.recommendationAddPaddingH,
+                paddingVertical:
+                  responsive.recommendationAddPaddingV,
+                minWidth:
+                  responsive.recommendationAddMinWidth,
               },
               !recommendedAvailable &&
-                styles.recommendationAddButtonDisabled,
+              styles.recommendationAddButtonDisabled,
               !canOrder &&
-                styles.recommendationAddButtonDisabled,
+              styles.recommendationAddButtonDisabled,
             ]}
             disabled={
               !recommendedAvailable ||
@@ -1358,15 +1543,15 @@ export default function ItemDetailScreen({
       customCartItem
         ? 1
         : getAllowedOrderQuantity(
-            enrichedItem
-          );
+          enrichedItem
+        );
 
     const atMaxQuantity =
       customCartItem ||
       !validDailyInventoryItem ||
       allowedCartQuantity <= 0 ||
       Number(cartItem.quantity || 0) >=
-        allowedCartQuantity ||
+      allowedCartQuantity ||
       !canIncreaseQuantity(
         enrichedItem,
         cartItem.quantity,
@@ -1378,7 +1563,7 @@ export default function ItemDetailScreen({
         style={[
           styles.cartItem,
           !responsive.useSideCart &&
-            styles.cartItemStacked,
+          styles.cartItemStacked,
         ]}
       >
         <View style={styles.cartItemTop}>
@@ -1411,21 +1596,21 @@ export default function ItemDetailScreen({
             </Text>
 
             {!customCartItem &&
-            allowedCartQuantity > 0 ? (
+              allowedCartQuantity > 0 ? (
               <Text style={styles.cartLimitText}>
                 Limit today: {allowedCartQuantity}
               </Text>
             ) : null}
 
             {!customCartItem &&
-            !validDailyInventoryItem ? (
+              !validDailyInventoryItem ? (
               <Text style={styles.cartInvalidText}>
                 No longer available today
               </Text>
             ) : null}
 
             {customCartItem &&
-            cartItem.special_request ? (
+              cartItem.special_request ? (
               <Text
                 style={[
                   styles.cartRequestText,
@@ -1525,7 +1710,7 @@ export default function ItemDetailScreen({
                 },
                 (atMaxQuantity ||
                   isOutOfStock(enrichedItem)) &&
-                  styles.qtyButtonDisabled,
+                styles.qtyButtonDisabled,
               ]}
               disabled={
                 atMaxQuantity ||
@@ -1718,10 +1903,14 @@ export default function ItemDetailScreen({
                     {
                       maxWidth:
                         responsive.maxCardWidth,
+                      minHeight:
+                        responsive.detailCardMinHeight,
                       padding:
                         responsive.cardPadding,
                       borderRadius:
                         responsive.cardRadius,
+                      justifyContent:
+                        responsive.cardJustifyContent,
                     },
                   ]}
                 >
@@ -1735,6 +1924,8 @@ export default function ItemDetailScreen({
                           responsive.imageSize,
                         borderRadius:
                           responsive.imageRadius,
+                        marginBottom:
+                          responsive.imageMarginBottom,
                       },
                     ]}
                   >
@@ -1781,6 +1972,8 @@ export default function ItemDetailScreen({
                       {
                         fontSize:
                           responsive.itemPrice,
+                        marginTop:
+                          responsive.priceMarginTop,
                       },
                     ]}
                     numberOfLines={2}
@@ -1797,6 +1990,8 @@ export default function ItemDetailScreen({
                       {
                         fontSize:
                           responsive.category,
+                        marginTop:
+                          responsive.categoryMarginTop,
                       },
                     ]}
                     numberOfLines={1}
@@ -1805,7 +2000,15 @@ export default function ItemDetailScreen({
                   </Text>
 
                   {flavorTags.length > 0 ? (
-                    <View style={styles.flavorTagContainer}>
+                    <View
+                      style={[
+                        styles.flavorTagContainer,
+                        {
+                          marginTop:
+                            responsive.tagMarginTop,
+                        },
+                      ]}
+                    >
                       {flavorTags.map((tag, index) => (
                         <View
                           key={`${tag}-${index}`}
@@ -1828,7 +2031,15 @@ export default function ItemDetailScreen({
                   ) : null}
 
                   {mealType ? (
-                    <Text style={styles.mealTypeText}>
+                    <Text
+                      style={[
+                        styles.mealTypeText,
+                        {
+                          marginTop:
+                            responsive.categoryMarginTop,
+                        },
+                      ]}
+                    >
                       {mealType}
                     </Text>
                   ) : null}
@@ -1845,6 +2056,8 @@ export default function ItemDetailScreen({
                       {
                         fontSize:
                           responsive.stockText,
+                        marginTop:
+                          responsive.stockMarginTop,
                       },
                     ]}
                   >
@@ -1854,13 +2067,15 @@ export default function ItemDetailScreen({
                   </Text>
 
                   {!customItem &&
-                  allowedQuantity > 0 ? (
+                    allowedQuantity > 0 ? (
                     <Text
                       style={[
                         styles.limitText,
                         {
                           fontSize:
                             responsive.limitText,
+                          marginTop:
+                            responsive.limitMarginTop,
                         },
                       ]}
                     >
@@ -1876,13 +2091,15 @@ export default function ItemDetailScreen({
                           responsive.description,
                         lineHeight:
                           responsive.descriptionLine,
+                        marginTop:
+                          responsive.descriptionMarginTop,
                       },
                     ]}
                   >
                     {customItem
                       ? 'Price and availability will be confirmed by staff. QR PH is disabled for Chef Oppa Special requests.'
                       : itemDescription ||
-                        'No description available for this item.'}
+                      'No description available for this item.'}
                   </Text>
 
                   {customItem ? (
@@ -1927,11 +2144,13 @@ export default function ItemDetailScreen({
                           responsive.buttonPaddingV,
                         paddingHorizontal:
                           responsive.buttonPaddingH,
+                        marginTop:
+                          responsive.addButtonMarginTop,
                       },
                       (!isAvailable ||
                         !canOrder ||
                         !canAddMoreCurrentItem) &&
-                        styles.addToOrderButtonDisabled,
+                      styles.addToOrderButtonDisabled,
                     ]}
                     disabled={
                       !isAvailable ||
@@ -1967,13 +2186,23 @@ export default function ItemDetailScreen({
                     </Text>
                   </TouchableOpacity>
 
-                  <View style={styles.recommendationSection}>
+                  <View
+                    style={[
+                      styles.recommendationSection,
+                      {
+                        marginTop:
+                          responsive.recommendationMarginTop,
+                      },
+                    ]}
+                  >
                     <Text
                       style={[
                         styles.recommendationTitle,
                         {
                           fontSize:
                             responsive.recommendationTitle,
+                          marginBottom:
+                            responsive.recommendationTitleMarginBottom,
                         },
                       ]}
                     >
@@ -1995,7 +2224,7 @@ export default function ItemDetailScreen({
                         ) =>
                           String(
                             recommendedItem.id ||
-                              index
+                            index
                           )
                         }
                         renderItem={
@@ -2036,7 +2265,7 @@ export default function ItemDetailScreen({
                     responsive.useSideCart
                       ? 0
                       : 1,
-                  minHeight:
+                  Height:
                     responsive.useSideCart
                       ? undefined
                       : responsive.cartPhoneMinHeight,
@@ -2096,7 +2325,7 @@ export default function ItemDetailScreen({
                     !responsive.useSideCart && {
                       maxHeight:
                         responsive.cartPhoneListMaxHeight,
-                      minHeight: 82,
+                      minHeight: 40,
                     },
                   ]}
                   contentContainerStyle={{
@@ -2166,7 +2395,7 @@ export default function ItemDetailScreen({
                     },
                     (cartItems.length === 0 ||
                       !canOrder) &&
-                      styles.checkoutButtonDisabled,
+                    styles.checkoutButtonDisabled,
                   ]}
                   disabled={
                     cartItems.length === 0 ||
@@ -2283,7 +2512,6 @@ const styles =
       borderWidth: 1.5,
       borderColor: '#f0b287',
       alignItems: 'center',
-      justifyContent: 'center',
       shadowColor: '#000',
       shadowOpacity: 0.08,
       shadowRadius: 8,
@@ -2548,13 +2776,13 @@ const styles =
 
     cartList: {
       flexGrow: 0,
-      minHeight: 72,
+      minHeight: 62,
     },
 
     cartHeader: {
       flexDirection: 'row',
       alignItems: 'center',
-      marginBottom: 8,
+      marginBottom: 6,
     },
 
     cartIcon: {
@@ -2568,22 +2796,22 @@ const styles =
 
     emptyCartText: {
       color: '#777',
-      marginTop: 4,
+      marginTop: 2,
       borderBottomWidth: 1,
       borderBottomColor: '#dddddd',
-      paddingBottom: 8,
+      paddingBottom: 6,
     },
 
     cartItem: {
-      paddingVertical: 8,
+      paddingVertical: 6,
       borderBottomWidth: 1,
       borderBottomColor: '#eeeeee',
     },
 
     cartItemStacked: {
-      minWidth: 165,
-      maxWidth: 225,
-      paddingRight: 10,
+      minWidth: 150,
+      maxWidth: 210,
+      paddingRight: 8,
     },
 
     cartItemTop: {
@@ -2606,39 +2834,39 @@ const styles =
     cartItemPrice: {
       fontWeight: '700',
       color: '#f68c45',
-      marginTop: 4,
+      marginTop: 3,
     },
 
     cartLimitText: {
-      marginTop: 5,
+      marginTop: 3,
       color: '#666',
-      fontSize: 12,
+      fontSize: 11,
       fontWeight: '900',
     },
 
     cartInvalidText: {
-      marginTop: 5,
+      marginTop: 3,
       color: '#b00020',
-      fontSize: 12,
+      fontSize: 11,
       fontWeight: '900',
     },
 
     cartRequestText: {
-      marginTop: 5,
+      marginTop: 4,
       color: '#666',
       fontWeight: '700',
       lineHeight: 18,
     },
 
     customQtyBox: {
-      marginTop: 10,
+      marginTop: 8,
       alignSelf: 'flex-start',
       backgroundColor: '#fff4eb',
       borderWidth: 1,
       borderColor: '#f0b287',
       borderRadius: 10,
-      paddingVertical: 6,
-      paddingHorizontal: 10,
+      paddingVertical: 5,
+      paddingHorizontal: 9,
     },
 
     customQtyText: {
@@ -2651,12 +2879,12 @@ const styles =
       backgroundColor: '#fff4eb',
       color: '#7a3f09',
       borderRadius: 10,
-      paddingVertical: 8,
-      paddingHorizontal: 10,
-      fontSize: 13,
+      paddingVertical: 7,
+      paddingHorizontal: 9,
+      fontSize: 12,
       fontWeight: '800',
-      lineHeight: 18,
-      marginBottom: 8,
+      lineHeight: 17,
+      marginBottom: 7,
     },
 
     removeText: {
@@ -2667,7 +2895,7 @@ const styles =
     qtyRow: {
       flexDirection: 'row',
       alignItems: 'center',
-      marginTop: 8,
+      marginTop: 6,
     },
 
     qtyButton: {
@@ -2687,13 +2915,13 @@ const styles =
 
     qtyText: {
       fontWeight: '800',
-      marginHorizontal: 12,
+      marginHorizontal: 10,
     },
 
     cartFooter: {
       borderTopWidth: 1,
       borderTopColor: '#dddddd',
-      paddingTop: 8,
+      paddingTop: 6,
     },
 
     totalRow: {
@@ -2701,7 +2929,7 @@ const styles =
       justifyContent:
         'space-between',
       alignItems: 'center',
-      marginBottom: 10,
+      marginBottom: 7,
       gap: 10,
     },
 

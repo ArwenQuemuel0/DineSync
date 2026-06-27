@@ -1,0 +1,12 @@
+{
+  "expo": {
+    "extra": {
+      "eas": {
+        "projectId": "8a4f3dc8-79b0-4f3e-be39-3699a2535482"
+      }
+    },
+    "android": {
+      "package": "com.niks1028.dinesync"
+    }
+  }
+}

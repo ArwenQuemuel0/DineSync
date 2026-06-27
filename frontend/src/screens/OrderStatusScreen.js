@@ -27,8 +27,8 @@ import {
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import {
-  getTableOrderHistory,
   getOrderStatus,
+  getActiveTableOrders,
 } from '../api/dinesync';
 
 import { useAuth } from '../context/AuthContext';
@@ -469,7 +469,9 @@ export default function OrderStatusScreen({
 
     return (
       isActiveOrderStatus(status) ||
-      normalized === 'awaiting_payment'
+      normalized === 'awaiting_payment' ||
+      normalized === 'served' ||
+      normalized === 'completed'
     );
   };
 
@@ -501,7 +503,9 @@ export default function OrderStatusScreen({
       }
 
       const response =
-        await getTableOrderHistory();
+        await getActiveTableOrders(
+          finalTableNumber
+        );
 
       if (response.success) {
         const activeOrders = (
@@ -518,15 +522,15 @@ export default function OrderStatusScreen({
       } else {
         setError(
           response.message ||
-            'Failed to load orders.'
+          'Failed to load orders.'
         );
       }
     } catch (err) {
       console.log(
         'ACTIVE ORDERS ERROR:',
         err?.response?.data ||
-          err.message ||
-          err
+        err.message ||
+        err
       );
 
       setError(
@@ -666,7 +670,7 @@ export default function OrderStatusScreen({
     return (
       orderId &&
       Number(order?.id) ===
-        Number(orderId)
+      Number(orderId)
     );
   };
 
@@ -753,41 +757,10 @@ export default function OrderStatusScreen({
   const getEffectiveOrderStatus = (
     order
   ) => {
-    const paymentMethod =
-      normalizePaymentMethod(
-        order.payment_method
-      );
-
-    const paymentStatus =
-      normalizePaymentStatus(
-        order.payment_status
-      );
-
     const orderStatus =
       normalizeOrderStatus(
         order.status
       );
-
-    if (
-      paymentMethod === 'Pay Later' &&
-      paymentStatus === 'pending'
-    ) {
-      return 'pending';
-    }
-
-    if (
-      paymentMethod === 'QR PH' &&
-      paymentStatus === 'pending'
-    ) {
-      return 'awaiting_payment';
-    }
-
-    if (
-      paymentMethod === 'Pay at Counter' &&
-      paymentStatus === 'pending'
-    ) {
-      return 'awaiting_payment';
-    }
 
     return orderStatus;
   };
@@ -798,8 +771,8 @@ export default function OrderStatusScreen({
     const category =
       String(
         orderItem?.category ||
-          orderItem?.menu_item?.category ||
-          ''
+        orderItem?.menu_item?.category ||
+        ''
       )
         .trim()
         .toLowerCase();
@@ -807,8 +780,8 @@ export default function OrderStatusScreen({
     const inventoryType =
       String(
         orderItem?.inventory_type ||
-          orderItem?.menu_item?.inventory_type ||
-          ''
+        orderItem?.menu_item?.inventory_type ||
+        ''
       )
         .trim()
         .toLowerCase();
@@ -816,9 +789,9 @@ export default function OrderStatusScreen({
     const name =
       String(
         orderItem?.name ||
-          orderItem?.menu_name ||
-          orderItem?.menu_item?.name ||
-          ''
+        orderItem?.menu_name ||
+        orderItem?.menu_item?.name ||
+        ''
       )
         .trim()
         .toLowerCase();
@@ -1028,7 +1001,7 @@ export default function OrderStatusScreen({
     ) {
       return Number(
         order.total_amount ||
-          order.total
+        order.total
       );
     }
 
@@ -1046,8 +1019,8 @@ export default function OrderStatusScreen({
         const price =
           Number(
             item.price ||
-              item.menu_item?.price ||
-              0
+            item.menu_item?.price ||
+            0
           );
 
         const quantity =
@@ -1308,19 +1281,19 @@ export default function OrderStatusScreen({
                 customItem
                   ? 1
                   : Number(
-                      orderItem.quantity ||
-                        0
-                    );
+                    orderItem.quantity ||
+                    0
+                  );
 
               const price =
                 customItem
                   ? 0
                   : Number(
-                      orderItem.price ||
-                        orderItem.menu_item
-                          ?.price ||
-                        0
-                    );
+                    orderItem.price ||
+                    orderItem.menu_item
+                      ?.price ||
+                    0
+                  );
 
               const requestText =
                 getRequestText(
@@ -1402,9 +1375,9 @@ export default function OrderStatusScreen({
                     {customItem
                       ? 'To be confirmed'
                       : `₱${formatMoney(
-                          price *
-                            quantity
-                        )}`}
+                        price *
+                        quantity
+                      )}`}
                   </Text>
                 </View>
               );
@@ -1647,7 +1620,7 @@ export default function OrderStatusScreen({
                   },
                 ]}
               >
-                Pending, preparing, ready, and awaiting payment orders will appear here. Served orders move to order history.
+                Pending, preparing, ready, served, completed, and awaiting payment orders will appear here based on kitchen progress. Payment status is shown separately.
               </Text>
             </View>
           ) : (

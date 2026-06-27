@@ -19,7 +19,7 @@ const host =
     ?.shift() || 'localhost';
 
 const BASE_URL =
-  `http://${host}:${BACKEND_PORT}/api`;
+  'https://api.dinesync.shop/api';
 
 console.log(
   '=============================='
@@ -198,8 +198,8 @@ const getMobileMaxQuantity = (item) => {
   const maxQuantity =
     Number(
       item?.max_order_quantity ??
-        item?.remaining_today ??
-        1
+      item?.remaining_today ??
+      1
     );
 
   return Number.isFinite(maxQuantity)
@@ -211,8 +211,8 @@ const normalizeMenuItem = (item) => {
   const inventoryType =
     item?.inventory_type
       ? normalizeInventoryType(
-          item.inventory_type
-        )
+        item.inventory_type
+      )
       : null;
 
   const dailyLimit =
@@ -276,15 +276,15 @@ const normalizeMenuItem = (item) => {
     daily_inventory_label:
       item?.daily_inventory_label
         ? String(
-            item.daily_inventory_label
-          ).trim()
+          item.daily_inventory_label
+        ).trim()
         : null,
 
     stock_label:
       item?.stock_label
         ? String(
-            item.stock_label
-          ).trim()
+          item.stock_label
+        ).trim()
         : null,
 
     is_available:
@@ -297,18 +297,18 @@ const normalizeMenuItem = (item) => {
         ? item.flavor_tags
         : item?.flavor_tags
           ? String(item.flavor_tags)
-              .split(',')
-              .map((tag) =>
-                tag.trim()
-              )
-              .filter(Boolean)
+            .split(',')
+            .map((tag) =>
+              tag.trim()
+            )
+            .filter(Boolean)
           : [],
 
     meal_type:
       item?.meal_type
         ? String(
-            item.meal_type
-          ).trim()
+          item.meal_type
+        ).trim()
         : null,
   };
 };
@@ -419,8 +419,8 @@ const validateCartBeforeOrder = (
       custom
         ? 1
         : toNumberOrZero(
-            normalizedItem.quantity
-          );
+          normalizedItem.quantity
+        );
 
     if (
       !isValidDailyInventoryMenuItem(

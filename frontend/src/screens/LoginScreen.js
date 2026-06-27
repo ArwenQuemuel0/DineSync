@@ -45,28 +45,29 @@ export default function LoginScreen({
       const shortest =
         Math.min(width, height);
 
-      const longest =
-        Math.max(width, height);
-
       const isLandscape =
         width > height;
 
       const isPhone =
         shortest < 600;
 
-      const isSmallPhone =
-        width < 390;
+      const isPhoneLandscape =
+        isPhone && isLandscape;
 
-      const isShortHeight =
-        height < 680;
+      const isTabletLandscape =
+        !isPhone && isLandscape;
 
-      const isVeryShortHeight =
-        height < 560;
+      const isVeryNarrow =
+        width < 380;
 
       const availableHeight =
         height -
         insets.top -
         insets.bottom;
+
+      const availableWidth =
+        width -
+        24;
 
       const clamp = (
         value,
@@ -82,311 +83,340 @@ export default function LoginScreen({
       const base =
         isPhone
           ? Math.min(shortest / 390, 1)
-          : Math.min(shortest / 768, 1.08);
+          : Math.min(shortest / 768, 1.05);
 
       const scale = (
         size,
-        min = size * 0.72,
-        max = size * 1.12
+        min = size * 0.7,
+        max = size * 1.08
       ) => {
         return Math.round(
           clamp(size * base, min, max)
         );
       };
 
-      const phoneLandscape =
-        isPhone && isLandscape;
-
-      const compact =
-        phoneLandscape ||
-        isShortHeight;
-
-      const ultraCompact =
-        phoneLandscape ||
-        isVeryShortHeight;
-
-      const cardWidth =
-        isPhone
-          ? isLandscape
-            ? '78%'
-            : '92%'
-          : isLandscape
-            ? '90%'
-            : '88%';
-
-      const cardMaxWidth =
-        isPhone
-          ? isLandscape
-            ? clamp(width * 0.74, 360, 520)
-            : clamp(width - 28, 300, 410)
-          : isLandscape
-            ? clamp(width * 0.9, 1050, 1400)
-            : clamp(width * 0.88, 760, 1080);
-
-      const cardPaddingH =
-        isPhone
-          ? isLandscape
-            ? clamp(width * 0.035, 18, 28)
-            : clamp(width * 0.06, 20, 26)
-          : isLandscape
-            ? clamp(width * 0.055, 70, 96)
-            : clamp(width * 0.075, 54, 86);
-
-      const cardPaddingV =
-        isPhone
-          ? isLandscape
-            ? clamp(availableHeight * 0.03, 10, 16)
-            : clamp(availableHeight * 0.035, 20, 28)
-          : isLandscape
-            ? clamp(availableHeight * 0.055, 36, 56)
-            : clamp(availableHeight * 0.06, 34, 54);
-
-      const brandLogoSize =
-        isPhone
-          ? isLandscape
-            ? clamp(availableHeight * 0.13, 44, 62)
-            : clamp(width * 0.16, 56, 74)
-          : isLandscape
-            ? clamp(availableHeight * 0.2, 110, 145)
-            : clamp(shortest * 0.14, 105, 150);
-
-      const inputHeight =
-        isPhone
-          ? isLandscape
-            ? clamp(availableHeight * 0.085, 38, 46)
-            : clamp(availableHeight * 0.065, 46, 54)
-          : isLandscape
-            ? clamp(availableHeight * 0.105, 62, 74)
-            : clamp(availableHeight * 0.078, 60, 72);
-
-      const buttonHeight =
-        isPhone
-          ? isLandscape
-            ? clamp(availableHeight * 0.09, 40, 48)
-            : clamp(availableHeight * 0.068, 50, 58)
-          : isLandscape
-            ? clamp(availableHeight * 0.105, 66, 78)
-            : clamp(availableHeight * 0.082, 64, 76);
-
       return {
-        compact,
-        ultraCompact,
+        screenMinHeight:
+          Math.max(
+            availableHeight,
+            height -
+            insets.top -
+            insets.bottom
+          ),
 
         overlayPaddingH:
-          isPhone
-            ? isLandscape
+          isTabletLandscape
+            ? 18
+            : isPhoneLandscape
               ? 10
-              : 14
-            : isLandscape
-              ? 18
-              : 24,
+              : isPhone
+                ? isVeryNarrow
+                  ? 10
+                  : 14
+                : 24,
 
         overlayPaddingV:
-          isPhone
-            ? isLandscape
-              ? 6
-              : 10
-            : isLandscape
-              ? 14
-              : 18,
-
-        safeTopExtra:
-          isPhone
-            ? isLandscape
-              ? 0
-              : 4
-            : 6,
+          isTabletLandscape
+            ? 14
+            : isPhoneLandscape
+              ? 8
+              : isPhone
+                ? 14
+                : 22,
 
         safeBottomExtra:
-          Math.max(
-            insets.bottom + 6,
-            10
-          ),
+          isLandscape
+            ? Math.max(
+              insets.bottom + 6,
+              10
+            )
+            : Math.max(
+              insets.bottom + 10,
+              14
+            ),
 
-        cardWidth,
+        cardWidth:
+          isTabletLandscape
+            ? '82%'
+            : isPhoneLandscape
+              ? '78%'
+              : isPhone
+                ? '94%'
+                : '88%',
 
-        cardMaxWidth,
+        cardMaxWidth:
+          isTabletLandscape
+            ? Math.min(
+              availableWidth * 0.82,
+              1080
+            )
+            : isPhoneLandscape
+              ? Math.min(
+                width * 0.78,
+                780
+              )
+              : isPhone
+                ? Math.min(
+                  width - 24,
+                  430
+                )
+                : Math.min(
+                  width * 0.82,
+                  900
+                ),
 
-        cardMaxHeight:
-          Math.max(
-            availableHeight -
-              (isPhone ? 18 : 30),
-            isPhone ? 280 : 520
-          ),
+        cardMinWidth:
+          isTabletLandscape
+            ? Math.min(
+              Math.max(
+                width * 0.72,
+                720
+              ),
+              960
+            )
+            : isPhoneLandscape
+              ? Math.min(
+                Math.max(
+                  width * 0.72,
+                  500
+                ),
+                740
+              )
+              : undefined,
+
+        cardHeight:
+          isTabletLandscape
+            ? Math.min(
+              Math.max(
+                availableHeight * 0.78,
+                390
+              ),
+              availableHeight * 0.9
+            )
+            : isPhoneLandscape
+              ? Math.min(
+                Math.max(
+                  availableHeight * 0.84,
+                  285
+                ),
+                availableHeight * 0.9
+              )
+              : undefined,
 
         cardRadius:
-          isPhone
-            ? isLandscape
-              ? 20
-              : 24
-            : isLandscape
-              ? 34
-              : 36,
+          isLandscape
+            ? 24
+            : isPhone
+              ? 24
+              : 34,
 
-        cardPaddingH,
+        cardPaddingH:
+          isTabletLandscape
+            ? clamp(width * 0.055, 58, 88)
+            : isPhoneLandscape
+              ? clamp(width * 0.04, 24, 36)
+              : isPhone
+                ? clamp(width * 0.055, 16, 24)
+                : clamp(width * 0.055, 34, 72),
 
-        cardPaddingV,
+        cardPaddingV:
+          isTabletLandscape
+            ? clamp(availableHeight * 0.045, 22, 36)
+            : isPhoneLandscape
+              ? clamp(availableHeight * 0.035, 12, 20)
+              : isPhone
+                ? clamp(availableHeight * 0.035, 18, 28)
+                : clamp(availableHeight * 0.055, 30, 52),
 
         brandMargin:
-          isPhone
-            ? isLandscape
-              ? 10
-              : 16
-            : isLandscape
-              ? 26
-              : 28,
+          isTabletLandscape
+            ? 14
+            : isPhoneLandscape
+              ? 8
+              : isPhone
+                ? 14
+                : 24,
 
-        brandLogoSize,
+        brandLogoSize:
+          isTabletLandscape
+            ? clamp(availableHeight * 0.16, 72, 105)
+            : isPhoneLandscape
+              ? clamp(availableHeight * 0.13, 42, 58)
+              : isPhone
+                ? clamp(width * 0.16, 50, 70)
+                : clamp(shortest * 0.13, 82, 130),
 
         brandTitleFont:
-          isPhone
-            ? isLandscape
-              ? clamp(width * 0.031, 17, 21)
-              : isSmallPhone
-                ? 20
-                : 22
-            : isLandscape
-              ? 36
-              : 36,
+          isTabletLandscape
+            ? scale(30, 24, 34)
+            : isPhoneLandscape
+              ? scale(18, 15, 20)
+              : isPhone
+                ? scale(22, 18, 23)
+                : scale(34, 26, 36),
 
         brandPoweredFont:
-          isPhone
-            ? isLandscape
-              ? 13
-              : 14
-            : isLandscape
-              ? 21
-              : 21,
+          isTabletLandscape
+            ? scale(18, 15, 20)
+            : isPhoneLandscape
+              ? scale(12, 10, 13)
+              : isPhone
+                ? scale(14, 12, 15)
+                : scale(20, 16, 21),
 
         brandGap:
-          isPhone
-            ? isLandscape
-              ? 5
-              : 7
-            : 10,
+          isLandscape
+            ? 5
+            : isPhone
+              ? 6
+              : 9,
 
         formMaxWidth:
-          isPhone
-            ? '100%'
-            : isLandscape
-              ? clamp(width * 0.72, 860, 1040)
-              : clamp(width * 0.72, 700, 920),
+          isTabletLandscape
+            ? clamp(width * 0.65, 650, 880)
+            : isPhoneLandscape
+              ? clamp(width * 0.66, 460, 700)
+              : isPhone
+                ? '100%'
+                : clamp(width * 0.68, 520, 760),
 
         labelFont:
-          isPhone
-            ? isLandscape
-              ? 13
-              : 15
-            : isLandscape
-              ? 21
-              : 20,
+          isTabletLandscape
+            ? scale(18, 15, 20)
+            : isPhoneLandscape
+              ? scale(13, 12, 14)
+              : isPhone
+                ? scale(15, 13, 16)
+                : scale(20, 16, 21),
 
-        inputHeight,
+        inputHeight:
+          isTabletLandscape
+            ? clamp(availableHeight * 0.09, 52, 66)
+            : isPhoneLandscape
+              ? clamp(availableHeight * 0.09, 38, 46)
+              : isPhone
+                ? clamp(availableHeight * 0.065, 44, 52)
+                : clamp(availableHeight * 0.072, 54, 68),
 
         inputRadius:
-          isPhone
-            ? isLandscape
-              ? 11
-              : 13
-            : 18,
+          isLandscape
+            ? 13
+            : isPhone
+              ? 13
+              : 17,
 
         inputFont:
-          isPhone
-            ? isLandscape
-              ? 13
-              : 15
-            : isLandscape
-              ? 21
-              : 20,
+          isTabletLandscape
+            ? scale(18, 15, 20)
+            : isPhoneLandscape
+              ? scale(13, 12, 14)
+              : isPhone
+                ? scale(15, 13, 16)
+                : scale(20, 16, 21),
 
         inputPadding:
-          isPhone
-            ? isLandscape
-              ? 12
-              : 14
-            : 22,
+          isTabletLandscape
+            ? 18
+            : isPhoneLandscape
+              ? 13
+              : isPhone
+                ? 14
+                : 20,
 
         inputMarginBottom:
-          isPhone
-            ? isLandscape
-              ? 6
-              : 10
-            : isLandscape
-              ? 16
-              : 15,
+          isTabletLandscape
+            ? 11
+            : isPhoneLandscape
+              ? 7
+              : isPhone
+                ? 10
+                : 14,
 
         passwordMarginBottom:
-          isPhone
-            ? isLandscape
-              ? 9
-              : 16
-            : isLandscape
-              ? 30
-              : 28,
+          isTabletLandscape
+            ? 18
+            : isPhoneLandscape
+              ? 10
+              : isPhone
+                ? 16
+                : 26,
 
         showButtonWidth:
-          isPhone
-            ? isLandscape
-              ? 62
-              : 72
-            : isLandscape
-              ? 118
-              : 110,
+          isTabletLandscape
+            ? 100
+            : isPhoneLandscape
+              ? 68
+              : isPhone
+                ? 72
+                : 105,
 
         showButtonFont:
-          isPhone
-            ? isLandscape
-              ? 11
-              : 12
-            : 18,
+          isTabletLandscape
+            ? scale(16, 13, 17)
+            : isPhoneLandscape
+              ? scale(11, 10, 12)
+              : isPhone
+                ? scale(12, 11, 13)
+                : scale(17, 14, 18),
 
-        buttonHeight,
+        buttonHeight:
+          isTabletLandscape
+            ? clamp(availableHeight * 0.09, 54, 68)
+            : isPhoneLandscape
+              ? clamp(availableHeight * 0.092, 40, 48)
+              : isPhone
+                ? clamp(availableHeight * 0.068, 48, 56)
+                : clamp(availableHeight * 0.078, 58, 72),
 
         buttonRadius:
-          isPhone
-            ? isLandscape
-              ? 11
-              : 13
-            : 18,
+          isLandscape
+            ? 13
+            : isPhone
+              ? 13
+              : 17,
 
         buttonText:
-          isPhone
-            ? isLandscape
-              ? 16
-              : 18
-            : isLandscape
-              ? 28
-              : 27,
+          isTabletLandscape
+            ? scale(24, 18, 26)
+            : isPhoneLandscape
+              ? scale(16, 14, 17)
+              : isPhone
+                ? scale(18, 16, 19)
+                : scale(26, 20, 27),
 
         noteMargin:
-          isPhone
-            ? isLandscape
-              ? 7
-              : 13
-            : isLandscape
-              ? 24
-              : 22,
+          isTabletLandscape
+            ? 14
+            : isPhoneLandscape
+              ? 8
+              : isPhone
+                ? 14
+                : 22,
 
         noteFont:
-          isPhone
-            ? isLandscape
-              ? 10
-              : 12
-            : 18,
+          isTabletLandscape
+            ? scale(15, 13, 17)
+            : isPhoneLandscape
+              ? scale(10, 9, 11)
+              : isPhone
+                ? scale(12, 11, 13)
+                : scale(17, 14, 18),
 
         noteLine:
-          isPhone
-            ? isLandscape
-              ? 14
-              : 18
-            : 25,
+          isTabletLandscape
+            ? scale(21, 18, 23)
+            : isPhoneLandscape
+              ? scale(14, 12, 15)
+              : isPhone
+                ? scale(18, 16, 19)
+                : scale(24, 20, 25),
 
         noteLines:
-          ultraCompact
+          isLandscape
             ? 1
-            : compact
+            : isPhone
               ? 2
-              : undefined,
+              : 3,
       };
     }, [
       width,
@@ -464,7 +494,7 @@ export default function LoginScreen({
             behavior={
               Platform.OS === 'ios'
                 ? 'padding'
-                : undefined
+                : 'height'
             }
           >
             <ScrollView
@@ -472,11 +502,12 @@ export default function LoginScreen({
               contentContainerStyle={[
                 styles.scrollContent,
                 {
+                  minHeight:
+                    responsive.screenMinHeight,
                   paddingHorizontal:
                     responsive.overlayPaddingH,
                   paddingTop:
-                    responsive.overlayPaddingV +
-                    responsive.safeTopExtra,
+                    responsive.overlayPaddingV,
                   paddingBottom:
                     responsive.safeBottomExtra +
                     responsive.overlayPaddingV,
@@ -487,246 +518,274 @@ export default function LoginScreen({
             >
               <View
                 style={[
-                  styles.card,
+                  styles.centerWrap,
                   {
-                    width:
-                      responsive.cardWidth,
-                    maxWidth:
-                      responsive.cardMaxWidth,
-                    maxHeight:
-                      responsive.cardMaxHeight,
-                    borderRadius:
-                      responsive.cardRadius,
-                    paddingHorizontal:
-                      responsive.cardPaddingH,
-                    paddingVertical:
-                      responsive.cardPaddingV,
+                    minHeight:
+                      responsive.screenMinHeight -
+                      (
+                        responsive.overlayPaddingV * 2
+                      ),
                   },
                 ]}
               >
                 <View
                   style={[
-                    styles.brandBlock,
+                    styles.card,
                     {
-                      marginBottom:
-                        responsive.brandMargin,
-                      gap:
-                        responsive.brandGap,
-                    },
-                  ]}
-                >
-                  <Image
-                    source={require('../../assets/chefoppa_logo.png')}
-                    style={[
-                      styles.brandLogo,
-                      {
-                        width:
-                          responsive.brandLogoSize,
-                        height:
-                          responsive.brandLogoSize,
-                      },
-                    ]}
-                    resizeMode="contain"
-                  />
-
-                  <Text
-                    style={[
-                      styles.brandTitle,
-                      {
-                        fontSize:
-                          responsive.brandTitleFont,
-                      },
-                    ]}
-                    numberOfLines={1}
-                    adjustsFontSizeToFit
-                  >
-                    Chef Oppa Korean Restaurant
-                  </Text>
-
-                  <Text
-                    style={[
-                      styles.poweredText,
-                      {
-                        fontSize:
-                          responsive.brandPoweredFont,
-                      },
-                    ]}
-                    numberOfLines={1}
-                    adjustsFontSizeToFit
-                  >
-                    Powered by DineSync+
-                  </Text>
-                </View>
-
-                <View
-                  style={[
-                    styles.form,
-                    {
+                      width:
+                        responsive.cardWidth,
                       maxWidth:
-                        responsive.formMaxWidth,
+                        responsive.cardMaxWidth,
+                      minWidth:
+                        responsive.cardMinWidth,
+                      height:
+                        responsive.cardHeight,
+                      borderRadius:
+                        responsive.cardRadius,
+                      paddingHorizontal:
+                        responsive.cardPaddingH,
+                      paddingVertical:
+                        responsive.cardPaddingV,
                     },
                   ]}
                 >
-                  <Text
-                    style={[
-                      styles.label,
-                      {
-                        fontSize:
-                          responsive.labelFont,
-                      },
-                    ]}
-                  >
-                    Email
-                  </Text>
-
-                  <TextInput
-                    style={[
-                      styles.input,
-                      {
-                        height:
-                          responsive.inputHeight,
-                        borderRadius:
-                          responsive.inputRadius,
-                        paddingHorizontal:
-                          responsive.inputPadding,
-                        fontSize:
-                          responsive.inputFont,
-                        marginBottom:
-                          responsive.inputMarginBottom,
-                      },
-                    ]}
-                    value={email}
-                    onChangeText={setEmail}
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                    keyboardType="email-address"
-                    placeholder="Enter table email"
-                    placeholderTextColor="#999"
-                  />
-
-                  <Text
-                    style={[
-                      styles.label,
-                      {
-                        fontSize:
-                          responsive.labelFont,
-                      },
-                    ]}
-                  >
-                    Password
-                  </Text>
-
                   <View
                     style={[
-                      styles.passwordRow,
-                      {
-                        height:
-                          responsive.inputHeight,
-                        borderRadius:
-                          responsive.inputRadius,
-                        marginBottom:
-                          responsive.passwordMarginBottom,
-                      },
+                      styles.innerCardContent,
                     ]}
                   >
-                    <TextInput
+                    <View
                       style={[
-                        styles.passwordInput,
+                        styles.brandBlock,
                         {
-                          paddingHorizontal:
-                            responsive.inputPadding,
-                          fontSize:
-                            responsive.inputFont,
+                          marginBottom:
+                            responsive.brandMargin,
+                          gap:
+                            responsive.brandGap,
                         },
                       ]}
-                      value={password}
-                      onChangeText={setPassword}
-                      secureTextEntry={!showPassword}
-                      placeholder="Enter password"
-                      placeholderTextColor="#999"
-                    />
-
-                    <Pressable
-                      style={[
-                        styles.showButton,
-                        {
-                          width:
-                            responsive.showButtonWidth,
-                        },
-                      ]}
-                      onPress={() =>
-                        setShowPassword(
-                          !showPassword
-                        )
-                      }
                     >
+                      <Image
+                        source={require('../../assets/chefoppa_logo.png')}
+                        style={[
+                          styles.brandLogo,
+                          {
+                            width:
+                              responsive.brandLogoSize,
+                            height:
+                              responsive.brandLogoSize,
+                          },
+                        ]}
+                        resizeMode="contain"
+                      />
+
                       <Text
                         style={[
-                          styles.showButtonText,
+                          styles.brandTitle,
                           {
                             fontSize:
-                              responsive.showButtonFont,
+                              responsive.brandTitleFont,
                           },
                         ]}
                         numberOfLines={1}
+                        adjustsFontSizeToFit
+                        minimumFontScale={0.72}
                       >
-                        {showPassword
-                          ? 'Hide'
-                          : 'Show'}
+                        Chef Oppa Korean Restaurant
                       </Text>
-                    </Pressable>
-                  </View>
 
-                  <Pressable
-                    style={[
-                      styles.button,
-                      {
-                        height:
-                          responsive.buttonHeight,
-                        borderRadius:
-                          responsive.buttonRadius,
-                      },
-                      loading &&
-                        styles.buttonDisabled,
-                    ]}
-                    onPress={handleLogin}
-                    disabled={loading}
-                  >
-                    {loading ? (
-                      <ActivityIndicator color="#fff" />
-                    ) : (
                       <Text
                         style={[
-                          styles.buttonText,
+                          styles.poweredText,
                           {
                             fontSize:
-                              responsive.buttonText,
+                              responsive.brandPoweredFont,
+                          },
+                        ]}
+                        numberOfLines={1}
+                        adjustsFontSizeToFit
+                        minimumFontScale={0.8}
+                      >
+                        Powered by DineSync+
+                      </Text>
+                    </View>
+
+                    <View
+                      style={[
+                        styles.form,
+                        {
+                          maxWidth:
+                            responsive.formMaxWidth,
+                        },
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          styles.label,
+                          {
+                            fontSize:
+                              responsive.labelFont,
                           },
                         ]}
                       >
-                        Login
+                        Email
                       </Text>
-                    )}
-                  </Pressable>
 
-                  <Text
-                    style={[
-                      styles.note,
-                      {
-                        marginTop:
-                          responsive.noteMargin,
-                        fontSize:
-                          responsive.noteFont,
-                        lineHeight:
-                          responsive.noteLine,
-                      },
-                    ]}
-                    numberOfLines={
-                      responsive.noteLines
-                    }
-                  >
-                    Login using the assigned table account. The table number will be detected automatically.
-                  </Text>
+                      <TextInput
+                        style={[
+                          styles.input,
+                          {
+                            height:
+                              responsive.inputHeight,
+                            borderRadius:
+                              responsive.inputRadius,
+                            paddingHorizontal:
+                              responsive.inputPadding,
+                            fontSize:
+                              responsive.inputFont,
+                            marginBottom:
+                              responsive.inputMarginBottom,
+                          },
+                        ]}
+                        value={email}
+                        onChangeText={setEmail}
+                        autoCapitalize="none"
+                        autoCorrect={false}
+                        keyboardType="email-address"
+                        placeholder="Enter table email"
+                        placeholderTextColor="#999"
+                      />
+
+                      <Text
+                        style={[
+                          styles.label,
+                          {
+                            fontSize:
+                              responsive.labelFont,
+                          },
+                        ]}
+                      >
+                        Password
+                      </Text>
+
+                      <View
+                        style={[
+                          styles.passwordRow,
+                          {
+                            height:
+                              responsive.inputHeight,
+                            borderRadius:
+                              responsive.inputRadius,
+                            marginBottom:
+                              responsive.passwordMarginBottom,
+                          },
+                        ]}
+                      >
+                        <TextInput
+                          style={[
+                            styles.passwordInput,
+                            {
+                              paddingHorizontal:
+                                responsive.inputPadding,
+                              fontSize:
+                                responsive.inputFont,
+                            },
+                          ]}
+                          value={password}
+                          onChangeText={setPassword}
+                          secureTextEntry={!showPassword}
+                          placeholder="Enter password"
+                          placeholderTextColor="#999"
+                        />
+
+                        <Pressable
+                          style={[
+                            styles.showButton,
+                            {
+                              width:
+                                responsive.showButtonWidth,
+                            },
+                          ]}
+                          onPress={() =>
+                            setShowPassword(
+                              !showPassword
+                            )
+                          }
+                        >
+                          <Text
+                            style={[
+                              styles.showButtonText,
+                              {
+                                fontSize:
+                                  responsive.showButtonFont,
+                              },
+                            ]}
+                            numberOfLines={1}
+                            adjustsFontSizeToFit
+                          >
+                            {showPassword
+                              ? 'Hide'
+                              : 'Show'}
+                          </Text>
+                        </Pressable>
+                      </View>
+
+                      <Pressable
+                        style={[
+                          styles.button,
+                          {
+                            height:
+                              responsive.buttonHeight,
+                            borderRadius:
+                              responsive.buttonRadius,
+                          },
+                          loading &&
+                          styles.buttonDisabled,
+                        ]}
+                        onPress={handleLogin}
+                        disabled={loading}
+                      >
+                        {loading ? (
+                          <ActivityIndicator color="#fff" />
+                        ) : (
+                          <Text
+                            style={[
+                              styles.buttonText,
+                              {
+                                fontSize:
+                                  responsive.buttonText,
+                              },
+                            ]}
+                            numberOfLines={1}
+                            adjustsFontSizeToFit
+                          >
+                            Login
+                          </Text>
+                        )}
+                      </Pressable>
+
+                      <Text
+                        style={[
+                          styles.note,
+                          {
+                            marginTop:
+                              responsive.noteMargin,
+                            fontSize:
+                              responsive.noteFont,
+                            lineHeight:
+                              responsive.noteLine,
+                          },
+                        ]}
+                        numberOfLines={
+                          responsive.noteLines
+                        }
+                        adjustsFontSizeToFit
+                        minimumFontScale={0.75}
+                      >
+                        Login using the assigned table account. The table number will be detected automatically.
+                      </Text>
+                    </View>
+                  </View>
                 </View>
               </View>
             </ScrollView>
@@ -765,6 +824,10 @@ const styles =
 
     scrollContent: {
       flexGrow: 1,
+    },
+
+    centerWrap: {
+      width: '100%',
       justifyContent: 'center',
       alignItems: 'center',
     },
@@ -774,16 +837,30 @@ const styles =
         'rgba(245, 242, 237, 0.96)',
       alignItems: 'center',
       justifyContent: 'center',
-      overflow: 'hidden',
+      alignSelf: 'center',
+      overflow: 'visible',
+      shadowColor: '#000',
+      shadowOpacity: 0.12,
+      shadowRadius: 10,
+      elevation: 4,
+    },
+
+    innerCardContent: {
+      width: '100%',
+      justifyContent: 'center',
+      alignItems: 'center',
     },
 
     brandBlock: {
       width: '100%',
       alignItems: 'center',
       justifyContent: 'center',
+      flexShrink: 1,
     },
 
-    brandLogo: {},
+    brandLogo: {
+      flexShrink: 0,
+    },
 
     brandTitle: {
       width: '100%',
@@ -803,13 +880,14 @@ const styles =
 
     form: {
       width: '100%',
+      alignSelf: 'center',
     },
 
     label: {
       fontWeight: '900',
       color: '#555',
-      marginBottom: 7,
-      marginTop: 5,
+      marginBottom: 5,
+      marginTop: 3,
     },
 
     input: {
@@ -834,6 +912,7 @@ const styles =
       flex: 1,
       fontWeight: '700',
       color: '#222',
+      minWidth: 0,
     },
 
     showButton: {
@@ -842,11 +921,13 @@ const styles =
       justifyContent: 'center',
       alignItems: 'center',
       backgroundColor: '#f7f2ef',
+      flexShrink: 0,
     },
 
     showButtonText: {
       color: '#f68c45',
       fontWeight: '900',
+      textAlign: 'center',
     },
 
     button: {
@@ -867,6 +948,7 @@ const styles =
     buttonText: {
       color: '#fff',
       fontWeight: '900',
+      textAlign: 'center',
     },
 
     note: {

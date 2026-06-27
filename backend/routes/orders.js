@@ -235,8 +235,8 @@ const normalizePaymentMethod = (value) => {
 const hasXenditInvoice = (order) => {
   return Boolean(
     order?.xendit_invoice_id ||
-      order?.xendit_external_id ||
-      order?.xendit_invoice_url
+    order?.xendit_external_id ||
+    order?.xendit_invoice_url
   );
 };
 
@@ -348,10 +348,10 @@ const getManilaTodayUtcRange = () => {
   const manilaNow =
     new Date(
       now.getTime() +
-        MANILA_UTC_OFFSET_HOURS *
-          60 *
-          60 *
-          1000
+      MANILA_UTC_OFFSET_HOURS *
+      60 *
+      60 *
+      1000
     );
 
   const year =
@@ -379,7 +379,7 @@ const getManilaTodayUtcRange = () => {
   const endUtc =
     new Date(
       startUtc.getTime() +
-        24 * 60 * 60 * 1000
+      24 * 60 * 60 * 1000
     );
 
   return {
@@ -750,7 +750,7 @@ router.get(
 
               return (
                 Number(order.table_number) ===
-                  tableNumber &&
+                tableNumber &&
                 [
                   'pending',
                   'preparing',
@@ -1012,7 +1012,7 @@ router.post('/', async (req, res) => {
     const paymentMethod =
       normalizePaymentMethod(
         req.body.payment_method ||
-          req.body.paymentMethod
+        req.body.paymentMethod
       );
 
     const needInvoice =
@@ -1103,8 +1103,8 @@ router.post('/', async (req, res) => {
         const notes =
           String(
             item.special_request ||
-              item.notes ||
-              ''
+            item.notes ||
+            ''
           ).trim();
 
         return notes.length > 0;
@@ -1123,30 +1123,30 @@ router.post('/', async (req, res) => {
 
       const invoiceData = needInvoice
         ? {
-            xendit_invoice_id:
-              `mock_inv_${Math.random()
-                .toString(36)
-                .substring(2, 11)
-                .toUpperCase()}`,
-            xendit_external_id:
-              buildMockExternalId(
-                mockOrderId
-              ),
-            xendit_invoice_url:
-              `https://checkout-staging.xendit.co/web/mock_inv_${Date.now()}`,
-            xendit_expiry_date:
-              getUtcNowIso(),
-          }
+          xendit_invoice_id:
+            `mock_inv_${Math.random()
+              .toString(36)
+              .substring(2, 11)
+              .toUpperCase()}`,
+          xendit_external_id:
+            buildMockExternalId(
+              mockOrderId
+            ),
+          xendit_invoice_url:
+            `https://checkout-staging.xendit.co/web/mock_inv_${Date.now()}`,
+          xendit_expiry_date:
+            getUtcNowIso(),
+        }
         : {
-            xendit_invoice_id:
-              null,
-            xendit_external_id:
-              null,
-            xendit_invoice_url:
-              null,
-            xendit_expiry_date:
-              null,
-          };
+          xendit_invoice_id:
+            null,
+          xendit_external_id:
+            null,
+          xendit_invoice_url:
+            null,
+          xendit_expiry_date:
+            null,
+        };
 
       const now =
         getUtcNowIso();
@@ -1277,7 +1277,7 @@ router.post('/', async (req, res) => {
       return res
         .status(
           inventoryValidation.status ||
-            422
+          422
         )
         .json({
           success: false,
@@ -1522,8 +1522,8 @@ router.post('/', async (req, res) => {
         console.log(
           'XENDIT INVOICE CREATION ERROR:',
           invoiceError.response?.data ||
-            invoiceError.message ||
-            invoiceError
+          invoiceError.message ||
+          invoiceError
         );
 
         return res.status(500).json({
@@ -1666,7 +1666,7 @@ router.get('/:id', async (req, res) => {
     if (
       hasXenditInvoice(orderRow) &&
       orderRow.payment_method !==
-        'Digital Payment'
+      'Digital Payment'
     ) {
       const {
         data: correctedOrder,

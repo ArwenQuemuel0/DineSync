@@ -132,6 +132,24 @@ app.get('/payment-failed', (req, res) => {
   );
 });
 
+app.get('/api/version', (req, res) => {
+  return res.json({
+    success: true,
+    version: 'with-ai-route-2026-06-28',
+    api: 'DineSync+ Node API',
+    time: new Date().toISOString(),
+  });
+});
+
+app.get('/api/ai-health', (req, res) => {
+  return res.json({
+    success: true,
+    message: 'AI route mount is loaded',
+    hasOpenAiKey: Boolean(process.env.OPENAI_API_KEY),
+    time: new Date().toISOString(),
+  });
+});
+
 // =========================
 // 404 FALLBACK
 // =========================
@@ -152,16 +170,19 @@ app.listen(
   PORT,
   '0.0.0.0',
   () => {
+    const publicBaseUrl =
+      process.env.PUBLIC_BASE_URL || 'https://api.dinesync.shop';
+
     console.log(
       `Server is running on port ${PORT}`
     );
 
     console.log(
-      `API Base URL: http://localhost:${PORT}/api`
+      `API Base URL: ${publicBaseUrl}/api`
     );
 
     console.log(
-      `Xendit Webhook URL: http://localhost:${PORT}/api/webhooks/xendit`
+      `Xendit Webhook URL: ${publicBaseUrl}/api/webhooks/xendit`
     );
   }
 );

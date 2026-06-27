@@ -38,8 +38,8 @@ export default function WelcomeScreen({
       const shortest =
         Math.min(width, height);
 
-      const longest =
-        Math.max(width, height);
+      const isLandscape =
+        width > height;
 
       const isPhone =
         shortest < 600;
@@ -47,19 +47,14 @@ export default function WelcomeScreen({
       const isVeryNarrow =
         width < 430;
 
-      const isLandscape =
-        width > height;
-
-      const isShortHeight =
-        height < 650;
-
       const availableHeight =
         height -
         insets.top -
         insets.bottom;
 
-      const base =
-        Math.min(shortest / 768, 1.05);
+      const availableWidth =
+        width -
+        24;
 
       const clamp = (
         value,
@@ -72,6 +67,11 @@ export default function WelcomeScreen({
         );
       };
 
+      const base =
+        isPhone
+          ? Math.min(shortest / 390, 1)
+          : Math.min(shortest / 768, 1.05);
+
       const scale = (
         size,
         min = size * 0.65,
@@ -82,35 +82,17 @@ export default function WelcomeScreen({
         );
       };
 
-      const compact =
-        isPhone ||
-        isShortHeight;
+      const tabletLandscape =
+        !isPhone && isLandscape;
 
-      const logoCircle =
-        isPhone
-          ? isLandscape
-            ? clamp(availableHeight * 0.18, 62, 88)
-            : isVeryNarrow
-              ? scale(104, 82, 110)
-              : scale(122, 92, 130)
-          : isLandscape
-            ? scale(132, 92, 145)
-            : scale(150, 100, 160);
-
-      const cardHeight =
-        isPhone
-          ? isLandscape
-            ? availableHeight * 0.86
-            : availableHeight * 0.8
-          : isLandscape
-            ? availableHeight * 0.90
-            : availableHeight * 0.88;
+      const phoneLandscape =
+        isPhone && isLandscape;
 
       return {
         isPhone,
-        isVeryNarrow,
         isLandscape,
-        compact,
+        tabletLandscape,
+        phoneLandscape,
 
         safeTopExtra: 0,
 
@@ -118,146 +100,187 @@ export default function WelcomeScreen({
           Math.max(insets.bottom + 6, 12),
 
         overlayPaddingH:
-          isVeryNarrow
-            ? scale(14, 12, 16)
-            : isPhone
-              ? scale(18, 14, 20)
-              : scale(26, 16, 30),
+          tabletLandscape
+            ? 12
+            : phoneLandscape
+              ? 10
+              : isPhone
+                ? isVeryNarrow
+                  ? 14
+                  : 18
+                : 24,
 
         overlayPaddingV:
-          isPhone
-            ? isLandscape
-              ? scale(8, 6, 10)
-              : scale(12, 10, 14)
-            : scale(20, 12, 24),
+          tabletLandscape
+            ? 10
+            : phoneLandscape
+              ? 8
+              : isPhone
+                ? 12
+                : 20,
 
         cardWidth:
-          isPhone
-            ? isLandscape
-              ? '76%'
-              : '94%'
-            : '94%',
+          tabletLandscape
+            ? '92%'
+            : phoneLandscape
+              ? '88%'
+              : isPhone
+                ? '94%'
+                : '90%',
 
         cardMaxWidth:
-          isPhone
-            ? isLandscape
-              ? clamp(width * 0.74, 360, 560)
-              : clamp(width - 28, 300, 430)
-            : clamp(longest * 0.9, 420, 1320),
+          tabletLandscape
+            ? availableWidth
+            : phoneLandscape
+              ? clamp(width * 0.88, 420, 760)
+              : isPhone
+                ? clamp(width - 28, 300, 430)
+                : clamp(width * 0.9, 520, 1180),
 
-        cardHeight,
+        cardMinWidth:
+          tabletLandscape
+            ? width * 0.88
+            : undefined,
+
+        cardHeight:
+          tabletLandscape
+            ? availableHeight * 0.78
+            : phoneLandscape
+              ? availableHeight * 0.82
+              : isPhone
+                ? availableHeight * 0.8
+                : availableHeight * 0.88,
 
         cardMaxHeight:
           availableHeight * 0.94,
 
         cardRadius:
-          isPhone
-            ? isLandscape
-              ? scale(24, 18, 26)
-              : scale(28, 20, 30)
-            : scale(36, 22, 38),
+          tabletLandscape
+            ? 32
+            : phoneLandscape
+              ? 24
+              : isPhone
+                ? 28
+                : 36,
 
         cardPaddingH:
-          isVeryNarrow
-            ? scale(20, 16, 22)
-            : isPhone
-              ? isLandscape
-                ? scale(24, 18, 28)
-                : scale(26, 20, 30)
-              : scale(56, 24, 58),
+          tabletLandscape
+            ? clamp(width * 0.055, 52, 82)
+            : phoneLandscape
+              ? 26
+              : isPhone
+                ? isVeryNarrow
+                  ? 20
+                  : 26
+                : 56,
 
         cardPaddingTop:
-          isPhone
-            ? isLandscape
-              ? scale(16, 12, 20)
-              : isVeryNarrow
-                ? scale(22, 18, 24)
-                : scale(28, 20, 32)
-            : scale(42, 22, 46),
+          tabletLandscape
+            ? 30
+            : phoneLandscape
+              ? 14
+              : isPhone
+                ? isVeryNarrow
+                  ? 22
+                  : 28
+                : 42,
 
         cardPaddingBottom:
-          isPhone
-            ? isLandscape
-              ? scale(16, 12, 20)
-              : isVeryNarrow
-                ? scale(22, 18, 24)
-                : scale(28, 20, 32)
-            : scale(46, 24, 50),
+          tabletLandscape
+            ? 30
+            : phoneLandscape
+              ? 14
+              : isPhone
+                ? isVeryNarrow
+                  ? 22
+                  : 28
+                : 46,
 
-        logoCircle,
-
-        logoRadius:
-          logoCircle / 2,
-
-        logoSize:
-          logoCircle * 0.78,
+        logoCircle:
+          tabletLandscape
+            ? clamp(availableHeight * 0.2, 92, 125)
+            : phoneLandscape
+              ? clamp(availableHeight * 0.2, 64, 90)
+              : isPhone
+                ? isVeryNarrow
+                  ? scale(104, 82, 110)
+                  : scale(122, 92, 130)
+                : scale(150, 100, 160),
 
         logoMargin:
-          isPhone
-            ? isLandscape
-              ? scale(8, 5, 10)
-              : scale(12, 8, 14)
-            : scale(16, 8, 16),
+          tabletLandscape
+            ? 10
+            : phoneLandscape
+              ? 8
+              : isPhone
+                ? 12
+                : 16,
 
         titleFont:
-          isPhone
-            ? isLandscape
-              ? scale(32, 26, 34)
-              : isVeryNarrow
-                ? scale(34, 28, 36)
-                : scale(40, 32, 42)
-            : scale(58, 34, 60),
+          tabletLandscape
+            ? scale(52, 42, 58)
+            : phoneLandscape
+              ? scale(34, 28, 36)
+              : isPhone
+                ? isVeryNarrow
+                  ? scale(34, 28, 36)
+                  : scale(40, 32, 42)
+                : scale(58, 34, 60),
 
         titleLine:
-          isPhone
-            ? isLandscape
-              ? scale(38, 30, 40)
-              : isVeryNarrow
-                ? scale(42, 34, 44)
-                : scale(48, 38, 50)
-            : scale(66, 40, 68),
+          tabletLandscape
+            ? scale(60, 48, 66)
+            : phoneLandscape
+              ? scale(39, 32, 42)
+              : isPhone
+                ? isVeryNarrow
+                  ? scale(42, 34, 44)
+                  : scale(48, 38, 50)
+                : scale(66, 40, 68),
 
         subtitleFont:
-          isPhone
-            ? isLandscape
-              ? scale(18, 15, 19)
-              : isVeryNarrow
-                ? scale(18, 15, 19)
-                : scale(22, 17, 23)
-            : scale(28, 18, 28),
-
-        subtitleMargin:
-          scale(8, 4, 8),
+          tabletLandscape
+            ? scale(26, 20, 28)
+            : phoneLandscape
+              ? scale(18, 15, 20)
+              : isPhone
+                ? isVeryNarrow
+                  ? scale(18, 15, 19)
+                  : scale(22, 17, 23)
+                : scale(28, 18, 28),
 
         tableLabelFont:
-          isPhone
-            ? isLandscape
+          tabletLandscape
+            ? scale(24, 18, 26)
+            : phoneLandscape
               ? scale(17, 14, 18)
-              : isVeryNarrow
-                ? scale(18, 15, 19)
-                : scale(21, 17, 22)
-            : scale(26, 17, 26),
+              : isPhone
+                ? isVeryNarrow
+                  ? scale(18, 15, 19)
+                  : scale(21, 17, 22)
+                : scale(26, 17, 26),
 
         tableNumberFont:
-          isPhone
-            ? isLandscape
-              ? scale(32, 26, 34)
-              : isVeryNarrow
-                ? scale(34, 28, 36)
-                : scale(42, 32, 44)
-            : scale(64, 36, 66),
-
-        tableNumberMargin:
-          scale(8, 4, 8),
+          tabletLandscape
+            ? scale(58, 42, 64)
+            : phoneLandscape
+              ? scale(34, 28, 36)
+              : isPhone
+                ? isVeryNarrow
+                  ? scale(34, 28, 36)
+                  : scale(42, 32, 44)
+                : scale(64, 36, 66),
 
         tapFont:
-          isPhone
-            ? isLandscape
+          tabletLandscape
+            ? scale(22, 17, 24)
+            : phoneLandscape
               ? scale(16, 13, 17)
-              : isVeryNarrow
-                ? scale(17, 14, 18)
-                : scale(20, 16, 21)
-            : scale(24, 16, 24),
+              : isPhone
+                ? isVeryNarrow
+                  ? scale(17, 14, 18)
+                  : scale(20, 16, 21)
+                : scale(24, 16, 24),
       };
     }, [
       width,
@@ -265,6 +288,12 @@ export default function WelcomeScreen({
       insets.top,
       insets.bottom,
     ]);
+
+  const logoRadius =
+    responsive.logoCircle / 2;
+
+  const logoSize =
+    responsive.logoCircle * 0.78;
 
   return (
     <ImageBackground
@@ -319,6 +348,8 @@ export default function WelcomeScreen({
                       responsive.cardWidth,
                     maxWidth:
                       responsive.cardMaxWidth,
+                    minWidth:
+                      responsive.cardMinWidth,
                     height:
                       responsive.cardHeight,
                     maxHeight:
@@ -343,7 +374,7 @@ export default function WelcomeScreen({
                       height:
                         responsive.logoCircle,
                       borderRadius:
-                        responsive.logoRadius,
+                        logoRadius,
                       marginBottom:
                         responsive.logoMargin,
                     },
@@ -355,9 +386,9 @@ export default function WelcomeScreen({
                       styles.logo,
                       {
                         width:
-                          responsive.logoSize,
+                          logoSize,
                         height:
-                          responsive.logoSize,
+                          logoSize,
                       },
                     ]}
                     resizeMode="contain"
@@ -378,6 +409,7 @@ export default function WelcomeScreen({
                       ]}
                       numberOfLines={2}
                       adjustsFontSizeToFit
+                      minimumFontScale={0.72}
                     >
                       Welcome to Chef Oppa
                     </Text>
@@ -388,12 +420,11 @@ export default function WelcomeScreen({
                         {
                           fontSize:
                             responsive.subtitleFont,
-                          marginTop:
-                            responsive.subtitleMargin,
                         },
                       ]}
                       numberOfLines={1}
                       adjustsFontSizeToFit
+                      minimumFontScale={0.78}
                     >
                       Korean Restaurant
                     </Text>
@@ -420,12 +451,11 @@ export default function WelcomeScreen({
                         {
                           fontSize:
                             responsive.tableNumberFont,
-                          marginTop:
-                            responsive.tableNumberMargin,
                         },
                       ]}
                       numberOfLines={1}
                       adjustsFontSizeToFit
+                      minimumFontScale={0.72}
                     >
                       Table No. {tableNumber || user?.table_number || '-'}
                     </Text>
@@ -527,6 +557,7 @@ const styles =
       color: '#6b6b6b',
       textAlign: 'center',
       width: '100%',
+      marginTop: 6,
     },
 
     tableSection: {
@@ -546,6 +577,7 @@ const styles =
       color: '#f68c45',
       textAlign: 'center',
       width: '100%',
+      marginTop: 6,
     },
 
     tapText: {
