@@ -13,6 +13,7 @@ import {
   FlatList,
   useWindowDimensions,
   StatusBar,
+  Platform,
 } from 'react-native';
 
 import {
@@ -75,13 +76,19 @@ export default function OrderStatusScreen({
         shortest < 600;
 
       const isVeryNarrow =
-        width < 430;
+        width < 390;
 
       const isLandscape =
         width > height;
 
-      const base =
-        Math.min(shortest / 768, 1.05);
+      const isShortLandscape =
+        isLandscape &&
+        height < 430;
+
+      const usableWidth =
+        width -
+        insets.left -
+        insets.right;
 
       const clamp = (
         value,
@@ -94,10 +101,15 @@ export default function OrderStatusScreen({
         );
       };
 
+      const base =
+        isPhone
+          ? Math.min(shortest / 390, 1)
+          : Math.min(shortest / 768, 1.05);
+
       const scale = (
         size,
-        min = size * 0.65,
-        max = size * 1.08
+        min = size * 0.72,
+        max = size * 1.12
       ) => {
         return Math.round(
           clamp(size * base, min, max)
@@ -105,22 +117,40 @@ export default function OrderStatusScreen({
       };
 
       const bottomBarNeedsWrap =
-        width < 720;
+        usableWidth < 720;
+
+      const compactBottomBar =
+        usableWidth < 420;
 
       const bottomBarHeight =
         bottomBarNeedsWrap
-          ? scale(128, 112, 142)
-          : scale(78, 68, 88);
+          ? compactBottomBar
+            ? scale(132, 118, 148)
+            : scale(124, 108, 138)
+          : scale(82, 70, 92);
+
+      const useCompactHeader =
+        isVeryNarrow ||
+        isShortLandscape ||
+        usableWidth < 420;
 
       return {
         isPhone,
         isVeryNarrow,
         isLandscape,
+        isShortLandscape,
+        bottomBarNeedsWrap,
+        compactBottomBar,
+        useCompactHeader,
 
         safeTopExtra: 0,
 
         safeBottomExtra:
-          Math.max(insets.bottom + 6, 12),
+          Math.max(
+            insets.bottom +
+            (Platform.OS === 'android' ? 10 : 8),
+            16
+          ),
 
         containerPadding:
           isVeryNarrow
@@ -130,30 +160,36 @@ export default function OrderStatusScreen({
               : scale(24, 16, 26),
 
         topBarHeight:
-          isPhone
-            ? scale(54, 46, 58)
-            : scale(64, 50, 68),
+          useCompactHeader
+            ? scale(50, 44, 54)
+            : isPhone
+              ? scale(56, 48, 60)
+              : scale(66, 52, 70),
 
         backText:
-          isPhone
-            ? scale(16, 14, 17)
-            : scale(24, 16, 24),
+          useCompactHeader
+            ? scale(13, 11, 14)
+            : isPhone
+              ? scale(16, 14, 17)
+              : scale(24, 16, 24),
 
         tableText:
-          isPhone
-            ? scale(16, 14, 17)
-            : scale(24, 16, 24),
+          useCompactHeader
+            ? scale(13, 11, 14)
+            : isPhone
+              ? scale(16, 14, 17)
+              : scale(24, 16, 24),
 
         header:
           isVeryNarrow
-            ? scale(31, 28, 33)
+            ? scale(30, 26, 32)
             : isPhone
-              ? scale(36, 30, 38)
+              ? scale(34, 28, 36)
               : scale(52, 34, 54),
 
         subHeader:
           isPhone
-            ? scale(18, 16, 20)
+            ? scale(17, 15, 19)
             : scale(26, 18, 26),
 
         subHeaderMargin:
@@ -162,10 +198,14 @@ export default function OrderStatusScreen({
             : scale(18, 14, 20),
 
         loadingText:
-          scale(22, 16, 22),
+          isPhone
+            ? scale(18, 15, 20)
+            : scale(22, 16, 22),
 
         errorText:
-          scale(16, 12, 16),
+          isPhone
+            ? scale(14, 12, 15)
+            : scale(16, 12, 16),
 
         errorPadding:
           scale(12, 9, 12),
@@ -190,37 +230,51 @@ export default function OrderStatusScreen({
 
         orderTitle:
           isPhone
-            ? scale(21, 18, 22)
+            ? scale(19, 17, 21)
             : scale(26, 19, 26),
 
         orderMeta:
-          scale(15, 11, 15),
+          isPhone
+            ? scale(13, 11, 14)
+            : scale(15, 11, 15),
 
         statusText:
-          scale(16, 11, 16),
+          isPhone
+            ? scale(13, 11, 14)
+            : scale(16, 11, 16),
 
         paymentBadgeText:
-          scale(14, 11, 14),
+          isPhone
+            ? scale(12, 10, 13)
+            : scale(14, 11, 14),
 
         badgePaddingV:
-          scale(8, 5, 8),
+          isPhone
+            ? scale(7, 5, 8)
+            : scale(8, 5, 8),
 
         badgePaddingH:
           isPhone
-            ? scale(13, 10, 14)
+            ? scale(11, 9, 13)
             : scale(18, 10, 18),
 
         paymentBadgePaddingV:
           scale(6, 5, 6),
 
         paymentBadgePaddingH:
-          scale(14, 9, 14),
+          isPhone
+            ? scale(11, 9, 13)
+            : scale(14, 9, 14),
 
         paymentMessage:
-          scale(16, 12, 16),
+          isPhone
+            ? scale(14, 12, 15)
+            : scale(16, 12, 16),
 
         paymentMessageLine:
-          scale(22, 17, 22),
+          isPhone
+            ? scale(20, 17, 21)
+            : scale(22, 17, 22),
 
         paymentMessagePaddingV:
           scale(10, 7, 10),
@@ -232,7 +286,9 @@ export default function OrderStatusScreen({
           scale(12, 8, 14),
 
         continuePaymentPaddingV:
-          scale(12, 9, 13),
+          isPhone
+            ? scale(11, 9, 13)
+            : scale(12, 9, 13),
 
         continuePaymentPaddingH:
           scale(16, 12, 18),
@@ -241,54 +297,74 @@ export default function OrderStatusScreen({
           scale(14, 10, 14),
 
         continuePaymentText:
-          scale(16, 13, 17),
+          isPhone
+            ? scale(15, 13, 16)
+            : scale(16, 13, 17),
 
         dividerMargin:
-          scale(16, 10, 16),
+          isPhone
+            ? scale(12, 10, 14)
+            : scale(16, 10, 16),
 
         noItemsText:
-          scale(16, 12, 16),
+          isPhone
+            ? scale(14, 12, 15)
+            : scale(16, 12, 16),
 
         itemName:
-          scale(19, 14, 19),
+          isPhone
+            ? scale(15, 13, 17)
+            : scale(19, 14, 19),
 
         itemQty:
-          scale(15, 11, 15),
+          isPhone
+            ? scale(13, 11, 14)
+            : scale(15, 11, 15),
 
         customPrice:
-          scale(14, 11, 14),
+          isPhone
+            ? scale(13, 11, 14)
+            : scale(14, 11, 14),
 
         requestText:
-          scale(14, 11, 14),
+          isPhone
+            ? scale(13, 11, 14)
+            : scale(14, 11, 14),
 
         itemPrice:
-          scale(18, 13, 18),
+          isPhone
+            ? scale(15, 13, 17)
+            : scale(18, 13, 18),
 
         totalLabel:
           isPhone
-            ? scale(18, 16, 19)
+            ? scale(17, 15, 19)
             : scale(22, 16, 22),
 
         totalValue:
           isPhone
-            ? scale(22, 19, 23)
+            ? scale(21, 18, 23)
             : scale(26, 20, 26),
 
         emptyIcon:
           isPhone
-            ? scale(66, 52, 70)
-            : scale(80, 55, 80),
+            ? scale(66, 52, 72)
+            : scale(80, 55, 82),
 
         emptyTitle:
           isPhone
-            ? scale(24, 22, 26)
+            ? scale(23, 20, 25)
             : scale(36, 24, 36),
 
         emptyText:
-          scale(18, 13, 18),
+          isPhone
+            ? scale(15, 13, 17)
+            : scale(18, 13, 18),
 
         emptyLine:
-          scale(25, 19, 25),
+          isPhone
+            ? scale(22, 19, 24)
+            : scale(25, 19, 25),
 
         bottomBarLeft:
           isVeryNarrow
@@ -298,7 +374,11 @@ export default function OrderStatusScreen({
               : scale(24, 16, 24),
 
         bottomBarBottom:
-          Math.max(insets.bottom + 6, 12),
+          Math.max(
+            insets.bottom +
+            (Platform.OS === 'android' ? 8 : 6),
+            12
+          ),
 
         bottomBarPadding:
           isPhone
@@ -308,15 +388,17 @@ export default function OrderStatusScreen({
         bottomBarRadius:
           scale(18, 14, 18),
 
-        bottomBarNeedsWrap,
-
         bottomBarHeight,
 
         autoText:
-          scale(15, 11, 15),
+          isPhone
+            ? scale(13, 11, 14)
+            : scale(15, 11, 15),
 
         buttonPaddingV:
-          scale(11, 8, 11),
+          isPhone
+            ? scale(10, 8, 11)
+            : scale(11, 8, 11),
 
         buttonPaddingH:
           isPhone
@@ -327,11 +409,16 @@ export default function OrderStatusScreen({
           scale(12, 9, 12),
 
         buttonText:
-          scale(16, 12, 16),
+          isPhone
+            ? scale(15, 13, 16)
+            : scale(16, 12, 16),
 
         listBottom:
           bottomBarHeight +
-          Math.max(insets.bottom + 26, 42),
+          Math.max(
+            insets.bottom + 36,
+            58
+          ),
 
         maxContentWidth:
           clamp(longest * 0.94, 340, 1100),
@@ -339,6 +426,8 @@ export default function OrderStatusScreen({
     }, [
       width,
       height,
+      insets.left,
+      insets.right,
       insets.bottom,
     ]);
 
@@ -1145,6 +1234,7 @@ export default function OrderStatusScreen({
                   },
                 ]}
                 numberOfLines={1}
+                adjustsFontSizeToFit
               >
                 {getDisplayOrderStatusLabel(item)}
               </Text>
@@ -1173,6 +1263,7 @@ export default function OrderStatusScreen({
                   },
                 ]}
                 numberOfLines={1}
+                adjustsFontSizeToFit
               >
                 {getPaymentLabel(item)}
               </Text>
@@ -1430,7 +1521,12 @@ export default function OrderStatusScreen({
 
         <SafeAreaView
           style={styles.safeAreaLight}
-          edges={['top']}
+          edges={[
+            'top',
+            'left',
+            'right',
+            'bottom',
+          ]}
         >
           <View style={styles.loadingContainer}>
             <ActivityIndicator
@@ -1465,7 +1561,11 @@ export default function OrderStatusScreen({
 
       <SafeAreaView
         style={styles.safeAreaLight}
-        edges={['top']}
+        edges={[
+          'top',
+          'left',
+          'right',
+        ]}
       >
         <View
           style={[
@@ -1491,6 +1591,7 @@ export default function OrderStatusScreen({
             ]}
           >
             <TouchableOpacity
+              style={styles.topBarLeft}
               onPress={() =>
                 navigation.navigate(
                   'Menu'
@@ -1506,6 +1607,7 @@ export default function OrderStatusScreen({
                   },
                 ]}
                 numberOfLines={1}
+                adjustsFontSizeToFit
               >
                 {'<'} Back to Menu
               </Text>
@@ -1520,6 +1622,7 @@ export default function OrderStatusScreen({
                 },
               ]}
               numberOfLines={1}
+              adjustsFontSizeToFit
             >
               Table {finalTableNumber || '-'}
             </Text>
@@ -1535,6 +1638,7 @@ export default function OrderStatusScreen({
             ]}
             numberOfLines={1}
             adjustsFontSizeToFit
+            minimumFontScale={0.75}
           >
             Order Status
           </Text>
@@ -1551,6 +1655,7 @@ export default function OrderStatusScreen({
             ]}
             numberOfLines={1}
             adjustsFontSizeToFit
+            minimumFontScale={0.75}
           >
             {orderId
               ? `Order #${orderId}`
@@ -1682,6 +1787,8 @@ export default function OrderStatusScreen({
                       : 'left',
                 },
               ]}
+              numberOfLines={1}
+              adjustsFontSizeToFit
             >
               Updates every 5 seconds
             </Text>
@@ -1722,6 +1829,7 @@ export default function OrderStatusScreen({
                     },
                   ]}
                   numberOfLines={1}
+                  adjustsFontSizeToFit
                 >
                   Refresh
                 </Text>
@@ -1754,6 +1862,7 @@ export default function OrderStatusScreen({
                     },
                   ]}
                   numberOfLines={1}
+                  adjustsFontSizeToFit
                 >
                   Continue Ordering
                 </Text>
@@ -1804,6 +1913,12 @@ const styles =
         'space-between',
       alignItems: 'center',
       gap: 12,
+      flexShrink: 0,
+    },
+
+    topBarLeft: {
+      flex: 1,
+      minWidth: 0,
     },
 
     backText: {
@@ -1812,6 +1927,7 @@ const styles =
     },
 
     tableText: {
+      flexShrink: 1,
       fontWeight: '900',
       color: '#f68c45',
       textAlign: 'right',
@@ -1864,6 +1980,7 @@ const styles =
     orderHeaderLeft: {
       flex: 1,
       paddingRight: 8,
+      minWidth: 0,
     },
 
     orderTitle: {
@@ -1892,17 +2009,20 @@ const styles =
     orderHeaderRight: {
       alignItems: 'flex-end',
       maxWidth: 165,
+      flexShrink: 1,
     },
 
     statusBadge: {
       borderRadius: 999,
       maxWidth: 165,
+      minWidth: 78,
     },
 
     paymentBadge: {
       borderRadius: 999,
       marginTop: 8,
       maxWidth: 165,
+      minWidth: 78,
     },
 
     statusBadgeText: {
@@ -2002,6 +2122,7 @@ const styles =
     itemLeft: {
       flex: 1,
       paddingRight: 8,
+      minWidth: 0,
     },
 
     itemName: {
@@ -2033,6 +2154,7 @@ const styles =
       color: '#f68c45',
       textAlign: 'right',
       maxWidth: 160,
+      flexShrink: 1,
     },
 
     totalRow: {
@@ -2108,13 +2230,19 @@ const styles =
     refreshBtn: {
       backgroundColor: '#333',
       alignItems: 'center',
+      justifyContent: 'center',
       flexShrink: 1,
+      flexGrow: 1,
+      minWidth: 105,
     },
 
     menuBtn: {
       backgroundColor: '#f68c45',
       alignItems: 'center',
+      justifyContent: 'center',
       flexShrink: 1,
+      flexGrow: 1,
+      minWidth: 145,
     },
 
     refreshText: {

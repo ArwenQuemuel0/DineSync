@@ -11,6 +11,7 @@ import {
   ImageBackground,
   StatusBar,
   useWindowDimensions,
+  ScrollView,
 } from 'react-native';
 
 import {
@@ -38,6 +39,9 @@ export default function WelcomeScreen({
       const shortest =
         Math.min(width, height);
 
+      const longest =
+        Math.max(width, height);
+
       const isLandscape =
         width > height;
 
@@ -45,7 +49,7 @@ export default function WelcomeScreen({
         shortest < 600;
 
       const isVeryNarrow =
-        width < 430;
+        width < 390;
 
       const availableHeight =
         height -
@@ -54,7 +58,8 @@ export default function WelcomeScreen({
 
       const availableWidth =
         width -
-        24;
+        insets.left -
+        insets.right;
 
       const clamp = (
         value,
@@ -74,8 +79,8 @@ export default function WelcomeScreen({
 
       const scale = (
         size,
-        min = size * 0.65,
-        max = size * 1.08
+        min = size * 0.72,
+        max = size * 1.12
       ) => {
         return Math.round(
           clamp(size * base, min, max)
@@ -88,71 +93,78 @@ export default function WelcomeScreen({
       const phoneLandscape =
         isPhone && isLandscape;
 
+      const compactLandscape =
+        isLandscape &&
+        availableHeight < 430;
+
+      const cardMaxWidth =
+        tabletLandscape
+          ? clamp(availableWidth * 0.88, 680, 1180)
+          : phoneLandscape
+            ? clamp(availableWidth * 0.88, 420, 760)
+            : isPhone
+              ? clamp(availableWidth - 28, 300, 430)
+              : clamp(availableWidth * 0.9, 520, 1180);
+
+      const cardMinHeight =
+        tabletLandscape
+          ? clamp(availableHeight * 0.68, 350, 520)
+          : phoneLandscape
+            ? clamp(availableHeight * 0.72, 270, 360)
+            : isPhone
+              ? clamp(availableHeight * 0.68, 460, 620)
+              : clamp(availableHeight * 0.72, 560, 760);
+
       return {
         isPhone,
         isLandscape,
         tabletLandscape,
         phoneLandscape,
+        compactLandscape,
 
         safeTopExtra: 0,
 
         safeBottomExtra:
-          Math.max(insets.bottom + 6, 12),
+          Math.max(insets.bottom + 8, 14),
 
         overlayPaddingH:
           tabletLandscape
-            ? 12
+            ? scale(18, 12, 24)
             : phoneLandscape
-              ? 10
+              ? scale(10, 8, 12)
               : isPhone
                 ? isVeryNarrow
-                  ? 14
-                  : 18
-                : 24,
+                  ? scale(14, 12, 16)
+                  : scale(18, 14, 20)
+                : scale(24, 18, 30),
 
         overlayPaddingV:
           tabletLandscape
-            ? 10
+            ? scale(14, 10, 18)
             : phoneLandscape
-              ? 8
+              ? scale(8, 6, 10)
               : isPhone
-                ? 12
-                : 20,
+                ? scale(12, 10, 16)
+                : scale(20, 16, 26),
 
         cardWidth:
           tabletLandscape
-            ? '92%'
+            ? '88%'
             : phoneLandscape
               ? '88%'
               : isPhone
                 ? '94%'
                 : '90%',
 
-        cardMaxWidth:
-          tabletLandscape
-            ? availableWidth
-            : phoneLandscape
-              ? clamp(width * 0.88, 420, 760)
-              : isPhone
-                ? clamp(width - 28, 300, 430)
-                : clamp(width * 0.9, 520, 1180),
+        cardMaxWidth,
 
-        cardMinWidth:
-          tabletLandscape
-            ? width * 0.88
-            : undefined,
-
-        cardHeight:
-          tabletLandscape
-            ? availableHeight * 0.78
-            : phoneLandscape
-              ? availableHeight * 0.82
-              : isPhone
-                ? availableHeight * 0.8
-                : availableHeight * 0.88,
+        cardMinHeight,
 
         cardMaxHeight:
-          availableHeight * 0.94,
+          Math.max(
+            availableHeight * 0.94,
+            280
+          ),
 
         cardRadius:
           tabletLandscape
@@ -165,36 +177,36 @@ export default function WelcomeScreen({
 
         cardPaddingH:
           tabletLandscape
-            ? clamp(width * 0.055, 52, 82)
+            ? clamp(availableWidth * 0.05, 44, 82)
             : phoneLandscape
-              ? 26
+              ? clamp(availableWidth * 0.04, 22, 34)
               : isPhone
                 ? isVeryNarrow
-                  ? 20
-                  : 26
-                : 56,
+                  ? scale(20, 16, 22)
+                  : scale(26, 20, 28)
+                : clamp(availableWidth * 0.055, 42, 72),
 
         cardPaddingTop:
           tabletLandscape
-            ? 30
+            ? scale(30, 22, 36)
             : phoneLandscape
-              ? 14
+              ? scale(14, 10, 18)
               : isPhone
                 ? isVeryNarrow
-                  ? 22
-                  : 28
-                : 42,
+                  ? scale(22, 18, 26)
+                  : scale(28, 22, 32)
+                : scale(42, 32, 48),
 
         cardPaddingBottom:
           tabletLandscape
-            ? 30
+            ? scale(30, 22, 36)
             : phoneLandscape
-              ? 14
+              ? scale(14, 10, 18)
               : isPhone
                 ? isVeryNarrow
-                  ? 22
-                  : 28
-                : 46,
+                  ? scale(22, 18, 26)
+                  : scale(28, 22, 32)
+                : scale(46, 34, 52),
 
         logoCircle:
           tabletLandscape
@@ -203,18 +215,18 @@ export default function WelcomeScreen({
               ? clamp(availableHeight * 0.2, 64, 90)
               : isPhone
                 ? isVeryNarrow
-                  ? scale(104, 82, 110)
-                  : scale(122, 92, 130)
-                : scale(150, 100, 160),
+                  ? scale(104, 82, 112)
+                  : scale(122, 92, 132)
+                : scale(150, 110, 164),
 
         logoMargin:
           tabletLandscape
-            ? 10
+            ? scale(10, 8, 12)
             : phoneLandscape
-              ? 8
+              ? scale(8, 6, 10)
               : isPhone
-                ? 12
-                : 16,
+                ? scale(12, 10, 14)
+                : scale(16, 12, 18),
 
         titleFont:
           tabletLandscape
@@ -225,7 +237,7 @@ export default function WelcomeScreen({
                 ? isVeryNarrow
                   ? scale(34, 28, 36)
                   : scale(40, 32, 42)
-                : scale(58, 34, 60),
+                : scale(58, 40, 60),
 
         titleLine:
           tabletLandscape
@@ -236,7 +248,7 @@ export default function WelcomeScreen({
                 ? isVeryNarrow
                   ? scale(42, 34, 44)
                   : scale(48, 38, 50)
-                : scale(66, 40, 68),
+                : scale(66, 46, 68),
 
         subtitleFont:
           tabletLandscape
@@ -247,7 +259,7 @@ export default function WelcomeScreen({
                 ? isVeryNarrow
                   ? scale(18, 15, 19)
                   : scale(22, 17, 23)
-                : scale(28, 18, 28),
+                : scale(28, 20, 30),
 
         tableLabelFont:
           tabletLandscape
@@ -258,7 +270,7 @@ export default function WelcomeScreen({
                 ? isVeryNarrow
                   ? scale(18, 15, 19)
                   : scale(21, 17, 22)
-                : scale(26, 17, 26),
+                : scale(26, 18, 28),
 
         tableNumberFont:
           tabletLandscape
@@ -269,7 +281,7 @@ export default function WelcomeScreen({
                 ? isVeryNarrow
                   ? scale(34, 28, 36)
                   : scale(42, 32, 44)
-                : scale(64, 36, 66),
+                : scale(64, 42, 68),
 
         tapFont:
           tabletLandscape
@@ -280,12 +292,14 @@ export default function WelcomeScreen({
                 ? isVeryNarrow
                   ? scale(17, 14, 18)
                   : scale(20, 16, 21)
-                : scale(24, 16, 24),
+                : scale(24, 17, 26),
       };
     }, [
       width,
       height,
       insets.top,
+      insets.left,
+      insets.right,
       insets.bottom,
     ]);
 
@@ -310,7 +324,12 @@ export default function WelcomeScreen({
       <View style={styles.backgroundTint}>
         <SafeAreaView
           style={styles.safeArea}
-          edges={['top']}
+          edges={[
+            'top',
+            'left',
+            'right',
+            'bottom',
+          ]}
         >
           <Pressable
             style={styles.screenPress}
@@ -325,9 +344,10 @@ export default function WelcomeScreen({
               })
             }
           >
-            <View
-              style={[
-                styles.overlay,
+            <ScrollView
+              style={styles.scrollView}
+              contentContainerStyle={[
+                styles.scrollContent,
                 {
                   paddingHorizontal:
                     responsive.overlayPaddingH,
@@ -339,6 +359,8 @@ export default function WelcomeScreen({
                     responsive.safeBottomExtra,
                 },
               ]}
+              showsVerticalScrollIndicator={false}
+              bounces={false}
             >
               <View
                 style={[
@@ -348,10 +370,8 @@ export default function WelcomeScreen({
                       responsive.cardWidth,
                     maxWidth:
                       responsive.cardMaxWidth,
-                    minWidth:
-                      responsive.cardMinWidth,
-                    height:
-                      responsive.cardHeight,
+                    minHeight:
+                      responsive.cardMinHeight,
                     maxHeight:
                       responsive.cardMaxHeight,
                     borderRadius:
@@ -476,7 +496,7 @@ export default function WelcomeScreen({
                   </Text>
                 </View>
               </View>
-            </View>
+            </ScrollView>
           </Pressable>
         </SafeAreaView>
       </View>
@@ -506,8 +526,13 @@ const styles =
       flex: 1,
     },
 
-    overlay: {
+    scrollView: {
       flex: 1,
+      width: '100%',
+    },
+
+    scrollContent: {
+      flexGrow: 1,
       justifyContent: 'center',
       alignItems: 'center',
     },
@@ -538,11 +563,13 @@ const styles =
       width: '100%',
       alignItems: 'center',
       justifyContent: 'space-around',
+      minHeight: 0,
     },
 
     headerSection: {
       alignItems: 'center',
       width: '100%',
+      flexShrink: 1,
     },
 
     title: {
@@ -563,6 +590,7 @@ const styles =
     tableSection: {
       alignItems: 'center',
       width: '100%',
+      flexShrink: 1,
     },
 
     tableLabel: {

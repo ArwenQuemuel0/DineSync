@@ -67,7 +67,8 @@ export default function LoginScreen({
 
       const availableWidth =
         width -
-        24;
+        insets.left -
+        insets.right;
 
       const clamp = (
         value,
@@ -87,13 +88,81 @@ export default function LoginScreen({
 
       const scale = (
         size,
-        min = size * 0.7,
-        max = size * 1.08
+        min = size * 0.72,
+        max = size * 1.12
       ) => {
         return Math.round(
           clamp(size * base, min, max)
         );
       };
+
+      const overlayPaddingH =
+        isTabletLandscape
+          ? clamp(availableWidth * 0.035, 18, 38)
+          : isPhoneLandscape
+            ? 10
+            : isPhone
+              ? isVeryNarrow
+                ? 10
+                : 14
+              : 24;
+
+      const overlayPaddingV =
+        isTabletLandscape
+          ? clamp(availableHeight * 0.035, 12, 24)
+          : isPhoneLandscape
+            ? 8
+            : isPhone
+              ? 14
+              : 22;
+
+      const safeBottomExtra =
+        isLandscape
+          ? Math.max(
+            insets.bottom + 6,
+            10
+          )
+          : Math.max(
+            insets.bottom + 10,
+            14
+          );
+
+      const cardMaxWidth =
+        isTabletLandscape
+          ? clamp(availableWidth * 0.78, 620, 980)
+          : isPhoneLandscape
+            ? clamp(availableWidth * 0.78, 430, 720)
+            : isPhone
+              ? Math.min(
+                availableWidth - 24,
+                430
+              )
+              : clamp(availableWidth * 0.82, 560, 900);
+
+      const cardWidth =
+        isPhone
+          ? '94%'
+          : isTabletLandscape
+            ? '78%'
+            : '86%';
+
+      const cardPaddingH =
+        isTabletLandscape
+          ? clamp(availableWidth * 0.05, 42, 78)
+          : isPhoneLandscape
+            ? clamp(availableWidth * 0.04, 22, 34)
+            : isPhone
+              ? clamp(availableWidth * 0.055, 16, 24)
+              : clamp(availableWidth * 0.055, 34, 72);
+
+      const cardPaddingV =
+        isTabletLandscape
+          ? clamp(availableHeight * 0.04, 18, 32)
+          : isPhoneLandscape
+            ? clamp(availableHeight * 0.035, 12, 18)
+            : isPhone
+              ? clamp(availableHeight * 0.035, 18, 28)
+              : clamp(availableHeight * 0.055, 30, 52);
 
       return {
         screenMinHeight:
@@ -104,104 +173,12 @@ export default function LoginScreen({
             insets.bottom
           ),
 
-        overlayPaddingH:
-          isTabletLandscape
-            ? 18
-            : isPhoneLandscape
-              ? 10
-              : isPhone
-                ? isVeryNarrow
-                  ? 10
-                  : 14
-                : 24,
+        overlayPaddingH,
+        overlayPaddingV,
+        safeBottomExtra,
 
-        overlayPaddingV:
-          isTabletLandscape
-            ? 14
-            : isPhoneLandscape
-              ? 8
-              : isPhone
-                ? 14
-                : 22,
-
-        safeBottomExtra:
-          isLandscape
-            ? Math.max(
-              insets.bottom + 6,
-              10
-            )
-            : Math.max(
-              insets.bottom + 10,
-              14
-            ),
-
-        cardWidth:
-          isTabletLandscape
-            ? '82%'
-            : isPhoneLandscape
-              ? '78%'
-              : isPhone
-                ? '94%'
-                : '88%',
-
-        cardMaxWidth:
-          isTabletLandscape
-            ? Math.min(
-              availableWidth * 0.82,
-              1080
-            )
-            : isPhoneLandscape
-              ? Math.min(
-                width * 0.78,
-                780
-              )
-              : isPhone
-                ? Math.min(
-                  width - 24,
-                  430
-                )
-                : Math.min(
-                  width * 0.82,
-                  900
-                ),
-
-        cardMinWidth:
-          isTabletLandscape
-            ? Math.min(
-              Math.max(
-                width * 0.72,
-                720
-              ),
-              960
-            )
-            : isPhoneLandscape
-              ? Math.min(
-                Math.max(
-                  width * 0.72,
-                  500
-                ),
-                740
-              )
-              : undefined,
-
-        cardHeight:
-          isTabletLandscape
-            ? Math.min(
-              Math.max(
-                availableHeight * 0.78,
-                390
-              ),
-              availableHeight * 0.9
-            )
-            : isPhoneLandscape
-              ? Math.min(
-                Math.max(
-                  availableHeight * 0.84,
-                  285
-                ),
-                availableHeight * 0.9
-              )
-              : undefined,
+        cardWidth,
+        cardMaxWidth,
 
         cardRadius:
           isLandscape
@@ -210,23 +187,8 @@ export default function LoginScreen({
               ? 24
               : 34,
 
-        cardPaddingH:
-          isTabletLandscape
-            ? clamp(width * 0.055, 58, 88)
-            : isPhoneLandscape
-              ? clamp(width * 0.04, 24, 36)
-              : isPhone
-                ? clamp(width * 0.055, 16, 24)
-                : clamp(width * 0.055, 34, 72),
-
-        cardPaddingV:
-          isTabletLandscape
-            ? clamp(availableHeight * 0.045, 22, 36)
-            : isPhoneLandscape
-              ? clamp(availableHeight * 0.035, 12, 20)
-              : isPhone
-                ? clamp(availableHeight * 0.035, 18, 28)
-                : clamp(availableHeight * 0.055, 30, 52),
+        cardPaddingH,
+        cardPaddingV,
 
         brandMargin:
           isTabletLandscape
@@ -239,12 +201,12 @@ export default function LoginScreen({
 
         brandLogoSize:
           isTabletLandscape
-            ? clamp(availableHeight * 0.16, 72, 105)
+            ? clamp(availableHeight * 0.16, 70, 105)
             : isPhoneLandscape
               ? clamp(availableHeight * 0.13, 42, 58)
               : isPhone
-                ? clamp(width * 0.16, 50, 70)
-                : clamp(shortest * 0.13, 82, 130),
+                ? clamp(availableWidth * 0.16, 50, 74)
+                : clamp(shortest * 0.13, 82, 132),
 
         brandTitleFont:
           isTabletLandscape
@@ -252,7 +214,7 @@ export default function LoginScreen({
             : isPhoneLandscape
               ? scale(18, 15, 20)
               : isPhone
-                ? scale(22, 18, 23)
+                ? scale(22, 18, 24)
                 : scale(34, 26, 36),
 
         brandPoweredFont:
@@ -273,12 +235,12 @@ export default function LoginScreen({
 
         formMaxWidth:
           isTabletLandscape
-            ? clamp(width * 0.65, 650, 880)
+            ? clamp(availableWidth * 0.62, 560, 760)
             : isPhoneLandscape
-              ? clamp(width * 0.66, 460, 700)
+              ? clamp(availableWidth * 0.68, 420, 620)
               : isPhone
                 ? '100%'
-                : clamp(width * 0.68, 520, 760),
+                : clamp(availableWidth * 0.68, 520, 760),
 
         labelFont:
           isTabletLandscape
@@ -291,11 +253,11 @@ export default function LoginScreen({
 
         inputHeight:
           isTabletLandscape
-            ? clamp(availableHeight * 0.09, 52, 66)
+            ? clamp(availableHeight * 0.085, 50, 64)
             : isPhoneLandscape
               ? clamp(availableHeight * 0.09, 38, 46)
               : isPhone
-                ? clamp(availableHeight * 0.065, 44, 52)
+                ? clamp(availableHeight * 0.065, 44, 54)
                 : clamp(availableHeight * 0.072, 54, 68),
 
         inputRadius:
@@ -361,7 +323,7 @@ export default function LoginScreen({
 
         buttonHeight:
           isTabletLandscape
-            ? clamp(availableHeight * 0.09, 54, 68)
+            ? clamp(availableHeight * 0.085, 52, 66)
             : isPhoneLandscape
               ? clamp(availableHeight * 0.092, 40, 48)
               : isPhone
@@ -423,6 +385,8 @@ export default function LoginScreen({
       height,
       insets.top,
       insets.bottom,
+      insets.left,
+      insets.right,
     ]);
 
   const [email, setEmail] =
@@ -487,6 +451,8 @@ export default function LoginScreen({
           edges={[
             'top',
             'bottom',
+            'left',
+            'right',
           ]}
         >
           <KeyboardAvoidingView
@@ -515,6 +481,7 @@ export default function LoginScreen({
               ]}
               keyboardShouldPersistTaps="handled"
               showsVerticalScrollIndicator={false}
+              bounces={false}
             >
               <View
                 style={[
@@ -536,10 +503,6 @@ export default function LoginScreen({
                         responsive.cardWidth,
                       maxWidth:
                         responsive.cardMaxWidth,
-                      minWidth:
-                        responsive.cardMinWidth,
-                      height:
-                        responsive.cardHeight,
                       borderRadius:
                         responsive.cardRadius,
                       paddingHorizontal:
@@ -550,9 +513,7 @@ export default function LoginScreen({
                   ]}
                 >
                   <View
-                    style={[
-                      styles.innerCardContent,
-                    ]}
+                    style={styles.innerCardContent}
                   >
                     <View
                       style={[

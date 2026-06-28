@@ -1,4 +1,8 @@
-import React, { useCallback, useEffect, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useState,
+} from "react";
 
 import {
   View,
@@ -13,6 +17,7 @@ import {
   TextInput,
   StatusBar,
   ScrollView,
+  Platform,
 } from "react-native";
 
 import {
@@ -20,9 +25,15 @@ import {
   useSafeAreaInsets,
 } from "react-native-safe-area-context";
 
-import { useFocusEffect, CommonActions } from "@react-navigation/native";
+import {
+  useFocusEffect,
+  CommonActions,
+} from "@react-navigation/native";
 
-import { getMenu, getDishRecommendations } from "../api/dinesync";
+import {
+  getMenu,
+  getDishRecommendations,
+} from "../api/dinesync";
 
 import { useCart } from "../context/CartContext";
 import { useAuth } from "../context/AuthContext";
@@ -38,7 +49,10 @@ import {
   isCustomItem,
 } from "../utils/inventory";
 
-const VALID_NORMAL_INVENTORY_TYPES = ["per_order", "per_head"];
+const VALID_NORMAL_INVENTORY_TYPES = [
+  "per_order",
+  "per_head",
+];
 
 const normalizeText = (value) => {
   return String(value || "")
@@ -80,7 +94,9 @@ const hasDailyLimit = (item) => {
 const toNumber = (value) => {
   const numberValue = Number(value);
 
-  return Number.isFinite(numberValue) ? numberValue : 0;
+  return Number.isFinite(numberValue)
+    ? numberValue
+    : 0;
 };
 
 const getRemainingToday = (item) => {
@@ -100,12 +116,20 @@ const getAllowedOrderQuantity = (item) => {
     return 1;
   }
 
-  const maxOrderQuantity = getMaxOrderQuantity(item);
+  const maxOrderQuantity =
+    getMaxOrderQuantity(item);
 
-  const remainingToday = getRemainingToday(item);
+  const remainingToday =
+    getRemainingToday(item);
 
-  if (maxOrderQuantity > 0 && remainingToday > 0) {
-    return Math.min(maxOrderQuantity, remainingToday);
+  if (
+    maxOrderQuantity > 0 &&
+    remainingToday > 0
+  ) {
+    return Math.min(
+      maxOrderQuantity,
+      remainingToday
+    );
   }
 
   if (maxOrderQuantity > 0) {
@@ -120,9 +144,11 @@ const getAllowedOrderQuantity = (item) => {
 };
 
 const isValidDailyInventoryMenuItem = (item) => {
-  const inventoryType = normalizeInventoryType(item?.inventory_type);
+  const inventoryType =
+    normalizeInventoryType(item?.inventory_type);
 
-  const available = isAvailableTrue(item?.is_available);
+  const available =
+    isAvailableTrue(item?.is_available);
 
   if (!available) {
     return false;
@@ -136,7 +162,11 @@ const isValidDailyInventoryMenuItem = (item) => {
     return true;
   }
 
-  if (!VALID_NORMAL_INVENTORY_TYPES.includes(inventoryType)) {
+  if (
+    !VALID_NORMAL_INVENTORY_TYPES.includes(
+      inventoryType
+    )
+  ) {
     return false;
   }
 
@@ -144,525 +174,812 @@ const isValidDailyInventoryMenuItem = (item) => {
     return false;
   }
 
-  const remainingToday = getRemainingToday(item);
+  const remainingToday =
+    getRemainingToday(item);
 
-  const maxOrderQuantity = getMaxOrderQuantity(item);
+  const maxOrderQuantity =
+    getMaxOrderQuantity(item);
 
-  return remainingToday > 0 || maxOrderQuantity > 0;
+  return (
+    remainingToday > 0 ||
+    maxOrderQuantity > 0
+  );
 };
 
-export default function ItemDetailScreen({ route, navigation }) {
-  const { width, height } = useWindowDimensions();
+export default function ItemDetailScreen({
+  route,
+  navigation,
+}) {
+  const {
+    width,
+    height,
+  } = useWindowDimensions();
 
-  const insets = useSafeAreaInsets();
+  const insets =
+    useSafeAreaInsets();
 
-  const responsive = React.useMemo(() => {
-    const shortest = Math.min(width, height);
+  const responsive =
+    React.useMemo(() => {
+      const shortest =
+        Math.min(width, height);
 
-    const longest = Math.max(width, height);
+      const longest =
+        Math.max(width, height);
 
-    const isPhone = shortest < 600;
+      const isLandscape =
+        width > height;
 
-    const isSmallPhone = shortest < 390;
+      const isPhone =
+        shortest < 600;
 
-    const isTablet = shortest >= 600;
+      const isSmallPhone =
+        shortest < 390;
 
-    const isLandscape = width > height;
+      const isTablet =
+        shortest >= 600;
 
-    const isTabletLandscape = isLandscape && width >= 740;
+      const isPhoneLandscape =
+        isPhone &&
+        isLandscape;
 
-    const isPortraitPhone = isPhone && !isLandscape;
+      const compactLandscape =
+        isLandscape &&
+        height < 520;
 
-    const compactLandscape = isLandscape && height < 520;
+      const veryCompactLandscape =
+        isLandscape &&
+        height < 420;
 
-    const veryCompactLandscape = isLandscape && height < 420;
+      const usableWidth =
+        width -
+        insets.left -
+        insets.right;
 
-   const useSideCart = isTabletLandscape;
+      const usableHeight =
+        height -
+        insets.top -
+        insets.bottom;
 
-const isBottomCartCompact =
-  !useSideCart && !isLandscape;
+      const clamp = (
+        value,
+        min,
+        max
+      ) => {
+        return Math.max(
+          min,
+          Math.min(value, max)
+        );
+      };
 
-const base = isPhone ? shortest / 390 : shortest / 768;
+      const base =
+        isPhone
+          ? shortest / 390
+          : shortest / 768;
 
-    const clamp = (value, min, max) => {
-      return Math.max(min, Math.min(value, max));
-    };
+      const scale = (
+        size,
+        min = size * 0.72,
+        max = size * 1.12
+      ) => {
+        return Math.round(
+          clamp(size * base, min, max)
+        );
+      };
 
-    const scale = (size, min = size * 0.72, max = size * 1.12) => {
-      return Math.round(clamp(size * base, min, max));
-    };
+      const useSideCart =
+        isLandscape &&
+        usableWidth >= 680 &&
+        usableHeight >= 320;
 
-    const topBarHeight = veryCompactLandscape
-      ? clamp(height * 0.12, 42, 50)
-      : isPhone
-        ? scale(54, 48, 60)
-        : scale(64, 54, 70);
+      const isTabletLandscape =
+        isTablet &&
+        isLandscape &&
+        usableWidth >= 740;
 
-    const sideCartWidth = useSideCart ? clamp(width * 0.28, 245, 360) : "100%";
+      const sideCartWidth =
+        useSideCart
+          ? isPhoneLandscape
+            ? clamp(usableWidth * 0.32, 260, 330)
+            : clamp(usableWidth * 0.28, 275, 380)
+          : "100%";
 
-    const detailWidth = useSideCart ? width - sideCartWidth : width;
+      const detailWidth =
+        useSideCart
+          ? usableWidth - sideCartWidth
+          : usableWidth;
 
-   const bottomCartHeight = !useSideCart
-  ? isBottomCartCompact
-    ? isPhone
-      ? clamp(height * 0.24, 170, 195)
-      : clamp(height * 0.22, 200, 235)
-    : isLandscape
-      ? clamp(height * 0.3, 118, 155)
-      : isSmallPhone
-        ? clamp(height * 0.22, 132, 160)
-        : isPhone
-          ? clamp(height * 0.22, 145, 178)
-          : clamp(height * 0.22, 165, 210)
-  : undefined;
+      const isBottomCartCompact =
+        !useSideCart;
 
-    const cartListMaxHeight = useSideCart
-      ? undefined
-      : Math.max(52, bottomCartHeight * 0.42);
-
-    const sideCartListMaxHeight = useSideCart
-      ? compactLandscape
-        ? clamp(height * 0.36, 118, 170)
-        : clamp(height * 0.42, 150, 230)
-      : undefined;
-
-    const maxCardWidth = useSideCart
-      ? detailWidth - 24
-      : isPhone
-        ? clamp(width - 24, 300, 560)
-        : isTablet && !isLandscape
-          ? clamp(width - 64, 560, 820)
-          : clamp(width - 52, 500, 700);
-    const cardPadding = isLandscape
-      ? isTablet
-        ? scale(18, 15, 20)
-        : scale(5, 4, 6)
-      : isPhone
-        ? scale(11, 9, 13)
-        : isTablet && !isLandscape
-          ? scale(18, 15, 21)
-          : scale(9, 7, 10);
-
-    const imageSize = isTabletLandscape
-      ? scale(68, 58, 76)
-      : isLandscape
-        ? isPhone
-          ? scale(46, 40, 52)
-          : scale(82, 70, 94)
-        : isPhone
-          ? scale(84, 72, 96)
-          : isTablet && !isLandscape
-            ? scale(124, 108, 136)
-            : scale(72, 62, 84);
-
-    const detailPadding = useSideCart
-      ? isTabletLandscape
-        ? scale(14, 12, 18)
-        : compactLandscape
-          ? scale(8, 6, 10)
-          : scale(12, 10, 16)
-      : isPhone
-        ? scale(8, 6, 10)
-        : isTablet && !isLandscape
-          ? scale(18, 14, 22)
-          : scale(14, 10, 18);
-    const tabletLandscapeCardWidth = isTabletLandscape
-      ? detailWidth - detailPadding * 2
-      : undefined;
-
-    const tabletLandscapeCardHeight = isTabletLandscape
-      ? height - topBarHeight - detailPadding * 2
-      : undefined;
-
-    const recommendationWidth = useSideCart
-      ? isTabletLandscape
-        ? clamp(detailWidth * 0.38, 240, 330)
-        : clamp(detailWidth * 0.44, 260, 380)
-      : isPhone
-        ? clamp(width * 0.78, 250, 320)
-        : clamp(width * 0.42, 300, 380);
-
-    const recommendationRightWidth = veryCompactLandscape
-      ? scale(58, 52, 64)
-      : isPhone
-        ? scale(66, 58, 74)
-        : scale(88, 74, 98);
-    const recommendationMinHeight = isLandscape
-      ? isPhone
-        ? scale(48, 44, 54)
-        : scale(74, 64, 84)
-      : isPhone
-        ? scale(78, 68, 88)
-        : isTablet && !isLandscape
-          ? scale(96, 84, 104)
-          : scale(68, 60, 76);
-
-    const recommendationCircle = isLandscape
-      ? isPhone
-        ? scale(30, 26, 34)
-        : scale(54, 46, 62)
-      : isPhone
-        ? scale(52, 44, 58)
-        : isTablet && !isLandscape
-          ? scale(68, 56, 76)
-          : scale(46, 38, 52);
-
-    const cartItemName = !useSideCart
-      ? isPhone
-        ? scale(11, 10, 12)
-        : scale(12, 11, 13)
-      : scale(14, 12, 15);
-
-    const cartItemPrice = !useSideCart
-      ? isPhone
-        ? scale(11, 10, 12)
-        : scale(12, 11, 13)
-      : scale(13, 11, 14);
-
-    return {
-      isPhone,
-      isTablet,
-      isLandscape,
-      isTabletLandscape,
-      compactLandscape,
-      veryCompactLandscape,
-      useSideCart,
-isBottomCartCompact,
-cartWidth: sideCartWidth,
-
-      topSafeExtra: 0,
-
-      bottomSafeExtra: useSideCart
-        ? Math.max(insets.bottom + 8, 12)
-        : Math.max(insets.bottom + 4, 8),
-
-      topBarHeight,
-
-      topBarPaddingH: isPhone ? scale(14, 12, 16) : scale(22, 16, 26),
-
-      topText: veryCompactLandscape
-        ? scale(15, 13, 16)
-        : isPhone
-          ? scale(18, 15, 20)
-          : scale(24, 18, 28),
-
-      tableText: veryCompactLandscape
-        ? scale(14, 12, 15)
-        : isPhone
-          ? scale(16, 13, 17)
-          : scale(22, 16, 24),
-
-      detailPadding,
-
-      detailBottomPadding: isLandscape ? 0 : scale(4, 2, 8),
-
-      detailScrollJustify: "center",
-
-      cardPadding,
-
-      cardRadius: scale(24, 18, 28),
-      detailCardWidth: tabletLandscapeCardWidth,
-
-      detailCardHeight: tabletLandscapeCardHeight,
-
-      detailCardMinHeight:
-        isTablet && !isLandscape
-          ? Math.max(
-              0,
-              height - topBarHeight - bottomCartHeight - scale(48, 40, 58),
-            )
-          : undefined,
-
-      detailScrollMinHeight: tabletLandscapeCardHeight,
-
-      detailScrollAlignItems: isTabletLandscape ? "stretch" : "center",
-
-      cardJustifyContent: "center",
-
-      imageSize,
-
-      imageRadius: imageSize / 2,
-
-      emoji: veryCompactLandscape
-        ? scale(38, 32, 44)
-        : isPhone
-          ? scale(58, 44, 64)
-          : scale(76, 54, 84),
-
-      itemName: isTabletLandscape
-        ? scale(20, 18, 22)
-        : isLandscape
-          ? isPhone
-            ? scale(17, 15, 18)
-            : scale(25, 21, 28)
+      const topBarHeight =
+        veryCompactLandscape
+          ? clamp(usableHeight * 0.13, 42, 52)
           : isPhone
-            ? scale(22, 18, 24)
-            : isTablet && !isLandscape
-              ? scale(31, 25, 34)
-              : scale(22, 18, 24),
+            ? scale(56, 48, 62)
+            : scale(66, 56, 74);
 
-      itemPrice: isTabletLandscape
-        ? scale(16, 14, 18)
-        : isLandscape
-          ? isPhone
-            ? scale(13, 12, 14)
-            : scale(21, 18, 24)
+      const bottomCartHeight =
+        !useSideCart
+          ? isPhoneLandscape
+            ? clamp(usableHeight * 0.40, 175, 225)
+            : isPhone
+              ? clamp(usableHeight * 0.30, 220, 292)
+              : isTablet && !isLandscape
+                ? clamp(usableHeight * 0.27, 250, 320)
+                : clamp(usableHeight * 0.28, 190, 255)
+          : undefined;
+
+      const cartListMaxHeight =
+        useSideCart
+          ? undefined
+          : isPhoneLandscape
+            ? Math.max(48, bottomCartHeight * 0.26)
+            : Math.max(74, bottomCartHeight * 0.38);
+
+      const sideCartListMaxHeight =
+        useSideCart
+          ? isPhoneLandscape
+            ? clamp(usableHeight * 0.34, 96, 145)
+            : compactLandscape
+              ? clamp(usableHeight * 0.38, 120, 180)
+              : clamp(usableHeight * 0.48, 170, 300)
+          : undefined;
+
+      const detailPadding =
+        useSideCart
+          ? isPhoneLandscape
+            ? scale(9, 7, 11)
+            : isTabletLandscape
+              ? scale(16, 12, 20)
+              : compactLandscape
+                ? scale(10, 8, 12)
+                : scale(14, 10, 18)
+          : isPhoneLandscape
+            ? scale(8, 6, 10)
+            : isPhone
+              ? scale(10, 8, 12)
+              : isTablet && !isLandscape
+                ? scale(18, 14, 24)
+                : scale(14, 10, 18);
+
+      const maxCardWidth =
+        useSideCart
+          ? Math.max(detailWidth - detailPadding * 2, 280)
+          : isPhoneLandscape
+            ? clamp(usableWidth - 24, 430, 720)
+            : isPhone
+              ? clamp(usableWidth - 24, 300, 560)
+              : isTablet && !isLandscape
+                ? clamp(usableWidth - 64, 560, 860)
+                : clamp(usableWidth - 52, 500, 740);
+
+      const cardPadding =
+        isPhoneLandscape
+          ? scale(10, 8, 12)
+          : isLandscape
+            ? isTablet
+              ? scale(18, 15, 22)
+              : scale(9, 7, 11)
+            : isPhone
+              ? scale(13, 10, 15)
+              : isTablet && !isLandscape
+                ? scale(20, 16, 24)
+                : scale(12, 9, 14);
+
+      const imageSize =
+        useSideCart && isPhoneLandscape
+          ? scale(60, 48, 66)
+          : isTabletLandscape
+            ? scale(76, 62, 90)
+            : isPhoneLandscape
+              ? scale(52, 42, 58)
+              : isLandscape
+                ? isPhone
+                  ? scale(50, 42, 56)
+                  : scale(86, 72, 100)
+                : isPhone
+                  ? scale(92, 78, 106)
+                  : isTablet && !isLandscape
+                    ? scale(132, 112, 150)
+                    : scale(82, 66, 92);
+
+      const recommendationWidth =
+        useSideCart
+          ? isPhoneLandscape
+            ? clamp(detailWidth * 0.48, 220, 300)
+            : isTabletLandscape
+              ? clamp(detailWidth * 0.38, 250, 345)
+              : clamp(detailWidth * 0.44, 260, 390)
+          : isPhoneLandscape
+            ? clamp(usableWidth * 0.42, 230, 320)
+            : isPhone
+              ? clamp(usableWidth * 0.78, 250, 330)
+              : clamp(usableWidth * 0.42, 300, 390);
+
+      const recommendationRightWidth =
+        veryCompactLandscape
+          ? scale(58, 52, 64)
           : isPhone
-            ? scale(17, 14, 18)
-            : isTablet && !isLandscape
-              ? scale(24, 19, 26)
-              : scale(18, 15, 20),
+            ? scale(66, 58, 74)
+            : scale(88, 74, 98);
 
-      category: veryCompactLandscape
-        ? scale(11, 10, 12)
-        : isPhone
-          ? scale(13, 11, 14)
-          : scale(16, 13, 18),
+      const recommendationMinHeight =
+        isPhoneLandscape
+          ? scale(58, 50, 64)
+          : isLandscape
+            ? isPhone
+              ? scale(52, 46, 58)
+              : scale(76, 66, 88)
+            : isPhone
+              ? scale(82, 72, 94)
+              : isTablet && !isLandscape
+                ? scale(98, 86, 110)
+                : scale(72, 62, 82);
 
-      tagText: veryCompactLandscape
-        ? scale(8, 7, 9)
-        : isPhone
-          ? scale(10, 8, 11)
-          : scale(12, 10, 13),
+      const recommendationCircle =
+        isPhoneLandscape
+          ? scale(36, 30, 40)
+          : isLandscape
+            ? isPhone
+              ? scale(32, 28, 36)
+              : scale(56, 48, 64)
+            : isPhone
+              ? scale(54, 46, 62)
+              : isTablet && !isLandscape
+                ? scale(70, 58, 80)
+                : scale(48, 40, 54);
 
-      stockText: isTabletLandscape
-        ? scale(14, 12, 16)
-        : veryCompactLandscape
-          ? scale(12, 10, 13)
-          : isPhone
-            ? scale(15, 12, 16)
-            : scale(18, 14, 20),
-
-      limitText: veryCompactLandscape
-        ? scale(11, 10, 12)
-        : isPhone
-          ? scale(12, 10, 13)
-          : scale(15, 12, 16),
-
-      description: isTabletLandscape
-        ? scale(10, 9, 12)
-        : isLandscape
-          ? isPhone
-            ? scale(9, 8, 10)
-            : scale(13, 11, 15)
-          : isPhone
-            ? scale(13, 11, 14)
-            : isTablet && !isLandscape
-              ? scale(16, 13, 17)
-              : scale(12, 10, 13),
-
-      descriptionLine: isTabletLandscape
-        ? scale(14, 12, 15)
-        : isLandscape
-          ? isPhone
-            ? scale(11, 10, 12)
-            : scale(18, 15, 20)
-          : isPhone
-            ? scale(17, 15, 18)
-            : isTablet && !isLandscape
-              ? scale(22, 18, 23)
-              : scale(16, 14, 17),
-
-      label: scale(17, 13, 18),
-
-      inputFont: scale(16, 13, 16),
-
-      inputHeight: isPhone ? scale(92, 78, 98) : scale(108, 88, 116),
-
-      buttonText: isTabletLandscape
-        ? scale(13, 12, 14)
-        : isPhone
-          ? scale(13, 11, 14)
-          : isTablet
-            ? scale(15, 13, 16)
-            : scale(14, 12, 15),
-
-      buttonPaddingV: veryCompactLandscape
-        ? scale(5, 4, 6)
-        : isPhone
-          ? scale(8, 6, 9)
-          : isTablet && !isLandscape
+      const cartItemName =
+        !useSideCart
+          ? isPhoneLandscape
             ? scale(11, 9, 12)
-            : scale(9, 7, 10),
+            : isPhone
+              ? scale(12, 10, 13)
+              : scale(13, 11, 14)
+          : isPhoneLandscape
+            ? scale(12, 10, 13)
+            : scale(14, 12, 16);
 
-      recommendationTitle: isTabletLandscape
-        ? scale(14, 12, 15)
-        : veryCompactLandscape
-          ? scale(13, 11, 14)
-          : compactLandscape
+      const cartItemPrice =
+        !useSideCart
+          ? isPhoneLandscape
+            ? scale(11, 9, 12)
+            : isPhone
+              ? scale(12, 10, 13)
+              : scale(13, 11, 14)
+          : isPhoneLandscape
+            ? scale(12, 10, 13)
+            : scale(13, 11, 15);
+
+      return {
+        isPhone,
+        isTablet,
+        isLandscape,
+        isPhoneLandscape,
+        isTabletLandscape,
+        compactLandscape,
+        veryCompactLandscape,
+        useSideCart,
+        isBottomCartCompact,
+
+        cartWidth:
+          sideCartWidth,
+
+        bottomSafeExtra:
+          useSideCart
+            ? Math.max(insets.bottom + 8, 12)
+            : Math.max(
+              insets.bottom +
+              (Platform.OS === "android" ? 14 : 10),
+              16
+            ),
+
+        topBarHeight,
+
+        topBarPaddingH:
+          isPhoneLandscape
+            ? scale(12, 8, 14)
+            : isPhone
+              ? scale(14, 12, 16)
+              : scale(22, 16, 28),
+
+        topText:
+          veryCompactLandscape
+            ? scale(15, 13, 16)
+            : isPhone
+              ? scale(18, 15, 20)
+              : scale(24, 18, 28),
+
+        tableText:
+          veryCompactLandscape
             ? scale(14, 12, 15)
             : isPhone
               ? scale(16, 13, 17)
+              : scale(22, 16, 24),
+
+        detailPadding,
+
+        detailBottomPadding:
+          useSideCart
+            ? scale(18, 12, 22)
+            : isPhoneLandscape
+              ? 10
+              : isLandscape
+                ? 10
+                : scale(14, 10, 18),
+
+        detailScrollJustify:
+          "flex-start",
+
+        cardPadding,
+
+        cardRadius:
+          scale(24, 18, 28),
+
+        detailCardWidth:
+          useSideCart
+            ? Math.max(detailWidth - detailPadding * 2, 280)
+            : "100%",
+
+        detailCardHeight:
+          undefined,
+
+        detailCardMinHeight:
+          undefined,
+
+        detailScrollMinHeight:
+          undefined,
+
+        detailScrollAlignItems:
+          "center",
+
+        cardJustifyContent:
+          "flex-start",
+
+        imageSize,
+
+        imageRadius:
+          imageSize / 2,
+
+        emoji:
+          veryCompactLandscape
+            ? scale(38, 32, 44)
+            : isPhone
+              ? scale(58, 44, 64)
+              : scale(76, 54, 84),
+
+        itemName:
+          useSideCart && isPhoneLandscape
+            ? scale(20, 16, 22)
+            : isTabletLandscape
+              ? scale(22, 18, 24)
+              : isPhoneLandscape
+                ? scale(18, 15, 19)
+                : isLandscape
+                  ? isPhone
+                    ? scale(18, 15, 19)
+                    : scale(26, 21, 29)
+                  : isPhone
+                    ? scale(23, 19, 26)
+                    : isTablet && !isLandscape
+                      ? scale(32, 26, 36)
+                      : scale(23, 19, 25),
+
+        itemPrice:
+          useSideCart && isPhoneLandscape
+            ? scale(17, 14, 19)
+            : isTabletLandscape
+              ? scale(18, 15, 20)
+              : isPhoneLandscape
+                ? scale(15, 12, 16)
+                : isLandscape
+                  ? isPhone
+                    ? scale(14, 12, 15)
+                    : scale(22, 18, 25)
+                  : isPhone
+                    ? scale(18, 15, 20)
+                    : isTablet && !isLandscape
+                      ? scale(25, 20, 28)
+                      : scale(19, 15, 21),
+
+        category:
+          veryCompactLandscape
+            ? scale(11, 10, 12)
+            : isPhone
+              ? scale(13, 11, 14)
+              : scale(16, 13, 18),
+
+        tagText:
+          veryCompactLandscape
+            ? scale(8, 7, 9)
+            : isPhone
+              ? scale(10, 8, 11)
+              : scale(12, 10, 13),
+
+        stockText:
+          veryCompactLandscape
+            ? scale(12, 10, 13)
+            : isPhone
+              ? scale(15, 12, 16)
+              : scale(18, 14, 20),
+
+        limitText:
+          veryCompactLandscape
+            ? scale(11, 10, 12)
+            : isPhone
+              ? scale(12, 10, 13)
+              : scale(15, 12, 16),
+
+        description:
+          isPhoneLandscape
+            ? scale(11, 9, 12)
+            : isLandscape
+              ? isPhone
+                ? scale(10, 9, 11)
+                : scale(14, 11, 16)
+              : isPhone
+                ? scale(14, 12, 15)
+                : isTablet && !isLandscape
+                  ? scale(17, 14, 18)
+                  : scale(13, 11, 14),
+
+        descriptionLine:
+          isPhoneLandscape
+            ? scale(15, 13, 16)
+            : isLandscape
+              ? isPhone
+                ? scale(13, 11, 14)
+                : scale(19, 15, 21)
+              : isPhone
+                ? scale(19, 16, 20)
+                : isTablet && !isLandscape
+                  ? scale(23, 19, 25)
+                  : scale(17, 14, 18),
+
+        label:
+          scale(17, 13, 18),
+
+        inputFont:
+          scale(16, 13, 16),
+
+        inputHeight:
+          isPhone
+            ? scale(92, 78, 102)
+            : scale(110, 90, 120),
+
+        buttonText:
+          isPhoneLandscape
+            ? scale(16, 14, 17)
+            : isPhone
+              ? scale(18, 15, 20)
+              : isTablet
+                ? scale(18, 15, 20)
+                : scale(17, 14, 18),
+
+        buttonPaddingV:
+          veryCompactLandscape
+            ? scale(8, 6, 9)
+            : isPhone
+              ? scale(12, 10, 14)
               : isTablet && !isLandscape
-                ? scale(20, 16, 21)
-                : scale(16, 13, 18),
+                ? scale(14, 11, 16)
+                : scale(12, 9, 14),
 
-      recommendationWidth,
-      recommendationRightWidth,
-      recommendationMinHeight,
-      recommendationCircle,
+        buttonPaddingH:
+          isPhoneLandscape
+            ? scale(30, 24, 36)
+            : isPhone
+              ? scale(26, 20, 32)
+              : scale(34, 26, 40),
 
-      recommendationName: veryCompactLandscape
-        ? scale(11, 10, 12)
-        : isPhone
-          ? scale(13, 11, 14)
-          : scale(16, 13, 17),
+        recommendationTitle:
+          veryCompactLandscape
+            ? scale(14, 12, 15)
+            : isPhone
+              ? scale(17, 14, 18)
+              : isTablet && !isLandscape
+                ? scale(20, 16, 22)
+                : scale(17, 14, 18),
 
-      recommendationLine: veryCompactLandscape
-        ? scale(13, 12, 14)
-        : isPhone
-          ? scale(16, 14, 17)
-          : scale(20, 16, 21),
+        recommendationWidth,
+        recommendationRightWidth,
+        recommendationMinHeight,
+        recommendationCircle,
 
-      recommendationPrice: veryCompactLandscape
-        ? scale(10, 9, 11)
-        : isPhone
-          ? scale(12, 10, 13)
-          : scale(15, 12, 16),
+        recommendationName:
+          veryCompactLandscape
+            ? scale(11, 10, 12)
+            : isPhone
+              ? scale(13, 11, 14)
+              : scale(16, 13, 17),
 
-      recommendationAddText: veryCompactLandscape
-        ? scale(10, 9, 11)
-        : isPhone
-          ? scale(12, 10, 13)
-          : scale(14, 12, 15),
+        recommendationLine:
+          veryCompactLandscape
+            ? scale(13, 12, 14)
+            : isPhone
+              ? scale(16, 14, 17)
+              : scale(20, 16, 21),
 
-      recommendationAddPaddingH: veryCompactLandscape
-        ? scale(8, 7, 10)
-        : isPhone
-          ? scale(10, 8, 12)
-          : scale(18, 14, 22),
+        recommendationPrice:
+          veryCompactLandscape
+            ? scale(10, 9, 11)
+            : isPhone
+              ? scale(12, 10, 13)
+              : scale(15, 12, 16),
 
-      recommendationAddPaddingV: veryCompactLandscape
-        ? scale(4, 3, 5)
-        : isPhone
-          ? scale(5, 4, 6)
-          : scale(7, 6, 8),
+        recommendationAddText:
+          veryCompactLandscape
+            ? scale(10, 9, 11)
+            : isPhone
+              ? scale(12, 10, 13)
+              : scale(14, 12, 15),
 
-      recommendationAddMinWidth: veryCompactLandscape
-        ? scale(42, 38, 46)
-        : isPhone
-          ? scale(50, 44, 56)
-          : scale(72, 64, 78),
-      imageMarginBottom: isLandscape ? 2 : isPhone ? 5 : 8,
+        recommendationAddPaddingH:
+          veryCompactLandscape
+            ? scale(8, 7, 10)
+            : isPhone
+              ? scale(10, 8, 12)
+              : scale(18, 14, 22),
 
-      priceMarginTop: isLandscape ? 0 : isPhone ? 3 : 5,
+        recommendationAddPaddingV:
+          veryCompactLandscape
+            ? scale(4, 3, 5)
+            : isPhone
+              ? scale(5, 4, 6)
+              : scale(7, 6, 8),
 
-      categoryMarginTop: isLandscape ? 0 : isPhone ? 2 : 4,
+        recommendationAddMinWidth:
+          veryCompactLandscape
+            ? scale(42, 38, 46)
+            : isPhone
+              ? scale(50, 44, 56)
+              : scale(72, 64, 78),
 
-      tagMarginTop: isLandscape ? 1 : isPhone ? 4 : 5,
+        imageMarginBottom:
+          useSideCart
+            ? 5
+            : isLandscape
+              ? 3
+              : isPhone
+                ? 8
+                : 10,
 
-      stockMarginTop: isLandscape ? 1 : isPhone ? 4 : 5,
+        priceMarginTop:
+          isLandscape
+            ? 3
+            : isPhone
+              ? 4
+              : 6,
 
-      limitMarginTop: isLandscape ? 0 : isPhone ? 3 : 4,
+        categoryMarginTop:
+          isLandscape
+            ? 3
+            : isPhone
+              ? 3
+              : 5,
 
-      descriptionMarginTop: isTabletLandscape
-        ? 1
-        : isLandscape
-          ? 2
-          : isPhone
-            ? 6
+        tagMarginTop:
+          isPhoneLandscape
+            ? 4
+            : isLandscape
+              ? 3
+              : isPhone
+                ? 5
+                : 6,
+
+        stockMarginTop:
+          isLandscape
+            ? 5
+            : isPhone
+              ? 5
+              : 7,
+
+        limitMarginTop:
+          isLandscape
+            ? 3
+            : isPhone
+              ? 4
+              : 5,
+
+        descriptionMarginTop:
+          isLandscape
+            ? 8
+            : isPhone
+              ? 8
+              : 10,
+
+        addButtonMarginTop:
+          isPhoneLandscape
+            ? 9
+            : isLandscape
+              ? 7
+              : isPhone
+                ? 12
+                : 14,
+
+        recommendationMarginTop:
+          isPhoneLandscape
+            ? 10
+            : isLandscape
+              ? 8
+              : isPhone
+                ? 12
+                : 16,
+
+        recommendationTitleMarginBottom:
+          veryCompactLandscape
+            ? 5
+            : isPhone
+              ? 8
+              : 12,
+
+        recommendationCardPaddingH:
+          veryCompactLandscape
+            ? 8
+            : isPhone
+              ? 10
+              : 14,
+
+        recommendationCardPaddingV:
+          veryCompactLandscape
+            ? 5
+            : isPhone
+              ? 7
+              : 10,
+
+        recommendationCardMarginH:
+          isPhone
+            ? 5
             : 8,
 
-      addButtonMarginTop: isTabletLandscape
-        ? 2
-        : isLandscape
-          ? 3
-          : isPhone
-            ? 8
-            : 11,
+        recommendationCircleMarginRight:
+          veryCompactLandscape
+            ? 7
+            : isPhone
+              ? 8
+              : 12,
 
-      recommendationMarginTop: isTabletLandscape
-        ? 3
-        : isLandscape
-          ? 4
-          : isPhone
-            ? 9
-            : 12,
+        sidebarPaddingH:
+          useSideCart
+            ? isPhoneLandscape
+              ? scale(10, 7, 12)
+              : compactLandscape
+                ? scale(10, 8, 12)
+                : scale(14, 10, 16)
+            : scale(12, 10, 14),
 
-      recommendationTitleMarginBottom: veryCompactLandscape
-        ? 5
-        : isPhone
-          ? 7
-          : 12,
+        sidebarPaddingT:
+          useSideCart
+            ? isPhoneLandscape
+              ? scale(10, 7, 12)
+              : compactLandscape
+                ? scale(10, 8, 12)
+                : scale(14, 10, 16)
+            : isPhoneLandscape
+              ? scale(6, 5, 8)
+              : scale(8, 6, 10),
 
-      recommendationCardPaddingH: veryCompactLandscape ? 8 : isPhone ? 10 : 14,
+        cartHeight:
+          bottomCartHeight,
 
-      recommendationCardPaddingV: veryCompactLandscape ? 5 : isPhone ? 7 : 10,
+        cartIcon:
+          veryCompactLandscape
+            ? scale(18, 16, 20)
+            : scale(22, 18, 24),
 
-      recommendationCardMarginH: isPhone ? 5 : 8,
+        cartTitle:
+          useSideCart
+            ? isPhoneLandscape
+              ? scale(19, 15, 20)
+              : scale(20, 16, 22)
+            : isPhone
+              ? scale(16, 13, 17)
+              : scale(18, 14, 19),
 
-      recommendationCircleMarginRight: veryCompactLandscape
-        ? 7
-        : isPhone
-          ? 8
-          : 12,
+        cartItemName,
+        cartItemPrice,
 
-      sidebarPaddingH: useSideCart
-        ? compactLandscape
-          ? scale(10, 8, 12)
-          : scale(14, 10, 16)
-        : scale(12, 10, 14),
+        cartRequest:
+          scale(13, 11, 13),
 
-      sidebarPaddingT: useSideCart
-        ? compactLandscape
-          ? scale(10, 8, 12)
-          : scale(14, 10, 16)
-        : scale(8, 6, 10),
+        removeText:
+          useSideCart
+            ? scale(24, 18, 24)
+            : scale(20, 17, 22),
 
-      cartHeight: bottomCartHeight,
+        qtyButton:
+          useSideCart
+            ? isPhoneLandscape
+              ? scale(28, 22, 30)
+              : scale(30, 25, 32)
+            : scale(26, 22, 29),
 
-      cartIcon: veryCompactLandscape ? scale(18, 16, 20) : scale(22, 18, 24),
+        qtyButtonText:
+          scale(17, 14, 18),
 
-      cartTitle: !useSideCart
-        ? isPhone
-          ? scale(15, 13, 16)
-          : scale(17, 14, 18)
-        : scale(20, 16, 22),
+        qtyText:
+          scale(16, 13, 16),
 
-      cartItemName,
-      cartItemPrice,
+        totalLabel:
+          useSideCart
+            ? isPhoneLandscape
+              ? scale(16, 12, 16)
+              : scale(17, 13, 18)
+            : scale(14, 12, 15),
 
-      cartRequest: scale(13, 11, 13),
+        totalValue:
+          useSideCart
+            ? isPhoneLandscape
+              ? scale(18, 14, 18)
+              : scale(20, 16, 21)
+            : scale(16, 13, 17),
 
-      removeText: !useSideCart ? scale(20, 17, 22) : scale(24, 18, 24),
+        checkoutText:
+          useSideCart
+            ? isPhoneLandscape
+              ? scale(16, 13, 16)
+              : scale(18, 16, 19)
+            : isPhoneLandscape
+              ? scale(15, 13, 16)
+              : scale(16, 15, 17),
 
-      qtyButton: !useSideCart ? scale(25, 22, 28) : scale(30, 25, 32),
+        checkoutPadding:
+          useSideCart
+            ? isPhoneLandscape
+              ? scale(9, 7, 9)
+              : scale(12, 10, 13)
+            : isPhoneLandscape
+              ? scale(8, 7, 9)
+              : scale(10, 8, 11),
 
-      qtyButtonText: scale(17, 14, 18),
+        errorText:
+          scale(26, 18, 26),
 
-      qtyText: scale(16, 13, 16),
+        backButtonText:
+          scale(18, 14, 18),
 
-      totalLabel: !useSideCart ? scale(13, 11, 14) : scale(17, 13, 18),
+        maxCardWidth,
 
-      totalValue: !useSideCart ? scale(15, 13, 16) : scale(20, 16, 21),
+        cartPhoneListMaxHeight:
+          cartListMaxHeight,
 
-      checkoutText: !useSideCart ? scale(12, 11, 13) : scale(15, 12, 16),
+        cartSideListMaxHeight:
+          sideCartListMaxHeight,
+      };
+    }, [
+      width,
+      height,
+      insets.top,
+      insets.left,
+      insets.right,
+      insets.bottom,
+    ]);
 
-      checkoutPadding: !useSideCart ? scale(6, 5, 7) : scale(10, 8, 11),
+  const { item: routeItem } =
+    route.params || {};
 
-      errorText: scale(26, 18, 26),
+  const [liveItem, setLiveItem] =
+    useState(routeItem);
 
-      backButtonText: scale(18, 14, 18),
+  const [
+    specialRequest,
+    setSpecialRequest,
+  ] = useState("");
 
-      maxCardWidth,
+  const {
+    tableNumber,
+    user,
+  } = useAuth();
 
-      cartPhoneListMaxHeight: cartListMaxHeight,
+  const [
+    recommendations,
+    setRecommendations,
+  ] = useState([]);
 
-      cartSideListMaxHeight: sideCartListMaxHeight,
-    };
-  }, [width, height, insets.bottom]);
-
-  const { item: routeItem } = route.params || {};
-
-  const [liveItem, setLiveItem] = useState(routeItem);
-
-  const [specialRequest, setSpecialRequest] = useState("");
-
-  const { tableNumber, user } = useAuth();
-
-  const [recommendations, setRecommendations] = useState([]);
-
-  const [loadingRecommendations, setLoadingRecommendations] = useState(false);
+  const [
+    loadingRecommendations,
+    setLoadingRecommendations,
+  ] = useState(false);
 
   const {
     addToCart,
@@ -685,9 +1002,13 @@ cartWidth: sideCartWidth,
     acknowledgeTableReset,
   } = useTableStatus();
 
-  const finalTableNumber = tableNumber || user?.table_number;
+  const finalTableNumber =
+    tableNumber ||
+    user?.table_number;
 
-  const item = liveItem || routeItem;
+  const item =
+    liveItem ||
+    routeItem;
 
   useEffect(() => {
     if (!tableResetRequired) {
@@ -704,94 +1025,129 @@ cartWidth: sideCartWidth,
             name: "Welcome",
           },
         ],
-      }),
+      })
     );
-  }, [tableResetRequired, acknowledgeTableReset, navigation]);
+  }, [
+    tableResetRequired,
+    acknowledgeTableReset,
+    navigation,
+  ]);
 
-  const refreshLiveItem = async () => {
-    if (!routeItem?.id) {
-      return;
-    }
-
-    try {
-      const response = await getMenu();
-
-      if (!response?.success || !Array.isArray(response.data)) {
+  const refreshLiveItem =
+    async () => {
+      if (!routeItem?.id) {
         return;
       }
 
-      const visibleItems = response.data.filter(isValidDailyInventoryMenuItem);
+      try {
+        const response =
+          await getMenu();
 
-      syncMenuInventory(visibleItems);
+        if (
+          !response?.success ||
+          !Array.isArray(response.data)
+        ) {
+          return;
+        }
 
-      const freshItem = response.data.find(
-        (menuItem) => String(menuItem.id) === String(routeItem.id),
-      );
+        const visibleItems =
+          response.data.filter(
+            isValidDailyInventoryMenuItem
+          );
 
-      if (freshItem) {
-        setLiveItem(freshItem);
+        syncMenuInventory(
+          visibleItems
+        );
+
+        const freshItem =
+          response.data.find(
+            (menuItem) =>
+              String(menuItem.id) ===
+              String(routeItem.id)
+          );
+
+        if (freshItem) {
+          setLiveItem(freshItem);
+        }
+      } catch (error) {
+        console.log(
+          "ITEM INVENTORY REFRESH ERROR:",
+          error?.message
+        );
       }
-    } catch (error) {
-      console.log("ITEM INVENTORY REFRESH ERROR:", error?.message);
-    }
-  };
+    };
 
   useFocusEffect(
     useCallback(() => {
       refreshLiveItem();
-    }, [routeItem?.id]),
+    }, [routeItem?.id])
   );
 
   useEffect(() => {
     if (item?.name) {
       fetchRecommendations();
     }
-  }, [item?.id, item?.name]);
+  }, [
+    item?.id,
+    item?.name,
+  ]);
 
-  const fetchRecommendations = async () => {
-    try {
-      setLoadingRecommendations(true);
+  const fetchRecommendations =
+    async () => {
+      try {
+        setLoadingRecommendations(true);
 
-      const response = await getDishRecommendations({
-        selectedItem: item,
-        cartItems,
-      });
+        const response =
+          await getDishRecommendations({
+            selectedItem: item,
+            cartItems,
+          });
 
-      if (response.success) {
-        const recommendedItems = (response.data || []).filter(
-          isValidDailyInventoryMenuItem,
+        if (response.success) {
+          const recommendedItems =
+            (response.data || []).filter(
+              isValidDailyInventoryMenuItem
+            );
+
+          setRecommendations(
+            recommendedItems
+          );
+
+          mergeInventoryItems(
+            recommendedItems
+          );
+        } else {
+          setRecommendations([]);
+        }
+      } catch (error) {
+        console.log(
+          "AI RECOMMENDATIONS ERROR:",
+          error?.response?.data ||
+          error.message
         );
 
-        setRecommendations(recommendedItems);
-
-        mergeInventoryItems(recommendedItems);
-      } else {
         setRecommendations([]);
+      } finally {
+        setLoadingRecommendations(false);
       }
-    } catch (error) {
-      console.log(
-        "AI RECOMMENDATIONS ERROR:",
-        error?.response?.data || error.message,
-      );
-
-      setRecommendations([]);
-    } finally {
-      setLoadingRecommendations(false);
-    }
-  };
+    };
 
   const formatMoney = (value) => {
-    const n = Number(value);
+    const n =
+      Number(value);
 
-    return Number.isFinite(n) ? n.toFixed(2) : "0.00";
+    return Number.isFinite(n)
+      ? n.toFixed(2)
+      : "0.00";
   };
 
   const getItemImage = (data) => {
-    const image = data?.image_url
-      ? String(data.image_url).trim()
-      : data?.image
-        ? String(data.image).trim()
-        : "";
+    const image =
+      data?.image_url
+        ? String(data.image_url).trim()
+        : data?.image
+          ? String(data.image).trim()
+          : "";
 
     return image;
   };
@@ -809,7 +1165,11 @@ cartWidth: sideCartWidth,
 
   const getFlavorTags = (data) => {
     if (Array.isArray(data?.flavor_tags)) {
-      return data.flavor_tags.map((tag) => String(tag).trim()).filter(Boolean);
+      return data.flavor_tags
+        .map((tag) =>
+          String(tag).trim()
+        )
+        .filter(Boolean);
     }
 
     if (!data?.flavor_tags) {
@@ -823,94 +1183,130 @@ cartWidth: sideCartWidth,
   };
 
   const getMealType = (data) => {
-    return data?.meal_type ? String(data.meal_type).trim() : null;
+    return data?.meal_type
+      ? String(data.meal_type).trim()
+      : null;
   };
 
   const getCurrentCartQuantityForItem = (data) => {
-    const targetItemId = getItemId(data);
+    const targetItemId =
+      getItemId(data);
 
-    const existingCartItem = cartItems.find(
-      (cartItem) => String(getItemId(cartItem)) === String(targetItemId),
+    const existingCartItem =
+      cartItems.find(
+        (cartItem) =>
+          String(getItemId(cartItem)) ===
+          String(targetItemId)
+      );
+
+    return Number(
+      existingCartItem?.quantity || 0
     );
-
-    return Number(existingCartItem?.quantity || 0);
   };
 
-  const imageUri = getItemImage(item);
+  const imageUri =
+    getItemImage(item);
 
-  const customItem = isCustomItem(item);
+  const customItem =
+    isCustomItem(item);
 
-  const isValidForMobile = isValidDailyInventoryMenuItem(item);
+  const isValidForMobile =
+    isValidDailyInventoryMenuItem(item);
 
-  const allowedQuantity = getAllowedOrderQuantity(item);
+  const allowedQuantity =
+    getAllowedOrderQuantity(item);
 
-  const currentCartQuantity = getCurrentCartQuantityForItem(item);
+  const currentCartQuantity =
+    getCurrentCartQuantityForItem(item);
 
-  const canAddMoreCurrentItem = customItem
-    ? currentCartQuantity < 1
-    : allowedQuantity > 0 && currentCartQuantity < allowedQuantity;
+  const canAddMoreCurrentItem =
+    customItem
+      ? currentCartQuantity < 1
+      : allowedQuantity > 0 &&
+      currentCartQuantity < allowedQuantity;
 
   const isAvailable =
     isValidForMobile &&
     isItemOrderable(item) &&
-    (customItem || allowedQuantity > 0);
+    (
+      customItem ||
+      allowedQuantity > 0
+    );
 
-  const isLowStock = shouldShowLowStockWarning(item);
+  const isLowStock =
+    shouldShowLowStockWarning(item);
 
-  const availabilityText = customItem
-    ? "Custom request available"
-    : isValidForMobile
-      ? getAvailabilityDisplayText(item)
-      : "Not enabled in Daily Menu Inventory";
+  const availabilityText =
+    customItem
+      ? "Custom request available"
+      : isValidForMobile
+        ? getAvailabilityDisplayText(item)
+        : "Not enabled in Daily Menu Inventory";
 
-  const itemDescription = getItemDescription(item);
+  const itemDescription =
+    getItemDescription(item);
 
-  const flavorTags = getFlavorTags(item);
+  const flavorTags =
+    getFlavorTags(item);
 
-  const mealType = getMealType(item);
+  const mealType =
+    getMealType(item);
 
   const handleAddToCart = async () => {
-    if (!item) return;
+    if (!item) {
+      return;
+    }
 
-    const tableCheck = await ensureCanOrder();
+    const tableCheck =
+      await ensureCanOrder();
 
     if (!tableCheck.allowed) {
       Alert.alert(
         "Table Not Assigned",
-        tableCheck.message || assignmentMessage,
+        tableCheck.message ||
+        assignmentMessage
       );
+
       return;
     }
 
     if (!isValidDailyInventoryMenuItem(item)) {
       Alert.alert(
         "Unavailable",
-        "This item is not enabled in Daily Menu Inventory.",
+        "This item is not enabled in Daily Menu Inventory."
       );
+
       return;
     }
 
     if (!isAvailable) {
-      Alert.alert("Out of Stock", "This item is currently out of stock.");
+      Alert.alert(
+        "Out of Stock",
+        "This item is currently out of stock."
+      );
+
       return;
     }
 
     if (customItem) {
-      const requestText = specialRequest.trim();
+      const requestText =
+        specialRequest.trim();
 
       if (!requestText) {
         Alert.alert(
           "Chef Oppa Special Request",
-          "Please describe your Chef Oppa Special request before adding it to cart.",
+          "Please describe your Chef Oppa Special request before adding it to cart."
         );
+
         return;
       }
 
       if (currentCartQuantity >= 1) {
         Alert.alert(
           "Already Added",
-          "Chef Oppa Special can only be added once per order.",
+          "Chef Oppa Special can only be added once per order."
         );
+
         return;
       }
 
@@ -924,199 +1320,287 @@ cartWidth: sideCartWidth,
       });
 
       setSpecialRequest("");
+
       return;
     }
 
     if (allowedQuantity <= 0) {
-      Alert.alert("Sold Out", "This item is sold out for today.");
+      Alert.alert(
+        "Sold Out",
+        "This item is sold out for today."
+      );
+
       return;
     }
 
     if (!canAddMoreCurrentItem) {
       Alert.alert(
         "Limited Stock",
-        `You can only order up to ${allowedQuantity} of this item today.`,
+        `You can only order up to ${allowedQuantity} of this item today.`
       );
+
       return;
     }
 
     addToCart(item);
   };
 
-  const handleAddRecommendedItem = async (recommendedItem) => {
-    if (!recommendedItem) return;
+  const handleAddRecommendedItem =
+    async (recommendedItem) => {
+      if (!recommendedItem) {
+        return;
+      }
 
-    const tableCheck = await ensureCanOrder();
+      const tableCheck =
+        await ensureCanOrder();
 
-    if (!tableCheck.allowed) {
-      Alert.alert(
-        "Table Not Assigned",
-        tableCheck.message || assignmentMessage,
-      );
-      return;
-    }
+      if (!tableCheck.allowed) {
+        Alert.alert(
+          "Table Not Assigned",
+          tableCheck.message ||
+          assignmentMessage
+        );
 
-    if (!isValidDailyInventoryMenuItem(recommendedItem)) {
-      Alert.alert(
-        "Unavailable",
-        "This recommended item is not enabled in Daily Menu Inventory.",
-      );
-      return;
-    }
+        return;
+      }
 
-    if (!isItemOrderable(recommendedItem)) {
-      Alert.alert(
-        "Out of Stock",
-        "This recommended item is currently out of stock.",
-      );
-      return;
-    }
+      if (
+        !isValidDailyInventoryMenuItem(
+          recommendedItem
+        )
+      ) {
+        Alert.alert(
+          "Unavailable",
+          "This recommended item is not enabled in Daily Menu Inventory."
+        );
 
-    const allowedRecommendedQuantity = getAllowedOrderQuantity(recommendedItem);
+        return;
+      }
 
-    const currentRecommendedQuantity =
-      getCurrentCartQuantityForItem(recommendedItem);
+      if (
+        !isItemOrderable(
+          recommendedItem
+        )
+      ) {
+        Alert.alert(
+          "Out of Stock",
+          "This recommended item is currently out of stock."
+        );
 
-    if (
-      !isCustomItem(recommendedItem) &&
-      (allowedRecommendedQuantity <= 0 ||
-        currentRecommendedQuantity >= allowedRecommendedQuantity)
-    ) {
-      Alert.alert(
-        "Limited Stock",
-        `You can only order up to ${allowedRecommendedQuantity} of this item today.`,
-      );
+        return;
+      }
 
-      return;
-    }
+      const allowedRecommendedQuantity =
+        getAllowedOrderQuantity(
+          recommendedItem
+        );
 
-    addToCart(recommendedItem);
+      const currentRecommendedQuantity =
+        getCurrentCartQuantityForItem(
+          recommendedItem
+        );
+
+      if (
+        !isCustomItem(recommendedItem) &&
+        (
+          allowedRecommendedQuantity <= 0 ||
+          currentRecommendedQuantity >=
+          allowedRecommendedQuantity
+        )
+      ) {
+        Alert.alert(
+          "Limited Stock",
+          `You can only order up to ${allowedRecommendedQuantity} of this item today.`
+        );
+
+        return;
+      }
+
+      addToCart(recommendedItem);
+    };
+
+  const handleOpenRecommendedItem = (
+    recommendedItem
+  ) => {
+    navigation.replace(
+      "ItemDetail",
+      {
+        item: recommendedItem,
+      }
+    );
   };
 
-  const handleOpenRecommendedItem = (recommendedItem) => {
-    navigation.replace("ItemDetail", {
-      item: recommendedItem,
-    });
-  };
-
-  const handleIncreaseQuantity = (cartItem) => {
-    const enrichedItem = getEnrichedItem(cartItem);
+  const handleIncreaseQuantity = (
+    cartItem
+  ) => {
+    const enrichedItem =
+      getEnrichedItem(cartItem);
 
     if (isCustomItem(enrichedItem)) {
       return;
     }
 
-    if (!isValidDailyInventoryMenuItem(enrichedItem)) {
+    if (
+      !isValidDailyInventoryMenuItem(
+        enrichedItem
+      )
+    ) {
       Alert.alert(
         "Unavailable",
-        "This item is no longer enabled in Daily Menu Inventory.",
+        "This item is no longer enabled in Daily Menu Inventory."
       );
 
       return;
     }
 
-    const allowedCartQuantity = getAllowedOrderQuantity(enrichedItem);
+    const allowedCartQuantity =
+      getAllowedOrderQuantity(
+        enrichedItem
+      );
 
     if (
       allowedCartQuantity <= 0 ||
-      Number(cartItem.quantity || 0) >= allowedCartQuantity
+      Number(cartItem.quantity || 0) >=
+      allowedCartQuantity
     ) {
       Alert.alert(
         "Limited Stock",
-        `You can only order up to ${allowedCartQuantity} of this item today.`,
+        `You can only order up to ${allowedCartQuantity} of this item today.`
       );
 
       return;
     }
 
-    if (!canIncreaseQuantity(enrichedItem, cartItem.quantity, 1)) {
+    if (
+      !canIncreaseQuantity(
+        enrichedItem,
+        cartItem.quantity,
+        1
+      )
+    ) {
       Alert.alert(
         "Limited Stock",
-        getAvailabilityDisplayText(enrichedItem) ||
-          "You reached the available quantity for this item.",
+        getAvailabilityDisplayText(
+          enrichedItem
+        ) ||
+        "You reached the available quantity for this item."
       );
 
       return;
     }
 
-    incrementQuantity(getItemId(cartItem));
+    incrementQuantity(
+      getItemId(cartItem)
+    );
   };
 
-  const handleDecreaseQuantity = (cartItem) => {
-    const cartItemId = getItemId(cartItem);
+  const handleDecreaseQuantity = (
+    cartItem
+  ) => {
+    const cartItemId =
+      getItemId(cartItem);
 
-    updateQuantity(cartItemId, cartItem.quantity - 1);
+    updateQuantity(
+      cartItemId,
+      cartItem.quantity - 1
+    );
   };
 
-  const handleRemoveItem = (cartItem) => {
-    const cartItemId = getItemId(cartItem);
+  const handleRemoveItem = (
+    cartItem
+  ) => {
+    const cartItemId =
+      getItemId(cartItem);
 
-    removeFromCart(cartItemId);
+    removeFromCart(
+      cartItemId
+    );
   };
 
   const handleCheckout = async () => {
     if (cartItems.length === 0) {
       Alert.alert(
         "Empty Order",
-        "Please add at least one item before proceeding.",
+        "Please add at least one item before proceeding."
       );
+
       return;
     }
 
-    const tableCheck = await ensureCanOrder();
+    const tableCheck =
+      await ensureCanOrder();
 
     if (!tableCheck.allowed) {
       Alert.alert(
         "Table Not Assigned",
-        tableCheck.message || assignmentMessage,
+        tableCheck.message ||
+        assignmentMessage
       );
+
       return;
     }
 
-    const inventoryCheck = await refreshCartInventory();
+    const inventoryCheck =
+      await refreshCartInventory();
 
     if (!inventoryCheck.valid) {
-      Alert.alert("Limited Stock", inventoryCheck.message);
+      Alert.alert(
+        "Limited Stock",
+        inventoryCheck.message
+      );
+
       return;
     }
 
-    const invalidDailyInventoryItems = cartItems.filter((cartItem) => {
-      const enrichedItem = getEnrichedItem(cartItem);
+    const invalidDailyInventoryItems =
+      cartItems.filter((cartItem) => {
+        const enrichedItem =
+          getEnrichedItem(cartItem);
 
-      return (
-        !isCustomItem(enrichedItem) &&
-        !isValidDailyInventoryMenuItem(enrichedItem)
-      );
-    });
+        return (
+          !isCustomItem(enrichedItem) &&
+          !isValidDailyInventoryMenuItem(
+            enrichedItem
+          )
+        );
+      });
 
-    if (invalidDailyInventoryItems.length > 0) {
+    if (
+      invalidDailyInventoryItems.length > 0
+    ) {
       Alert.alert(
         "Unavailable Item",
-        "Some items in your cart are no longer enabled in Daily Menu Inventory. Please remove them before confirming your order.",
+        "Some items in your cart are no longer enabled in Daily Menu Inventory. Please remove them before confirming your order."
       );
 
       return;
     }
 
-    const overLimitItems = cartItems.filter((cartItem) => {
-      const enrichedItem = getEnrichedItem(cartItem);
+    const overLimitItems =
+      cartItems.filter((cartItem) => {
+        const enrichedItem =
+          getEnrichedItem(cartItem);
 
-      if (isCustomItem(enrichedItem)) {
-        return false;
-      }
+        if (isCustomItem(enrichedItem)) {
+          return false;
+        }
 
-      const allowedCartQuantity = getAllowedOrderQuantity(enrichedItem);
+        const allowedCartQuantity =
+          getAllowedOrderQuantity(
+            enrichedItem
+          );
 
-      return (
-        allowedCartQuantity <= 0 ||
-        Number(cartItem.quantity || 0) > allowedCartQuantity
-      );
-    });
+        return (
+          allowedCartQuantity <= 0 ||
+          Number(cartItem.quantity || 0) >
+          allowedCartQuantity
+        );
+      });
 
     if (overLimitItems.length > 0) {
       Alert.alert(
         "Limited Stock",
-        "Some items exceed the available quantity for today. Please adjust your cart before confirming your order.",
+        "Some items exceed the available quantity for today. Please adjust your cart before confirming your order."
       );
 
       return;
@@ -1125,64 +1609,98 @@ cartWidth: sideCartWidth,
     if (!finalTableNumber) {
       Alert.alert(
         "Table Error",
-        "No table number found. Please login again using the assigned table account.",
+        "No table number found. Please login again using the assigned table account."
       );
+
       return;
     }
 
-    navigation.navigate("OrderConfirm", {
-      cartItems,
-      total: cartTotal,
-      tableNumber: finalTableNumber,
-    });
+    navigation.navigate(
+      "OrderConfirm",
+      {
+        cartItems,
+        total: cartTotal,
+        tableNumber: finalTableNumber,
+      }
+    );
   };
 
-  const totalQuantity = cartItems.reduce(
-    (total, cartItem) => total + Number(cartItem.quantity || 0),
-    0,
-  );
+  const totalQuantity =
+    cartItems.reduce(
+      (total, cartItem) =>
+        total +
+        Number(cartItem.quantity || 0),
+      0
+    );
 
-  const renderRecommendation = ({ item: recommendedItem }) => {
-    const recommendedImage = getItemImage(recommendedItem);
+  const renderRecommendation = ({
+    item: recommendedItem,
+  }) => {
+    const recommendedImage =
+      getItemImage(recommendedItem);
 
-    const recommendedCustom = isCustomItem(recommendedItem);
+    const recommendedCustom =
+      isCustomItem(recommendedItem);
 
-    const recommendedValid = isValidDailyInventoryMenuItem(recommendedItem);
+    const recommendedValid =
+      isValidDailyInventoryMenuItem(
+        recommendedItem
+      );
 
-    const recommendedAllowedQuantity = getAllowedOrderQuantity(recommendedItem);
+    const recommendedAllowedQuantity =
+      getAllowedOrderQuantity(
+        recommendedItem
+      );
 
     const recommendedAvailable =
       recommendedValid &&
       isItemOrderable(recommendedItem) &&
-      (recommendedCustom || recommendedAllowedQuantity > 0);
+      (
+        recommendedCustom ||
+        recommendedAllowedQuantity > 0
+      );
 
     return (
       <View
         style={[
           styles.recommendationCard,
           {
-            width: responsive.recommendationWidth,
-            minHeight: responsive.recommendationMinHeight,
-            paddingHorizontal: responsive.recommendationCardPaddingH,
-            paddingVertical: responsive.recommendationCardPaddingV,
-            marginHorizontal: responsive.recommendationCardMarginH,
+            width:
+              responsive.recommendationWidth,
+            minHeight:
+              responsive.recommendationMinHeight,
+            paddingHorizontal:
+              responsive.recommendationCardPaddingH,
+            paddingVertical:
+              responsive.recommendationCardPaddingV,
+            marginHorizontal:
+              responsive.recommendationCardMarginH,
           },
-          !recommendedAvailable && styles.recommendationCardDisabled,
+          !recommendedAvailable &&
+          styles.recommendationCardDisabled,
         ]}
       >
         <TouchableOpacity
           style={styles.recommendationLeft}
           disabled={!recommendedAvailable}
-          onPress={() => handleOpenRecommendedItem(recommendedItem)}
+          onPress={() =>
+            handleOpenRecommendedItem(
+              recommendedItem
+            )
+          }
         >
           <View
             style={[
               styles.recommendationCircle,
               {
-                width: responsive.recommendationCircle,
-                height: responsive.recommendationCircle,
-                borderRadius: responsive.recommendationCircle / 2,
-                marginRight: responsive.recommendationCircleMarginRight,
+                width:
+                  responsive.recommendationCircle,
+                height:
+                  responsive.recommendationCircle,
+                borderRadius:
+                  responsive.recommendationCircle / 2,
+                marginRight:
+                  responsive.recommendationCircleMarginRight,
               },
             ]}
           >
@@ -1195,7 +1713,9 @@ cartWidth: sideCartWidth,
                 resizeMode="cover"
               />
             ) : (
-              <Text style={styles.recommendationEmoji}>🍽️</Text>
+              <Text style={styles.recommendationEmoji}>
+                🍽️
+              </Text>
             )}
           </View>
 
@@ -1204,8 +1724,10 @@ cartWidth: sideCartWidth,
               style={[
                 styles.recommendationName,
                 {
-                  fontSize: responsive.recommendationName,
-                  lineHeight: responsive.recommendationLine,
+                  fontSize:
+                    responsive.recommendationName,
+                  lineHeight:
+                    responsive.recommendationLine,
                 },
               ]}
               numberOfLines={1}
@@ -1219,7 +1741,8 @@ cartWidth: sideCartWidth,
               style={[
                 styles.recommendationPrice,
                 {
-                  fontSize: responsive.recommendationPrice,
+                  fontSize:
+                    responsive.recommendationPrice,
                 },
               ]}
               numberOfLines={1}
@@ -1237,7 +1760,8 @@ cartWidth: sideCartWidth,
           style={[
             styles.recommendationRight,
             {
-              width: responsive.recommendationRightWidth,
+              width:
+                responsive.recommendationRightWidth,
             },
           ]}
         >
@@ -1245,14 +1769,22 @@ cartWidth: sideCartWidth,
             style={[
               styles.recommendationAddButton,
               {
-                paddingHorizontal: responsive.recommendationAddPaddingH,
-                paddingVertical: responsive.recommendationAddPaddingV,
-                minWidth: responsive.recommendationAddMinWidth,
+                paddingHorizontal:
+                  responsive.recommendationAddPaddingH,
+                paddingVertical:
+                  responsive.recommendationAddPaddingV,
+                minWidth:
+                  responsive.recommendationAddMinWidth,
               },
-              !recommendedAvailable && styles.recommendationAddButtonDisabled,
-              !canOrder && styles.recommendationAddButtonDisabled,
+              !recommendedAvailable &&
+              styles.recommendationAddButtonDisabled,
+              !canOrder &&
+              styles.recommendationAddButtonDisabled,
             ]}
-            disabled={!recommendedAvailable || !canOrder}
+            disabled={
+              !recommendedAvailable ||
+              !canOrder
+            }
             onPress={() =>
               recommendedCustom
                 ? handleOpenRecommendedItem(recommendedItem)
@@ -1263,12 +1795,15 @@ cartWidth: sideCartWidth,
               style={[
                 styles.recommendationAddText,
                 {
-                  fontSize: responsive.recommendationAddText,
+                  fontSize:
+                    responsive.recommendationAddText,
                 },
               ]}
               numberOfLines={1}
             >
-              {recommendedCustom ? "Request" : "Add"}
+              {recommendedCustom
+                ? "Request"
+                : "Add"}
             </Text>
           </TouchableOpacity>
         </View>
@@ -1276,113 +1811,46 @@ cartWidth: sideCartWidth,
     );
   };
 
-  const renderCartItem = ({ item: cartItem }) => {
-    const enrichedItem = getEnrichedItem(cartItem);
+  const renderCartItem = ({
+    item: cartItem,
+  }) => {
+    const enrichedItem =
+      getEnrichedItem(cartItem);
 
-    const customCartItem = isCustomItem(enrichedItem);
+    const customCartItem =
+      isCustomItem(enrichedItem);
 
     const validDailyInventoryItem =
-      customCartItem || isValidDailyInventoryMenuItem(enrichedItem);
+      customCartItem ||
+      isValidDailyInventoryMenuItem(
+        enrichedItem
+      );
 
-    const allowedCartQuantity = customCartItem
-      ? 1
-      : getAllowedOrderQuantity(enrichedItem);
+    const allowedCartQuantity =
+      customCartItem
+        ? 1
+        : getAllowedOrderQuantity(
+          enrichedItem
+        );
 
     const atMaxQuantity =
       customCartItem ||
       !validDailyInventoryItem ||
       allowedCartQuantity <= 0 ||
-      Number(cartItem.quantity || 0) >= allowedCartQuantity ||
-      !canIncreaseQuantity(enrichedItem, cartItem.quantity, 1);
-      if (responsive.isBottomCartCompact) {
-  return (
-    <View style={styles.mobileCartItemCard}>
-      <View style={styles.mobileCartItemInfo}>
-        <Text
-          style={[
-            styles.mobileCartItemName,
-            {
-              fontSize: responsive.cartItemName,
-            },
-          ]}
-          numberOfLines={1}
-        >
-          {cartItem.name}
-        </Text>
-
-        <Text
-          style={[
-            styles.mobileCartItemPrice,
-            {
-              fontSize: responsive.cartItemPrice,
-            },
-          ]}
-          numberOfLines={1}
-        >
-          {customCartItem
-            ? "To be confirmed"
-            : `₱${formatMoney(cartItem.price)}`}
-        </Text>
-      </View>
-
-      {customCartItem ? (
-        <View style={styles.mobileQtyStatic}>
-          <Text style={styles.mobileQtyStaticText}>
-            Qty 1
-          </Text>
-        </View>
-      ) : (
-        <View style={styles.mobileQtyControls}>
-          <TouchableOpacity
-            style={styles.mobileQtyButton}
-            onPress={() => handleDecreaseQuantity(cartItem)}
-          >
-            <Text style={styles.mobileQtyButtonText}>
-              -
-            </Text>
-          </TouchableOpacity>
-
-          <Text style={styles.mobileQtyText}>
-            {cartItem.quantity}
-          </Text>
-
-          <TouchableOpacity
-            style={[
-              styles.mobileQtyButton,
-              (atMaxQuantity || isOutOfStock(enrichedItem)) &&
-                styles.mobileQtyButtonDisabled,
-            ]}
-            disabled={atMaxQuantity || isOutOfStock(enrichedItem)}
-            onPress={() => {
-              if (!atMaxQuantity && !isOutOfStock(enrichedItem)) {
-                handleIncreaseQuantity(cartItem);
-              }
-            }}
-          >
-            <Text style={styles.mobileQtyButtonText}>
-              +
-            </Text>
-          </TouchableOpacity>
-        </View>
-      )}
-
-      <TouchableOpacity
-        style={styles.mobileRemoveButton}
-        onPress={() => handleRemoveItem(cartItem)}
-      >
-        <Text style={styles.mobileRemoveText}>
-          ×
-        </Text>
-      </TouchableOpacity>
-    </View>
-  );
-}
+      Number(cartItem.quantity || 0) >=
+      allowedCartQuantity ||
+      !canIncreaseQuantity(
+        enrichedItem,
+        cartItem.quantity,
+        1
+      );
 
     return (
       <View
         style={[
           styles.cartItem,
-          !responsive.useSideCart && styles.cartItemStacked,
+          !responsive.useSideCart &&
+          styles.cartItemBottom,
         ]}
       >
         <View style={styles.cartItemTop}>
@@ -1391,7 +1859,8 @@ cartWidth: sideCartWidth,
               style={[
                 styles.cartItemName,
                 {
-                  fontSize: responsive.cartItemName,
+                  fontSize:
+                    responsive.cartItemName,
                 },
               ]}
               numberOfLines={2}
@@ -1403,7 +1872,8 @@ cartWidth: sideCartWidth,
               style={[
                 styles.cartItemPrice,
                 {
-                  fontSize: responsive.cartItemPrice,
+                  fontSize:
+                    responsive.cartItemPrice,
                 },
               ]}
             >
@@ -1412,24 +1882,29 @@ cartWidth: sideCartWidth,
                 : `₱${formatMoney(cartItem.price)}`}
             </Text>
 
-            {!customCartItem && allowedCartQuantity > 0 ? (
+            {responsive.useSideCart &&
+              !customCartItem &&
+              allowedCartQuantity > 0 ? (
               <Text style={styles.cartLimitText}>
                 Limit today: {allowedCartQuantity}
               </Text>
             ) : null}
 
-            {!customCartItem && !validDailyInventoryItem ? (
+            {!customCartItem &&
+              !validDailyInventoryItem ? (
               <Text style={styles.cartInvalidText}>
                 No longer available today
               </Text>
             ) : null}
 
-            {customCartItem && cartItem.special_request ? (
+            {customCartItem &&
+              cartItem.special_request ? (
               <Text
                 style={[
                   styles.cartRequestText,
                   {
-                    fontSize: responsive.cartRequest,
+                    fontSize:
+                      responsive.cartRequest,
                   },
                 ]}
               >
@@ -1438,12 +1913,17 @@ cartWidth: sideCartWidth,
             ) : null}
           </View>
 
-          <TouchableOpacity onPress={() => handleRemoveItem(cartItem)}>
+          <TouchableOpacity
+            onPress={() =>
+              handleRemoveItem(cartItem)
+            }
+          >
             <Text
               style={[
                 styles.removeText,
                 {
-                  fontSize: responsive.removeText,
+                  fontSize:
+                    responsive.removeText,
                 },
               ]}
             >
@@ -1454,7 +1934,9 @@ cartWidth: sideCartWidth,
 
         {customCartItem ? (
           <View style={styles.customQtyBox}>
-            <Text style={styles.customQtyText}>Qty: 1</Text>
+            <Text style={styles.customQtyText}>
+              Qty: 1
+            </Text>
           </View>
         ) : (
           <View style={styles.qtyRow}>
@@ -1462,18 +1944,26 @@ cartWidth: sideCartWidth,
               style={[
                 styles.qtyButton,
                 {
-                  width: responsive.qtyButton,
-                  height: responsive.qtyButton,
-                  borderRadius: responsive.qtyButton / 3,
+                  width:
+                    responsive.qtyButton,
+                  height:
+                    responsive.qtyButton,
+                  borderRadius:
+                    responsive.qtyButton / 3,
                 },
               ]}
-              onPress={() => handleDecreaseQuantity(cartItem)}
+              onPress={() =>
+                handleDecreaseQuantity(
+                  cartItem
+                )
+              }
             >
               <Text
                 style={[
                   styles.qtyButtonText,
                   {
-                    fontSize: responsive.qtyButtonText,
+                    fontSize:
+                      responsive.qtyButtonText,
                   },
                 ]}
               >
@@ -1485,7 +1975,8 @@ cartWidth: sideCartWidth,
               style={[
                 styles.qtyText,
                 {
-                  fontSize: responsive.qtyText,
+                  fontSize:
+                    responsive.qtyText,
                 },
               ]}
             >
@@ -1496,17 +1987,31 @@ cartWidth: sideCartWidth,
               style={[
                 styles.qtyButton,
                 {
-                  width: responsive.qtyButton,
-                  height: responsive.qtyButton,
-                  borderRadius: responsive.qtyButton / 3,
+                  width:
+                    responsive.qtyButton,
+                  height:
+                    responsive.qtyButton,
+                  borderRadius:
+                    responsive.qtyButton / 3,
                 },
-                (atMaxQuantity || isOutOfStock(enrichedItem)) &&
-                  styles.qtyButtonDisabled,
+                (atMaxQuantity ||
+                  isOutOfStock(enrichedItem)) &&
+                styles.qtyButtonDisabled,
               ]}
-              disabled={atMaxQuantity || isOutOfStock(enrichedItem)}
+              disabled={
+                atMaxQuantity ||
+                isOutOfStock(enrichedItem)
+              }
               onPress={() => {
-                if (!atMaxQuantity && !isOutOfStock(enrichedItem)) {
-                  handleIncreaseQuantity(cartItem);
+                if (
+                  !atMaxQuantity &&
+                  !isOutOfStock(
+                    enrichedItem
+                  )
+                ) {
+                  handleIncreaseQuantity(
+                    cartItem
+                  );
                 }
               }}
             >
@@ -1514,7 +2019,8 @@ cartWidth: sideCartWidth,
                 style={[
                   styles.qtyButtonText,
                   {
-                    fontSize: responsive.qtyButtonText,
+                    fontSize:
+                      responsive.qtyButtonText,
                   },
                 ]}
               >
@@ -1536,13 +2042,22 @@ cartWidth: sideCartWidth,
           translucent={false}
         />
 
-        <SafeAreaView style={styles.safeArea} edges={["top"]}>
+        <SafeAreaView
+          style={styles.safeArea}
+          edges={[
+            "top",
+            "left",
+            "right",
+            "bottom",
+          ]}
+        >
           <View style={styles.emptyState}>
             <Text
               style={[
                 styles.errorText,
                 {
-                  fontSize: responsive.errorText,
+                  fontSize:
+                    responsive.errorText,
                 },
               ]}
             >
@@ -1551,13 +2066,16 @@ cartWidth: sideCartWidth,
 
             <TouchableOpacity
               style={styles.backButton}
-              onPress={() => navigation.goBack()}
+              onPress={() =>
+                navigation.goBack()
+              }
             >
               <Text
                 style={[
                   styles.backButtonText,
                   {
-                    fontSize: responsive.backButtonText,
+                    fontSize:
+                      responsive.backButtonText,
                   },
                 ]}
               >
@@ -1578,23 +2096,38 @@ cartWidth: sideCartWidth,
         translucent={false}
       />
 
-      <SafeAreaView style={styles.safeArea} edges={["top"]}>
+      <SafeAreaView
+        style={styles.safeArea}
+        edges={[
+          "top",
+          "left",
+          "right",
+          "bottom",
+        ]}
+      >
         <View style={styles.container}>
           <View
             style={[
               styles.topBar,
               {
-                minHeight: responsive.topBarHeight,
-                paddingHorizontal: responsive.topBarPaddingH,
+                minHeight:
+                  responsive.topBarHeight,
+                paddingHorizontal:
+                  responsive.topBarPaddingH,
               },
             ]}
           >
-            <TouchableOpacity onPress={() => navigation.goBack()}>
+            <TouchableOpacity
+              onPress={() =>
+                navigation.goBack()
+              }
+            >
               <Text
                 style={[
                   styles.topBarText,
                   {
-                    fontSize: responsive.topText,
+                    fontSize:
+                      responsive.topText,
                   },
                 ]}
                 numberOfLines={1}
@@ -1608,7 +2141,8 @@ cartWidth: sideCartWidth,
                 style={[
                   styles.tableText,
                   {
-                    fontSize: responsive.tableText,
+                    fontSize:
+                      responsive.tableText,
                   },
                 ]}
                 numberOfLines={1}
@@ -1630,7 +2164,10 @@ cartWidth: sideCartWidth,
             style={[
               styles.contentArea,
               {
-                flexDirection: responsive.useSideCart ? "row" : "column",
+                flexDirection:
+                  responsive.useSideCart
+                    ? "row"
+                    : "column",
               },
             ]}
           >
@@ -1638,7 +2175,8 @@ cartWidth: sideCartWidth,
               style={[
                 styles.detailSection,
                 {
-                  padding: responsive.detailPadding,
+                  padding:
+                    responsive.detailPadding,
                 },
               ]}
             >
@@ -1647,13 +2185,18 @@ cartWidth: sideCartWidth,
                 contentContainerStyle={[
                   styles.detailScrollContent,
                   {
-                    paddingBottom: responsive.detailBottomPadding,
-                    justifyContent: responsive.detailScrollJustify,
-                    alignItems: responsive.detailScrollAlignItems,
-                    minHeight: responsive.detailScrollMinHeight || "100%",
+                    paddingBottom:
+                      responsive.detailBottomPadding,
+                    justifyContent:
+                      responsive.detailScrollJustify,
+                    alignItems:
+                      responsive.detailScrollAlignItems,
+                    minHeight:
+                      responsive.detailScrollMinHeight ||
+                      "100%",
                   },
                 ]}
-                showsVerticalScrollIndicator={false}
+                showsVerticalScrollIndicator={true}
                 keyboardShouldPersistTaps="handled"
                 scrollEnabled={true}
               >
@@ -1661,18 +2204,26 @@ cartWidth: sideCartWidth,
                   style={[
                     styles.detailCard,
                     {
-                      width: responsive.detailCardWidth || "100%",
-                      maxWidth: responsive.isTabletLandscape
-                        ? undefined
-                        : responsive.maxCardWidth,
-                      minHeight: responsive.detailCardMinHeight,
-                      height: responsive.detailCardHeight,
-                      padding: responsive.cardPadding,
-                      borderRadius: responsive.cardRadius,
-                      justifyContent: responsive.cardJustifyContent,
-                      alignSelf: responsive.isTabletLandscape
-                        ? "stretch"
-                        : "center",
+                      width:
+                        responsive.detailCardWidth,
+                      maxWidth:
+                        responsive.useSideCart
+                          ? undefined
+                          : responsive.maxCardWidth,
+                      minHeight:
+                        responsive.detailCardMinHeight,
+                      height:
+                        responsive.detailCardHeight,
+                      padding:
+                        responsive.cardPadding,
+                      borderRadius:
+                        responsive.cardRadius,
+                      justifyContent:
+                        responsive.cardJustifyContent,
+                      alignSelf:
+                        responsive.useSideCart
+                          ? "center"
+                          : "center",
                     },
                   ]}
                 >
@@ -1680,10 +2231,14 @@ cartWidth: sideCartWidth,
                     style={[
                       styles.imageCircle,
                       {
-                        width: responsive.imageSize,
-                        height: responsive.imageSize,
-                        borderRadius: responsive.imageRadius,
-                        marginBottom: responsive.imageMarginBottom,
+                        width:
+                          responsive.imageSize,
+                        height:
+                          responsive.imageSize,
+                        borderRadius:
+                          responsive.imageRadius,
+                        marginBottom:
+                          responsive.imageMarginBottom,
                       },
                     ]}
                   >
@@ -1700,7 +2255,8 @@ cartWidth: sideCartWidth,
                         style={[
                           styles.itemEmoji,
                           {
-                            fontSize: responsive.emoji,
+                            fontSize:
+                              responsive.emoji,
                           },
                         ]}
                       >
@@ -1713,7 +2269,8 @@ cartWidth: sideCartWidth,
                     style={[
                       styles.itemName,
                       {
-                        fontSize: responsive.itemName,
+                        fontSize:
+                          responsive.itemName,
                       },
                     ]}
                     numberOfLines={2}
@@ -1726,8 +2283,10 @@ cartWidth: sideCartWidth,
                     style={[
                       styles.itemPrice,
                       {
-                        fontSize: responsive.itemPrice,
-                        marginTop: responsive.priceMarginTop,
+                        fontSize:
+                          responsive.itemPrice,
+                        marginTop:
+                          responsive.priceMarginTop,
                       },
                     ]}
                     numberOfLines={2}
@@ -1742,8 +2301,10 @@ cartWidth: sideCartWidth,
                     style={[
                       styles.itemCategory,
                       {
-                        fontSize: responsive.category,
-                        marginTop: responsive.categoryMarginTop,
+                        fontSize:
+                          responsive.category,
+                        marginTop:
+                          responsive.categoryMarginTop,
                       },
                     ]}
                     numberOfLines={1}
@@ -1756,17 +2317,22 @@ cartWidth: sideCartWidth,
                       style={[
                         styles.flavorTagContainer,
                         {
-                          marginTop: responsive.tagMarginTop,
+                          marginTop:
+                            responsive.tagMarginTop,
                         },
                       ]}
                     >
                       {flavorTags.map((tag, index) => (
-                        <View key={`${tag}-${index}`} style={styles.flavorTag}>
+                        <View
+                          key={`${tag}-${index}`}
+                          style={styles.flavorTag}
+                        >
                           <Text
                             style={[
                               styles.flavorTagText,
                               {
-                                fontSize: responsive.tagText,
+                                fontSize:
+                                  responsive.tagText,
                               },
                             ]}
                           >
@@ -1782,7 +2348,8 @@ cartWidth: sideCartWidth,
                       style={[
                         styles.mealTypeText,
                         {
-                          marginTop: responsive.categoryMarginTop,
+                          marginTop:
+                            responsive.categoryMarginTop,
                         },
                       ]}
                     >
@@ -1800,21 +2367,28 @@ cartWidth: sideCartWidth,
                             ? styles.lowStockText
                             : styles.availableText,
                       {
-                        fontSize: responsive.stockText,
-                        marginTop: responsive.stockMarginTop,
+                        fontSize:
+                          responsive.stockText,
+                        marginTop:
+                          responsive.stockMarginTop,
                       },
                     ]}
                   >
-                    {!canOrder ? "Table not assigned" : availabilityText}
+                    {!canOrder
+                      ? "Table not assigned"
+                      : availabilityText}
                   </Text>
 
-                  {!customItem && allowedQuantity > 0 ? (
+                  {!customItem &&
+                    allowedQuantity > 0 ? (
                     <Text
                       style={[
                         styles.limitText,
                         {
-                          fontSize: responsive.limitText,
-                          marginTop: responsive.limitMarginTop,
+                          fontSize:
+                            responsive.limitText,
+                          marginTop:
+                            responsive.limitMarginTop,
                         },
                       ]}
                     >
@@ -1826,16 +2400,19 @@ cartWidth: sideCartWidth,
                     style={[
                       styles.description,
                       {
-                        fontSize: responsive.description,
-                        lineHeight: responsive.descriptionLine,
-                        marginTop: responsive.descriptionMarginTop,
+                        fontSize:
+                          responsive.description,
+                        lineHeight:
+                          responsive.descriptionLine,
+                        marginTop:
+                          responsive.descriptionMarginTop,
                       },
                     ]}
                   >
                     {customItem
                       ? "Price and availability will be confirmed by staff. QR PH is disabled for Chef Oppa Special requests."
                       : itemDescription ||
-                        "No description available for this item."}
+                      "No description available for this item."}
                   </Text>
 
                   {customItem ? (
@@ -1844,7 +2421,8 @@ cartWidth: sideCartWidth,
                         style={[
                           styles.specialRequestLabel,
                           {
-                            fontSize: responsive.label,
+                            fontSize:
+                              responsive.label,
                           },
                         ]}
                       >
@@ -1855,8 +2433,10 @@ cartWidth: sideCartWidth,
                         style={[
                           styles.specialRequestInput,
                           {
-                            minHeight: responsive.inputHeight,
-                            fontSize: responsive.inputFont,
+                            minHeight:
+                              responsive.inputHeight,
+                            fontSize:
+                              responsive.inputFont,
                           },
                         ]}
                         value={specialRequest}
@@ -1873,29 +2453,37 @@ cartWidth: sideCartWidth,
                     style={[
                       styles.addToOrderButton,
                       {
-                        paddingVertical: responsive.buttonPaddingV,
-                        paddingHorizontal: responsive.buttonPaddingH,
-                        marginTop: responsive.addButtonMarginTop,
+                        paddingVertical:
+                          responsive.buttonPaddingV,
+                        paddingHorizontal:
+                          responsive.buttonPaddingH,
+                        marginTop:
+                          responsive.addButtonMarginTop,
                       },
-                      (!isAvailable || !canOrder || !canAddMoreCurrentItem) &&
-                        styles.addToOrderButtonDisabled,
+                      (!isAvailable ||
+                        !canOrder ||
+                        !canAddMoreCurrentItem) &&
+                      styles.addToOrderButtonDisabled,
                     ]}
                     disabled={
-                      !isAvailable || !canOrder || !canAddMoreCurrentItem
+                      !isAvailable ||
+                      !canOrder ||
+                      !canAddMoreCurrentItem
                     }
                     onPress={handleAddToCart}
                   >
-                   <Text
-  style={[
-    styles.addToOrderText,
-    {
-      fontSize: responsive.buttonText,
-    },
-  ]}
-  numberOfLines={1}
-  adjustsFontSizeToFit
-  minimumFontScale={0.7}
->
+                    <Text
+                      style={[
+                        styles.addToOrderText,
+                        {
+                          fontSize:
+                            responsive.buttonText,
+                        },
+                      ]}
+                      numberOfLines={1}
+                      adjustsFontSizeToFit
+                      minimumFontScale={0.75}
+                    >
                       {!canOrder
                         ? "Waiting for Staff"
                         : customItem
@@ -1916,7 +2504,8 @@ cartWidth: sideCartWidth,
                     style={[
                       styles.recommendationSection,
                       {
-                        marginTop: responsive.recommendationMarginTop,
+                        marginTop:
+                          responsive.recommendationMarginTop,
                       },
                     ]}
                   >
@@ -1924,7 +2513,8 @@ cartWidth: sideCartWidth,
                       style={[
                         styles.recommendationTitle,
                         {
-                          fontSize: responsive.recommendationTitle,
+                          fontSize:
+                            responsive.recommendationTitle,
                           marginBottom:
                             responsive.recommendationTitleMarginBottom,
                         },
@@ -1934,18 +2524,30 @@ cartWidth: sideCartWidth,
                     </Text>
 
                     {loadingRecommendations ? (
-                      <ActivityIndicator size="small" color="#f68c45" />
+                      <ActivityIndicator
+                        size="small"
+                        color="#f68c45"
+                      />
                     ) : recommendations.length > 0 ? (
                       <FlatList
                         horizontal
                         data={recommendations}
-                        keyExtractor={(recommendedItem, index) =>
-                          String(recommendedItem.id || index)
+                        keyExtractor={(
+                          recommendedItem,
+                          index
+                        ) =>
+                          String(
+                            recommendedItem.id ||
+                            index
+                          )
                         }
-                        renderItem={renderRecommendation}
-                        showsHorizontalScrollIndicator={false}
+                        renderItem={
+                          renderRecommendation
+                        }
+                        showsHorizontalScrollIndicator={true}
                         contentContainerStyle={{
                           paddingHorizontal: 4,
+                          paddingBottom: 4,
                         }}
                       />
                     ) : (
@@ -1962,15 +2564,34 @@ cartWidth: sideCartWidth,
               style={[
                 styles.cartSidebar,
                 {
-                  width: responsive.cartWidth,
-                  height: responsive.useSideCart
-                    ? "100%"
-                    : responsive.cartHeight,
-                  paddingHorizontal: responsive.sidebarPaddingH,
-                  paddingTop: responsive.sidebarPaddingT,
-                  paddingBottom: responsive.bottomSafeExtra,
-                  borderLeftWidth: responsive.useSideCart ? 1 : 0,
-                  borderTopWidth: responsive.useSideCart ? 0 : 1,
+                  width:
+                    responsive.cartWidth,
+                  height:
+                    responsive.useSideCart
+                      ? "100%"
+                      : responsive.cartHeight,
+                  paddingHorizontal:
+                    responsive.sidebarPaddingH,
+                  paddingTop:
+                    responsive.sidebarPaddingT,
+                  paddingBottom:
+                    responsive.bottomSafeExtra,
+                  borderLeftWidth:
+                    responsive.useSideCart
+                      ? 1
+                      : 0,
+                  borderTopWidth:
+                    responsive.useSideCart
+                      ? 0
+                      : 1,
+                  borderTopLeftRadius:
+                    responsive.useSideCart
+                      ? 0
+                      : 18,
+                  borderTopRightRadius:
+                    responsive.useSideCart
+                      ? 0
+                      : 18,
                 },
               ]}
             >
@@ -1979,7 +2600,8 @@ cartWidth: sideCartWidth,
                   style={[
                     styles.cartIcon,
                     {
-                      fontSize: responsive.cartIcon,
+                      fontSize:
+                        responsive.cartIcon,
                     },
                   ]}
                 >
@@ -1990,7 +2612,8 @@ cartWidth: sideCartWidth,
                   style={[
                     styles.cartTitle,
                     {
-                      fontSize: responsive.cartTitle,
+                      fontSize:
+                        responsive.cartTitle,
                     },
                   ]}
                 >
@@ -2003,7 +2626,8 @@ cartWidth: sideCartWidth,
                   style={[
                     styles.emptyCartText,
                     {
-                      fontSize: responsive.cartItemName,
+                      fontSize:
+                        responsive.cartItemName,
                     },
                   ]}
                 >
@@ -2011,42 +2635,66 @@ cartWidth: sideCartWidth,
                 </Text>
               ) : (
                 <FlatList
-  data={cartItems}
-  keyExtractor={(cartItem) => String(getItemId(cartItem))}
-  renderItem={renderCartItem}
-  horizontal={!responsive.useSideCart}
-  showsHorizontalScrollIndicator={false}
-  showsVerticalScrollIndicator={false}
-  style={[
-    styles.cartList,
-    responsive.useSideCart
-      ? [
-          styles.cartListSide,
-          {
-            maxHeight: responsive.cartSideListMaxHeight,
-          },
-        ]
-      : {
-          maxHeight: responsive.isBottomCartCompact
-            ? 74
-            : responsive.cartPhoneListMaxHeight,
-          minHeight: responsive.isBottomCartCompact
-            ? 70
-            : 52,
-        },
-  ]}
-  contentContainerStyle={{
-    paddingBottom: responsive.useSideCart ? 18 : 6,
-    gap: responsive.useSideCart ? 0 : 12,
-  }}
-/>
+                  data={cartItems}
+                  keyExtractor={(cartItem) =>
+                    String(getItemId(cartItem))
+                  }
+                  renderItem={renderCartItem}
+                  horizontal={!responsive.useSideCart}
+                  showsHorizontalScrollIndicator={!responsive.useSideCart}
+                  showsVerticalScrollIndicator={responsive.useSideCart}
+                  persistentScrollbar={true}
+                  indicatorStyle="black"
+                  style={[
+                    styles.cartList,
+                    responsive.useSideCart
+                      ? [
+                        styles.cartListSide,
+                        {
+                          maxHeight:
+                            responsive.cartSideListMaxHeight,
+                        },
+                      ]
+                      : {
+                        maxHeight:
+                          responsive.isPhoneLandscape
+                            ? 56
+                            : responsive.cartPhoneListMaxHeight,
+                        minHeight:
+                          responsive.isPhoneLandscape
+                            ? 48
+                            : 78,
+                      },
+                  ]}
+                  contentContainerStyle={{
+                    paddingBottom:
+                      responsive.useSideCart
+                        ? 18
+                        : 6,
+                    gap:
+                      responsive.useSideCart
+                        ? 0
+                        : 12,
+                  }}
+                />
               )}
+
+              {cartItems.length > 1 ? (
+                <Text style={styles.cartScrollHint}>
+                  {responsive.useSideCart
+                    ? "Scroll to see more items"
+                    : "Swipe to see more items"}
+                </Text>
+              ) : null}
 
               <View
                 style={[
                   styles.cartFooter,
                   {
-                    paddingBottom: responsive.useSideCart ? 10 : 2,
+                    paddingBottom:
+                      responsive.useSideCart
+                        ? 10
+                        : 2,
                   },
                 ]}
               >
@@ -2055,7 +2703,8 @@ cartWidth: sideCartWidth,
                     style={[
                       styles.totalLabel,
                       {
-                        fontSize: responsive.totalLabel,
+                        fontSize:
+                          responsive.totalLabel,
                       },
                     ]}
                   >
@@ -2066,7 +2715,8 @@ cartWidth: sideCartWidth,
                     style={[
                       styles.totalValue,
                       {
-                        fontSize: responsive.totalValue,
+                        fontSize:
+                          responsive.totalValue,
                       },
                     ]}
                     numberOfLines={1}
@@ -2078,9 +2728,7 @@ cartWidth: sideCartWidth,
 
                 {cartItems.some(isCustomItem) ? (
                   <Text style={styles.cartWarningText}>
-                    Chef Oppa Special requests require staff confirmation for
-                    final price and availability. QR PH is disabled when a
-                    custom request is included.
+                    Chef Oppa Special requests require staff confirmation for final price and availability. QR PH is disabled when a custom request is included.
                   </Text>
                 ) : null}
 
@@ -2088,19 +2736,25 @@ cartWidth: sideCartWidth,
                   style={[
                     styles.checkoutButton,
                     {
-                      paddingVertical: responsive.checkoutPadding,
+                      paddingVertical:
+                        responsive.checkoutPadding,
                     },
-                    (cartItems.length === 0 || !canOrder) &&
-                      styles.checkoutButtonDisabled,
+                    (cartItems.length === 0 ||
+                      !canOrder) &&
+                    styles.checkoutButtonDisabled,
                   ]}
-                  disabled={cartItems.length === 0 || !canOrder}
+                  disabled={
+                    cartItems.length === 0 ||
+                    !canOrder
+                  }
                   onPress={handleCheckout}
                 >
                   <Text
                     style={[
                       styles.checkoutButtonText,
                       {
-                        fontSize: responsive.checkoutText,
+                        fontSize:
+                          responsive.checkoutText,
                       },
                     ]}
                     numberOfLines={1}
@@ -2118,666 +2772,601 @@ cartWidth: sideCartWidth,
   );
 }
 
-const styles = StyleSheet.create({
-  frame: {
-    flex: 1,
-    backgroundColor: "#fff",
-  },
-
-  safeArea: {
-    flex: 1,
-    backgroundColor: "#b8b3b3",
-  },
-
-  container: {
-    flex: 1,
-    backgroundColor: "#efefef",
-  },
-
-  topBar: {
-    backgroundColor: "#b8b3b3",
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingVertical: 8,
-    gap: 12,
-  },
-
-  topBarText: {
-    color: "#fff",
-    fontWeight: "800",
-  },
-
-  topIcons: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-
-  tableText: {
-    color: "#fff",
-    fontWeight: "900",
-  },
-
-  assignmentBanner: {
-    backgroundColor: "#fff4e8",
-    borderWidth: 1,
-    borderColor: "#f68c45",
-    borderRadius: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    marginHorizontal: 12,
-    marginTop: 10,
-    marginBottom: 4,
-  },
-
-  assignmentBannerText: {
-    color: "#8a4b12",
-    fontWeight: "800",
-    textAlign: "center",
-    lineHeight: 22,
-  },
-
-  contentArea: {
-    flex: 1,
-    minHeight: 0,
-  },
-
-  detailSection: {
-    flex: 1,
-    minHeight: 0,
-  },
-
-  detailScroll: {
-    flex: 1,
-    width: "100%",
-  },
-
-  detailScrollContent: {
-    flexGrow: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    width: "100%",
-  },
-  detailCard: {
-    width: "100%",
-    backgroundColor: "#fff",
-    borderWidth: 1.5,
-    borderColor: "#f0b287",
-    alignItems: "center",
-    alignSelf: "center",
-    shadowColor: "#000",
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-    elevation: 4,
-  },
-
-  imageCircle: {
-    backgroundColor: "#ececec",
-    justifyContent: "center",
-    alignItems: "center",
-    overflow: "hidden",
-    marginBottom: 14,
-  },
-
-  itemImage: {
-    width: "100%",
-    height: "100%",
-  },
-
-  itemEmoji: {},
-
-  itemName: {
-    fontWeight: "900",
-    color: "#333",
-    textAlign: "center",
-    width: "100%",
-  },
-
-  itemPrice: {
-    color: "#f68c45",
-    marginTop: 8,
-    fontWeight: "800",
-    textAlign: "center",
-    width: "100%",
-  },
-
-  itemCategory: {
-    marginTop: 6,
-    fontWeight: "800",
-    color: "#777",
-    textAlign: "center",
-  },
-
-  flavorTagContainer: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    justifyContent: "center",
-    marginTop: 8,
-    gap: 6,
-  },
-
-  flavorTag: {
-    backgroundColor: "#fff4eb",
-    borderWidth: 1,
-    borderColor: "#f68c45",
-    borderRadius: 999,
-    paddingVertical: 4,
-    paddingHorizontal: 10,
-  },
-
-  flavorTagText: {
-    color: "#f68c45",
-    fontWeight: "900",
-    textTransform: "capitalize",
-  },
-
-  mealTypeText: {
-    marginTop: 8,
-    color: "#777",
-    fontSize: 14,
-    fontWeight: "900",
-    textTransform: "capitalize",
-  },
-
-  availableText: {
-    color: "#4CAF50",
-    fontWeight: "800",
-    marginTop: 8,
-    textAlign: "center",
-  },
-
-  notAvailableText: {
-    color: "red",
-    fontWeight: "800",
-    marginTop: 8,
-    textAlign: "center",
-  },
-
-  lowStockText: {
-    color: "#e67e22",
-    fontWeight: "800",
-    marginTop: 8,
-    textAlign: "center",
-  },
-
-  limitText: {
-    marginTop: 6,
-    color: "#666",
-    fontWeight: "900",
-    textAlign: "center",
-  },
-
-  description: {
-    marginTop: 14,
-    color: "#666",
-    textAlign: "center",
-    width: "100%",
-  },
-
-  specialRequestBox: {
-    width: "100%",
-    marginTop: 18,
-  },
-
-  specialRequestLabel: {
-    fontWeight: "900",
-    color: "#333",
-    marginBottom: 8,
-    textAlign: "left",
-  },
-
-  specialRequestInput: {
-    width: "100%",
-    backgroundColor: "#fafafa",
-    borderWidth: 1.5,
-    borderColor: "#f0b287",
-    borderRadius: 14,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    color: "#333",
-    fontWeight: "600",
-    lineHeight: 22,
-  },
-
-  addToOrderButton: {
-    marginTop: 20,
-    backgroundColor: "#f68c45",
-    borderRadius: 18,
-  },
-
-  addToOrderButtonDisabled: {
-    backgroundColor: "#c9c9c9",
-  },
-
-  addToOrderText: {
-    color: "#fff",
-    fontWeight: "900",
-    textAlign: "center",
-  },
-
-  recommendationSection: {
-    width: "100%",
-    marginTop: 22,
-    paddingBottom: 12,
-  },
-
-  recommendationTitle: {
-    fontWeight: "900",
-    color: "#333",
-    marginBottom: 12,
-    textAlign: "center",
-  },
-
-  recommendationCard: {
-    backgroundColor: "#fff7ef",
-    borderWidth: 1,
-    borderColor: "#f0b287",
-    borderRadius: 18,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    marginHorizontal: 8,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-    overflow: "hidden",
-  },
-
-  recommendationCardDisabled: {
-    opacity: 0.45,
-  },
-
-  recommendationLeft: {
-    flexDirection: "row",
-    alignItems: "center",
-    flex: 1,
-    paddingRight: 12,
-    minWidth: 0,
-  },
-
-  recommendationCircle: {
-    backgroundColor: "#ffe1ca",
-    justifyContent: "center",
-    alignItems: "center",
-    overflow: "hidden",
-    marginRight: 12,
-    flexShrink: 0,
-  },
-
-  recommendationImage: {
-    width: "100%",
-    height: "100%",
-  },
-
-  recommendationEmoji: {
-    fontSize: 30,
-  },
-
-  recommendationTextBox: {
-    flex: 1,
-    minWidth: 0,
-    justifyContent: "center",
-  },
-
-  recommendationName: {
-    width: "100%",
-    fontWeight: "900",
-    color: "#333",
-  },
-
-  recommendationRight: {
-    alignItems: "center",
-    justifyContent: "center",
-    flexShrink: 0,
-  },
-
-  recommendationPrice: {
-    width: "100%",
-    fontWeight: "900",
-    color: "#f68c45",
-    marginTop: 3,
-    textAlign: "left",
-  },
-
-  recommendationAddButton: {
-    backgroundColor: "#f68c45",
-    paddingVertical: 7,
-    borderRadius: 10,
-    minWidth: 74,
-    alignItems: "center",
-  },
-
-  recommendationAddButtonDisabled: {
-    backgroundColor: "#c9c9c9",
-  },
-
-  recommendationAddText: {
-    color: "#fff",
-    fontWeight: "900",
-  },
-
-  noRecommendationText: {
-    textAlign: "center",
-    color: "#999",
-    fontSize: 16,
-  },
-
- cartSidebar: {
-  backgroundColor: "#fff",
-  borderLeftColor: "#ddd",
-  borderTopColor: "#ddd",
-  flexShrink: 0,
-  overflow: "hidden",
-  borderTopLeftRadius: 18,
-  borderTopRightRadius: 18,
-},
-  cartList: {
-    flexGrow: 0,
-    minHeight: 42,
-  },
-
-  cartListSide: {
-    flexGrow: 0,
-    minHeight: 96,
-    marginBottom: 8,
-  },
-
-  cartHeader: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 6,
-  },
-
-  cartIcon: {
-    marginRight: 8,
-  },
-
-  cartTitle: {
-    fontWeight: "800",
-    color: "#222",
-  },
-
-  emptyCartText: {
-    color: "#777",
-    marginTop: 2,
-    borderBottomWidth: 1,
-    borderBottomColor: "#dddddd",
-    paddingBottom: 6,
-  },
-  mobileCartItemCard: {
-  width: 230,
-  minHeight: 64,
-  backgroundColor: "#fff7ef",
-  borderWidth: 1,
-  borderColor: "#f0b287",
-  borderRadius: 14,
-  paddingVertical: 8,
-  paddingHorizontal: 10,
-  marginRight: 10,
-  flexDirection: "row",
-  alignItems: "center",
-},
-
-mobileCartItemInfo: {
-  flex: 1,
-  minWidth: 0,
-  paddingRight: 8,
-},
-
-mobileCartItemName: {
-  fontWeight: "900",
-  color: "#222",
-},
-
-mobileCartItemPrice: {
-  marginTop: 2,
-  fontWeight: "800",
-  color: "#f68c45",
-},
-
-mobileQtyControls: {
-  flexDirection: "row",
-  alignItems: "center",
-  backgroundColor: "#ffffff",
-  borderWidth: 1,
-  borderColor: "#f0b287",
-  borderRadius: 999,
-  paddingHorizontal: 4,
-  paddingVertical: 3,
-},
-
-mobileQtyButton: {
-  width: 24,
-  height: 24,
-  borderRadius: 12,
-  backgroundColor: "#f68c45",
-  justifyContent: "center",
-  alignItems: "center",
-},
-
-mobileQtyButtonDisabled: {
-  backgroundColor: "#c9c9c9",
-},
-
-mobileQtyButtonText: {
-  color: "#fff",
-  fontWeight: "900",
-  fontSize: 15,
-  lineHeight: 17,
-},
-
-mobileQtyText: {
-  minWidth: 22,
-  textAlign: "center",
-  fontWeight: "900",
-  color: "#333",
-  fontSize: 14,
-},
-
-mobileQtyStatic: {
-  backgroundColor: "#ffffff",
-  borderWidth: 1,
-  borderColor: "#f0b287",
-  borderRadius: 999,
-  paddingVertical: 5,
-  paddingHorizontal: 9,
-},
-
-mobileQtyStaticText: {
-  color: "#f68c45",
-  fontWeight: "900",
-  fontSize: 12,
-},
-
-mobileRemoveButton: {
-  marginLeft: 8,
-},
-
-mobileRemoveText: {
-  color: "#999",
-  fontWeight: "900",
-  fontSize: 20,
-},
-
-  cartItem: {
-    paddingVertical: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: "#eeeeee",
-  },
-
-  cartItemStacked: {
-    minWidth: 150,
-    maxWidth: 210,
-    paddingRight: 8,
-  },
-
-  cartItemTop: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "flex-start",
-  },
-
-  cartItemInfo: {
-    flex: 1,
-    paddingRight: 8,
-  },
-
-  cartItemName: {
-    fontWeight: "800",
-    color: "#222",
-  },
-
-  cartItemPrice: {
-    fontWeight: "700",
-    color: "#f68c45",
-    marginTop: 3,
-  },
-
-  cartLimitText: {
-    marginTop: 3,
-    color: "#666",
-    fontSize: 11,
-    fontWeight: "900",
-  },
-
-  cartInvalidText: {
-    marginTop: 3,
-    color: "#b00020",
-    fontSize: 11,
-    fontWeight: "900",
-  },
-
-  cartRequestText: {
-    marginTop: 4,
-    color: "#666",
-    fontWeight: "700",
-    lineHeight: 18,
-  },
-
-  customQtyBox: {
-    marginTop: 8,
-    alignSelf: "flex-start",
-    backgroundColor: "#fff4eb",
-    borderWidth: 1,
-    borderColor: "#f0b287",
-    borderRadius: 10,
-    paddingVertical: 5,
-    paddingHorizontal: 9,
-  },
-
-  customQtyText: {
-    fontSize: 13,
-    color: "#f68c45",
-    fontWeight: "900",
-  },
-
-  cartWarningText: {
-    backgroundColor: "#fff4eb",
-    color: "#7a3f09",
-    borderRadius: 10,
-    paddingVertical: 7,
-    paddingHorizontal: 9,
-    fontSize: 12,
-    fontWeight: "800",
-    lineHeight: 17,
-    marginBottom: 7,
-  },
-
-  removeText: {
-    fontWeight: "800",
-    color: "#999",
-  },
-
-  qtyRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginTop: 6,
-  },
-
-  qtyButton: {
-    backgroundColor: "#f68c45",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-
-  qtyButtonDisabled: {
-    backgroundColor: "#c9c9c9",
-  },
-
-  qtyButtonText: {
-    color: "#fff",
-    fontWeight: "800",
-  },
-
-  qtyText: {
-    fontWeight: "800",
-    marginHorizontal: 10,
-  },
-
-  cartFooter: {
-    borderTopWidth: 1,
-    borderTopColor: "#dddddd",
-    paddingTop: 10,
-    flexShrink: 0,
-  },
-  totalRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginBottom: 7,
-    gap: 10,
-  },
-
-  totalLabel: {
-    fontWeight: "800",
-    color: "#333",
-  },
-
-  totalValue: {
-    fontWeight: "900",
-    color: "#f68c45",
-    flexShrink: 1,
-    textAlign: "right",
-  },
-
-  checkoutButton: {
-    backgroundColor: "#f68c45",
-    borderRadius: 10,
-    alignItems: "center",
-  },
-
-  checkoutButtonDisabled: {
-    backgroundColor: "#c9c9c9",
-  },
-
-  checkoutButtonText: {
-    color: "#fff",
-    fontWeight: "800",
-  },
-
-  emptyState: {
-    flex: 1,
-    backgroundColor: "#efefef",
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 24,
-  },
-
-  errorText: {
-    fontWeight: "800",
-    color: "#333",
-    textAlign: "center",
-  },
-
-  backButton: {
-    marginTop: 24,
-    backgroundColor: "#f68c45",
-    paddingVertical: 14,
-    paddingHorizontal: 28,
-    borderRadius: 12,
-  },
-
-  backButtonText: {
-    color: "#fff",
-    fontWeight: "800",
-  },
-});
+const styles =
+  StyleSheet.create({
+    frame: {
+      flex: 1,
+      backgroundColor: "#fff",
+    },
+
+    safeArea: {
+      flex: 1,
+      backgroundColor: "#b8b3b3",
+    },
+
+    container: {
+      flex: 1,
+      backgroundColor: "#efefef",
+    },
+
+    topBar: {
+      backgroundColor: "#b8b3b3",
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      paddingVertical: 8,
+      gap: 12,
+      flexShrink: 0,
+    },
+
+    topBarText: {
+      color: "#fff",
+      fontWeight: "800",
+    },
+
+    topIcons: {
+      flexDirection: "row",
+      alignItems: "center",
+      flexShrink: 0,
+    },
+
+    tableText: {
+      color: "#fff",
+      fontWeight: "900",
+    },
+
+    assignmentBanner: {
+      backgroundColor: "#fff4e8",
+      borderWidth: 1,
+      borderColor: "#f68c45",
+      borderRadius: 12,
+      paddingVertical: 12,
+      paddingHorizontal: 16,
+      marginHorizontal: 12,
+      marginTop: 10,
+      marginBottom: 4,
+    },
+
+    assignmentBannerText: {
+      color: "#8a4b12",
+      fontWeight: "800",
+      textAlign: "center",
+      lineHeight: 22,
+    },
+
+    contentArea: {
+      flex: 1,
+      minHeight: 0,
+    },
+
+    detailSection: {
+      flex: 1,
+      minHeight: 0,
+    },
+
+    detailScroll: {
+      flex: 1,
+      width: "100%",
+    },
+
+    detailScrollContent: {
+      flexGrow: 1,
+      width: "100%",
+    },
+
+    detailCard: {
+      width: "100%",
+      backgroundColor: "#fff",
+      borderWidth: 1.5,
+      borderColor: "#f0b287",
+      alignItems: "center",
+      alignSelf: "center",
+      shadowColor: "#000",
+      shadowOpacity: 0.08,
+      shadowRadius: 8,
+      elevation: 4,
+    },
+
+    imageCircle: {
+      backgroundColor: "#ececec",
+      justifyContent: "center",
+      alignItems: "center",
+      overflow: "hidden",
+      marginBottom: 14,
+    },
+
+    itemImage: {
+      width: "100%",
+      height: "100%",
+    },
+
+    itemEmoji: {},
+
+    itemName: {
+      fontWeight: "900",
+      color: "#333",
+      textAlign: "center",
+      width: "100%",
+    },
+
+    itemPrice: {
+      color: "#f68c45",
+      marginTop: 8,
+      fontWeight: "800",
+      textAlign: "center",
+      width: "100%",
+    },
+
+    itemCategory: {
+      marginTop: 6,
+      fontWeight: "800",
+      color: "#777",
+      textAlign: "center",
+    },
+
+    flavorTagContainer: {
+      flexDirection: "row",
+      flexWrap: "wrap",
+      justifyContent: "center",
+      marginTop: 8,
+      gap: 6,
+    },
+
+    flavorTag: {
+      backgroundColor: "#fff4eb",
+      borderWidth: 1,
+      borderColor: "#f68c45",
+      borderRadius: 999,
+      paddingVertical: 4,
+      paddingHorizontal: 10,
+    },
+
+    flavorTagText: {
+      color: "#f68c45",
+      fontWeight: "900",
+      textTransform: "capitalize",
+    },
+
+    mealTypeText: {
+      marginTop: 8,
+      color: "#777",
+      fontSize: 14,
+      fontWeight: "900",
+      textTransform: "capitalize",
+    },
+
+    availableText: {
+      color: "#4CAF50",
+      fontWeight: "800",
+      marginTop: 8,
+      textAlign: "center",
+    },
+
+    notAvailableText: {
+      color: "red",
+      fontWeight: "800",
+      marginTop: 8,
+      textAlign: "center",
+    },
+
+    lowStockText: {
+      color: "#e67e22",
+      fontWeight: "800",
+      marginTop: 8,
+      textAlign: "center",
+    },
+
+    limitText: {
+      marginTop: 6,
+      color: "#666",
+      fontWeight: "900",
+      textAlign: "center",
+    },
+
+    description: {
+      marginTop: 14,
+      color: "#666",
+      textAlign: "center",
+      width: "100%",
+    },
+
+    specialRequestBox: {
+      width: "100%",
+      marginTop: 18,
+    },
+
+    specialRequestLabel: {
+      fontWeight: "900",
+      color: "#333",
+      marginBottom: 8,
+      textAlign: "left",
+    },
+
+    specialRequestInput: {
+      width: "100%",
+      backgroundColor: "#fafafa",
+      borderWidth: 1.5,
+      borderColor: "#f0b287",
+      borderRadius: 14,
+      paddingHorizontal: 14,
+      paddingVertical: 12,
+      color: "#333",
+      fontWeight: "600",
+      lineHeight: 22,
+    },
+
+    addToOrderButton: {
+      marginTop: 20,
+      backgroundColor: "#f68c45",
+      borderRadius: 999,
+      minWidth: 150,
+      minHeight: 44,
+      paddingHorizontal: 24,
+      paddingVertical: 12,
+      alignItems: "center",
+      justifyContent: "center",
+      alignSelf: "center",
+    },
+
+    addToOrderButtonDisabled: {
+      backgroundColor: "#c9c9c9",
+    },
+
+    addToOrderText: {
+      color: "#fff",
+      fontWeight: "900",
+      textAlign: "center",
+      includeFontPadding: false,
+    },
+
+    recommendationSection: {
+      width: "100%",
+      marginTop: 22,
+      paddingBottom: 12,
+    },
+
+    recommendationTitle: {
+      fontWeight: "900",
+      color: "#333",
+      marginBottom: 12,
+      textAlign: "center",
+    },
+
+    recommendationCard: {
+      backgroundColor: "#fff7ef",
+      borderWidth: 1,
+      borderColor: "#f0b287",
+      borderRadius: 18,
+      paddingHorizontal: 14,
+      paddingVertical: 10,
+      marginHorizontal: 8,
+      flexDirection: "row",
+      alignItems: "center",
+      justifyContent: "space-between",
+      overflow: "hidden",
+    },
+
+    recommendationCardDisabled: {
+      opacity: 0.45,
+    },
+
+    recommendationLeft: {
+      flexDirection: "row",
+      alignItems: "center",
+      flex: 1,
+      paddingRight: 12,
+      minWidth: 0,
+    },
+
+    recommendationCircle: {
+      backgroundColor: "#ffe1ca",
+      justifyContent: "center",
+      alignItems: "center",
+      overflow: "hidden",
+      marginRight: 12,
+      flexShrink: 0,
+    },
+
+    recommendationImage: {
+      width: "100%",
+      height: "100%",
+    },
+
+    recommendationEmoji: {
+      fontSize: 30,
+    },
+
+    recommendationTextBox: {
+      flex: 1,
+      minWidth: 0,
+      justifyContent: "center",
+    },
+
+    recommendationName: {
+      width: "100%",
+      fontWeight: "900",
+      color: "#333",
+    },
+
+    recommendationRight: {
+      alignItems: "center",
+      justifyContent: "center",
+      flexShrink: 0,
+    },
+
+    recommendationPrice: {
+      width: "100%",
+      fontWeight: "900",
+      color: "#f68c45",
+      marginTop: 3,
+      textAlign: "left",
+    },
+
+    recommendationAddButton: {
+      backgroundColor: "#f68c45",
+      paddingVertical: 7,
+      borderRadius: 10,
+      minWidth: 74,
+      alignItems: "center",
+    },
+
+    recommendationAddButtonDisabled: {
+      backgroundColor: "#c9c9c9",
+    },
+
+    recommendationAddText: {
+      color: "#fff",
+      fontWeight: "900",
+    },
+
+    noRecommendationText: {
+      textAlign: "center",
+      color: "#999",
+      fontSize: 16,
+    },
+
+    cartSidebar: {
+      backgroundColor: "#fff",
+      borderLeftColor: "#ddd",
+      borderTopColor: "#ddd",
+      flexShrink: 0,
+      overflow: "hidden",
+      borderTopLeftRadius: 18,
+      borderTopRightRadius: 18,
+    },
+
+    cartList: {
+      flexGrow: 0,
+      minHeight: 42,
+    },
+
+    cartListSide: {
+      flexGrow: 0,
+      minHeight: 96,
+      marginBottom: 8,
+    },
+
+    cartScrollHint: {
+      color: "#999",
+      fontSize: 11,
+      fontWeight: "800",
+      textAlign: "center",
+      paddingTop: 2,
+      paddingBottom: 3,
+    },
+
+    cartHeader: {
+      flexDirection: "row",
+      alignItems: "center",
+      marginBottom: 6,
+    },
+
+    cartIcon: {
+      marginRight: 8,
+    },
+
+    cartTitle: {
+      fontWeight: "800",
+      color: "#222",
+    },
+
+    emptyCartText: {
+      color: "#777",
+      marginTop: 2,
+      borderBottomWidth: 1,
+      borderBottomColor: "#dddddd",
+      paddingBottom: 6,
+    },
+
+    cartItem: {
+      paddingVertical: 6,
+      borderBottomWidth: 1,
+      borderBottomColor: "#eeeeee",
+      minWidth: 170,
+      maxWidth: 230,
+    },
+
+    cartItemBottom: {
+      borderBottomWidth: 0,
+      borderRightWidth: 1,
+      borderRightColor: "#eeeeee",
+      paddingRight: 10,
+    },
+
+    cartItemTop: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "flex-start",
+    },
+
+    cartItemInfo: {
+      flex: 1,
+      paddingRight: 8,
+    },
+
+    cartItemName: {
+      fontWeight: "800",
+      color: "#222",
+    },
+
+    cartItemPrice: {
+      fontWeight: "700",
+      color: "#f68c45",
+      marginTop: 3,
+    },
+
+    cartLimitText: {
+      marginTop: 3,
+      color: "#666",
+      fontSize: 11,
+      fontWeight: "900",
+    },
+
+    cartInvalidText: {
+      marginTop: 3,
+      color: "#b00020",
+      fontSize: 11,
+      fontWeight: "900",
+    },
+
+    cartRequestText: {
+      marginTop: 4,
+      color: "#666",
+      fontWeight: "700",
+      lineHeight: 18,
+    },
+
+    customQtyBox: {
+      marginTop: 8,
+      alignSelf: "flex-start",
+      backgroundColor: "#fff4eb",
+      borderWidth: 1,
+      borderColor: "#f0b287",
+      borderRadius: 10,
+      paddingVertical: 5,
+      paddingHorizontal: 9,
+    },
+
+    customQtyText: {
+      fontSize: 13,
+      color: "#f68c45",
+      fontWeight: "900",
+    },
+
+    cartWarningText: {
+      backgroundColor: "#fff4eb",
+      color: "#7a3f09",
+      borderRadius: 10,
+      paddingVertical: 7,
+      paddingHorizontal: 9,
+      fontSize: 12,
+      fontWeight: "800",
+      lineHeight: 17,
+      marginBottom: 7,
+    },
+
+    removeText: {
+      fontWeight: "800",
+      color: "#999",
+    },
+
+    qtyRow: {
+      flexDirection: "row",
+      alignItems: "center",
+      marginTop: 4,
+    },
+
+    qtyButton: {
+      backgroundColor: "#f68c45",
+      justifyContent: "center",
+      alignItems: "center",
+    },
+
+    qtyButtonDisabled: {
+      backgroundColor: "#c9c9c9",
+    },
+
+    qtyButtonText: {
+      color: "#fff",
+      fontWeight: "800",
+    },
+
+    qtyText: {
+      fontWeight: "800",
+      marginHorizontal: 10,
+    },
+
+    cartFooter: {
+      borderTopWidth: 1,
+      borderTopColor: "#dddddd",
+      paddingTop: 7,
+      flexShrink: 0,
+    },
+
+    totalRow: {
+      flexDirection: "row",
+      justifyContent: "space-between",
+      alignItems: "center",
+      marginBottom: 5,
+      gap: 10,
+    },
+
+    totalLabel: {
+      fontWeight: "800",
+      color: "#333",
+    },
+
+    totalValue: {
+      fontWeight: "900",
+      color: "#f68c45",
+      flexShrink: 1,
+      textAlign: "right",
+    },
+
+    checkoutButton: {
+      backgroundColor: "#f68c45",
+      borderRadius: 14,
+      alignItems: "center",
+      justifyContent: "center",
+      minHeight: 42,
+      paddingHorizontal: 18,
+    },
+
+    checkoutButtonDisabled: {
+      backgroundColor: "#c9c9c9",
+    },
+
+    checkoutButtonText: {
+      color: "#fff",
+      fontWeight: "900",
+      textAlign: "center",
+      includeFontPadding: false,
+    },
+
+    emptyState: {
+      flex: 1,
+      backgroundColor: "#efefef",
+      justifyContent: "center",
+      alignItems: "center",
+      padding: 24,
+    },
+
+    errorText: {
+      fontWeight: "800",
+      color: "#333",
+      textAlign: "center",
+    },
+
+    backButton: {
+      marginTop: 24,
+      backgroundColor: "#f68c45",
+      paddingVertical: 14,
+      paddingHorizontal: 28,
+      borderRadius: 12,
+    },
+
+    backButtonText: {
+      color: "#fff",
+      fontWeight: "800",
+    },
+  });

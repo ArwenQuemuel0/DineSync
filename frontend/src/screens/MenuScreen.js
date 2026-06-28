@@ -281,11 +281,19 @@ export default function MenuScreen({
       const isPhoneWidth =
         width < 430;
 
+      const isLandscapePhone =
+        isLandscape &&
+        shortest < 520;
+
       const isVeryNarrow =
         width < 380;
 
       const isShortHeight =
         height < 650;
+
+      const isVeryShortLandscape =
+        isLandscape &&
+        height < 430;
 
       const base =
         Math.min(shortest / 768, 1.05);
@@ -311,43 +319,59 @@ export default function MenuScreen({
         );
       };
 
+      const usableWidth =
+        width -
+        insets.left -
+        insets.right;
+
       const useSideCart =
         isLandscape &&
-        width >= 700;
+        usableWidth >= 700;
 
       const useCompactTopBar =
-        isPhoneWidth &&
-        !isLandscape;
+        (isPhoneWidth && !isLandscape) ||
+        isLandscapePhone ||
+        isVeryShortLandscape;
 
       const cartWidth =
         useSideCart
-          ? clamp(width * 0.27, 250, 370)
+          ? isLandscapePhone
+            ? clamp(usableWidth * 0.30, 260, 330)
+            : clamp(usableWidth * 0.27, 250, 370)
           : '100%';
 
       const availableMenuWidth =
         useSideCart
-          ? width - cartWidth
-          : width;
+          ? usableWidth - cartWidth
+          : usableWidth;
 
       const menuPaddingH =
-        isPhoneWidth
-          ? scale(12, 10, 14)
+        isPhoneWidth || isLandscapePhone
+          ? scale(12, 8, 14)
           : scale(18, 12, 24);
 
       const cardGap =
-        isPhoneWidth
-          ? scale(12, 10, 14)
+        isPhoneWidth || isLandscapePhone
+          ? scale(12, 8, 14)
           : scale(20, 16, 24);
 
       const menuColumns =
         useSideCart
-          ? clamp(
-            Math.floor(
-              availableMenuWidth / 215
-            ),
-            2,
-            3
-          )
+          ? isLandscapePhone
+            ? clamp(
+              Math.floor(
+                availableMenuWidth / 250
+              ),
+              1,
+              2
+            )
+            : clamp(
+              Math.floor(
+                availableMenuWidth / 215
+              ),
+              2,
+              3
+            )
           : isPhoneWidth
             ? 2
             : 2;
@@ -362,11 +386,13 @@ export default function MenuScreen({
         );
 
       const finalImageSize =
-        isPhoneWidth
-          ? scale(64, 54, 70)
-          : menuColumns > 1 && !useSideCart
-            ? scale(88, 66, 94)
-            : scale(102, 74, 110);
+        isLandscapePhone
+          ? scale(70, 52, 74)
+          : isPhoneWidth
+            ? scale(64, 54, 70)
+            : menuColumns > 1 && !useSideCart
+              ? scale(88, 66, 94)
+              : scale(102, 74, 110);
 
       const stackedCartMinHeight =
         clamp(
@@ -392,6 +418,7 @@ export default function MenuScreen({
       return {
         isPhone,
         isPhoneWidth,
+        isLandscapePhone,
         useCompactTopBar,
         isVeryNarrow,
         isShortHeight,
@@ -408,87 +435,120 @@ export default function MenuScreen({
 
         topBarMinHeight:
           useCompactTopBar
-            ? scale(82, 76, 90)
+            ? isLandscapePhone
+              ? scale(54, 48, 58)
+              : scale(82, 76, 90)
             : isPhoneWidth
               ? scale(74, 66, 82)
               : scale(74, 62, 86),
+
         topBarPaddingH:
-          isPhoneWidth
-            ? scale(12, 10, 14)
-            : scale(18, 12, 24),
+          isLandscapePhone
+            ? scale(10, 8, 12)
+            : isPhoneWidth
+              ? scale(12, 10, 14)
+              : scale(18, 12, 24),
 
         topBarPaddingV:
-          isPhoneWidth
-            ? scale(7, 5, 8)
-            : scale(8, 6, 10),
+          isLandscapePhone
+            ? scale(4, 3, 5)
+            : isPhoneWidth
+              ? scale(7, 5, 8)
+              : scale(8, 6, 10),
 
         topTitle:
-          isPhoneWidth
+          isLandscapePhone
             ? scale(21, 17, 22)
-            : scale(28, 20, 28),
+            : isPhoneWidth
+              ? scale(21, 17, 22)
+              : scale(28, 20, 28),
 
         topSubtitle:
-          scale(13, 10, 13),
+          isLandscapePhone
+            ? scale(11, 9, 12)
+            : scale(13, 10, 13),
 
         tableText:
-          isPhoneWidth
+          isLandscapePhone
             ? scale(14, 11, 14)
-            : scale(20, 12, 20),
+            : isPhoneWidth
+              ? scale(14, 11, 14)
+              : scale(20, 12, 20),
 
         topButtonFont:
-          isPhoneWidth
-            ? scale(13, 12, 14)
-            : scale(15, 12, 16),
+          isLandscapePhone
+            ? scale(12, 10, 12)
+            : isPhoneWidth
+              ? scale(13, 12, 14)
+              : scale(15, 12, 16),
 
         topButtonPaddingV:
-          isPhoneWidth
-            ? scale(8, 7, 9)
-            : scale(8, 6, 9),
+          isLandscapePhone
+            ? scale(7, 5, 7)
+            : isPhoneWidth
+              ? scale(8, 7, 9)
+              : scale(8, 6, 9),
 
         topButtonPaddingH:
-          isPhoneWidth
-            ? scale(12, 10, 14)
-            : scale(14, 10, 16),
+          isLandscapePhone
+            ? scale(10, 8, 10)
+            : isPhoneWidth
+              ? scale(12, 10, 14)
+              : scale(14, 10, 16),
 
         categoryHeight:
-          isPhoneWidth
-            ? scale(54, 48, 58)
-            : scale(66, 50, 68),
+          isLandscapePhone
+            ? scale(48, 42, 50)
+            : isPhoneWidth
+              ? scale(54, 48, 58)
+              : scale(66, 50, 68),
 
         categoryPaddingV:
-          isPhoneWidth
-            ? scale(10, 7, 10)
-            : scale(12, 8, 12),
+          isLandscapePhone
+            ? scale(8, 6, 8)
+            : isPhoneWidth
+              ? scale(10, 7, 10)
+              : scale(12, 8, 12),
 
         categoryPaddingH:
-          isPhoneWidth
-            ? scale(16, 12, 18)
-            : scale(22, 12, 22),
+          isLandscapePhone
+            ? scale(14, 10, 15)
+            : isPhoneWidth
+              ? scale(16, 12, 18)
+              : scale(22, 12, 22),
 
         categoryText:
-          scale(18, 12, 18),
+          isLandscapePhone
+            ? scale(15, 11, 15)
+            : scale(18, 12, 18),
 
         bannerText:
           scale(16, 12, 16),
 
         menuPaddingTop:
-          isPhoneWidth
-            ? scale(12, 10, 14)
-            : scale(18, 14, 22),
+          isLandscapePhone
+            ? scale(9, 6, 10)
+            : isPhoneWidth
+              ? scale(12, 10, 14)
+              : scale(18, 14, 22),
 
         menuPaddingH,
 
         itemMinHeight:
-          isPhoneWidth
-            ? scale(178, 160, 188)
-            : menuColumns > 1 && !useSideCart
-              ? scale(220, 195, 235)
-              : scale(235, 205, 245),
+          isLandscapePhone
+            ? scale(180, 150, 190)
+            : isPhoneWidth
+              ? scale(178, 160, 188)
+              : menuColumns > 1 && !useSideCart
+                ? scale(220, 195, 235)
+                : scale(235, 205, 245),
 
         itemPadding:
-          isPhoneWidth
+          isLandscapePhone
             ? scale(9, 7, 10)
-            : scale(13, 10, 15),
+            : isPhoneWidth
+              ? scale(9, 7, 10)
+              : scale(13, 10, 15),
 
         itemRadius:
           scale(18, 14, 18),
@@ -500,117 +560,173 @@ export default function MenuScreen({
           finalImageSize / 2,
 
         itemName:
-          isPhoneWidth
-            ? scale(14, 12, 15)
-            : menuColumns > 1 && !useSideCart
-              ? scale(18, 13, 18)
-              : scale(21, 16, 21),
+          isLandscapePhone
+            ? scale(17, 13, 17)
+            : isPhoneWidth
+              ? scale(14, 12, 15)
+              : menuColumns > 1 && !useSideCart
+                ? scale(18, 13, 18)
+                : scale(21, 16, 21),
 
         itemCategory:
-          isPhoneWidth
-            ? scale(10, 8, 11)
-            : scale(12, 9, 12),
+          isLandscapePhone
+            ? scale(11, 9, 11)
+            : isPhoneWidth
+              ? scale(10, 8, 11)
+              : scale(12, 9, 12),
 
         itemPrice:
-          isPhoneWidth
-            ? scale(15, 12, 16)
-            : scale(18, 13, 18),
+          isLandscapePhone
+            ? scale(16, 12, 16)
+            : isPhoneWidth
+              ? scale(15, 12, 16)
+              : scale(18, 13, 18),
 
         stockText:
-          isPhoneWidth
-            ? scale(12, 10, 13)
-            : scale(15, 10, 15),
+          isLandscapePhone
+            ? scale(12, 10, 12)
+            : isPhoneWidth
+              ? scale(12, 10, 13)
+              : scale(15, 10, 15),
 
         tapText:
-          isPhoneWidth
-            ? scale(11, 9, 12)
-            : scale(13, 10, 13),
+          isLandscapePhone
+            ? scale(11, 9, 11)
+            : isPhoneWidth
+              ? scale(11, 9, 12)
+              : scale(13, 10, 13),
 
         badgeText:
-          isPhoneWidth
-            ? scale(9, 8, 10)
-            : scale(12, 9, 12),
+          isLandscapePhone
+            ? scale(10, 8, 10)
+            : isPhoneWidth
+              ? scale(9, 8, 10)
+              : scale(12, 9, 12),
 
         customBadgeText:
-          isPhoneWidth
+          isLandscapePhone
             ? scale(8, 7, 9)
-            : scale(11, 8, 11),
+            : isPhoneWidth
+              ? scale(8, 7, 9)
+              : scale(11, 8, 11),
 
         sidebarPaddingH:
-          scale(14, 8, 16),
+          isLandscapePhone
+            ? scale(10, 7, 12)
+            : scale(14, 8, 16),
 
         sidebarPaddingT:
           useSideCart
-            ? scale(12, 7, 16)
+            ? isLandscapePhone
+              ? scale(8, 5, 9)
+              : scale(12, 7, 16)
             : scale(7, 5, 9),
 
         sidebarPaddingBottom:
           useSideCart
-            ? Math.max(insets.bottom + 8, 12)
+            ? Math.max(insets.bottom + 6, 10)
             : Math.max(insets.bottom + 2, 6),
 
         cartIcon:
-          scale(24, 17, 24),
+          isLandscapePhone
+            ? scale(20, 16, 20)
+            : scale(24, 17, 24),
 
         cartTitle:
-          scale(22, 15, 22),
+          isLandscapePhone
+            ? scale(18, 14, 18)
+            : scale(22, 15, 22),
 
         cartItemName:
-          scale(15, 11, 15),
+          isLandscapePhone
+            ? scale(13, 10, 13)
+            : scale(15, 11, 15),
 
         cartItemPrice:
-          scale(14, 11, 14),
+          isLandscapePhone
+            ? scale(13, 10, 13)
+            : scale(14, 11, 14),
 
         cartRequest:
           scale(13, 10, 13),
 
         removeText:
-          scale(24, 17, 24),
+          isLandscapePhone
+            ? scale(20, 15, 20)
+            : scale(24, 17, 24),
 
         qtyButton:
-          scale(30, 22, 32),
+          isLandscapePhone
+            ? scale(28, 22, 28)
+            : scale(30, 22, 32),
 
         qtyButtonText:
-          scale(18, 13, 18),
+          isLandscapePhone
+            ? scale(16, 12, 16)
+            : scale(18, 13, 18),
 
         qtyText:
-          scale(16, 12, 16),
+          isLandscapePhone
+            ? scale(15, 11, 15)
+            : scale(16, 12, 16),
 
         totalLabel:
-          scale(18, 13, 18),
+          isLandscapePhone
+            ? scale(16, 12, 16)
+            : scale(18, 13, 18),
 
         totalValue:
-          scale(22, 16, 22),
+          isLandscapePhone
+            ? scale(18, 14, 18)
+            : scale(22, 16, 22),
 
         checkoutText:
-          scale(16, 12, 16),
+          isLandscapePhone
+            ? scale(16, 12, 16)
+            : scale(16, 12, 16),
 
         checkoutPadding:
-          isPhoneWidth
-            ? scale(10, 7, 10)
-            : scale(12, 8, 12),
+          isLandscapePhone
+            ? scale(9, 7, 9)
+            : isPhoneWidth
+              ? scale(10, 7, 10)
+              : scale(12, 8, 12),
 
         searchPadding:
-          isPhoneWidth
-            ? scale(8, 6, 10)
-            : scale(12, 9, 14),
+          isLandscapePhone
+            ? scale(7, 5, 8)
+            : isPhoneWidth
+              ? scale(8, 6, 10)
+              : scale(12, 9, 14),
 
         searchBottomPadding:
-          Math.max(insets.bottom + 4, 10),
+          isLandscapePhone
+            ? scale(7, 5, 8)
+            : isPhoneWidth
+              ? scale(8, 6, 10)
+              : scale(12, 9, 14),
 
         searchFont:
-          scale(18, 12, 18),
+          isLandscapePhone
+            ? scale(15, 11, 15)
+            : scale(18, 12, 18),
 
         searchButtonText:
-          scale(18, 12, 18),
+          isLandscapePhone
+            ? scale(15, 11, 15)
+            : scale(18, 12, 18),
 
         searchButtonPaddingV:
-          scale(10, 7, 11),
+          isLandscapePhone
+            ? scale(9, 7, 9)
+            : scale(10, 7, 11),
 
         searchButtonPaddingH:
-          isPhoneWidth
-            ? scale(14, 10, 16)
-            : scale(24, 12, 24),
+          isLandscapePhone
+            ? scale(16, 10, 18)
+            : isPhoneWidth
+              ? scale(14, 10, 16)
+              : scale(24, 12, 24),
 
         modalWidth:
           clamp(width * 0.86, 300, 420),
@@ -630,6 +746,8 @@ export default function MenuScreen({
     }, [
       width,
       height,
+      insets.left,
+      insets.right,
       insets.bottom,
     ]);
 
@@ -1583,7 +1701,12 @@ export default function MenuScreen({
 
       <SafeAreaView
         style={styles.safeArea}
-        edges={['top']}
+        edges={[
+          'top',
+          'left',
+          'right',
+          'bottom',
+        ]}
       >
         <View style={styles.container}>
           <View
@@ -1757,6 +1880,59 @@ export default function MenuScreen({
               </View>
             )}
           </View>
+
+          <View
+            style={[
+              styles.searchBar,
+              {
+                padding:
+                  responsive.searchPadding,
+                paddingBottom:
+                  responsive.searchBottomPadding,
+              },
+            ]}
+          >
+            <TextInput
+              placeholder="Search menu"
+              value={search}
+              onChangeText={setSearch}
+              style={[
+                styles.searchInput,
+                {
+                  fontSize:
+                    responsive.searchFont,
+                },
+              ]}
+              placeholderTextColor="#999"
+            />
+
+            <TouchableOpacity
+              style={[
+                styles.searchButton,
+                {
+                  paddingVertical:
+                    responsive.searchButtonPaddingV,
+                  paddingHorizontal:
+                    responsive.searchButtonPaddingH,
+                },
+              ]}
+              onPress={() => { }}
+            >
+              <Text
+                style={[
+                  styles.searchButtonText,
+                  {
+                    fontSize:
+                      responsive.searchButtonText,
+                  },
+                ]}
+                numberOfLines={1}
+              >
+                Search
+              </Text>
+            </TouchableOpacity>
+          </View>
+
           <FlatList
             horizontal
             data={categories}
@@ -1984,8 +2160,14 @@ export default function MenuScreen({
                   horizontal={
                     !responsive.useSideCart
                   }
-                  showsHorizontalScrollIndicator={false}
-                  showsVerticalScrollIndicator={false}
+                  showsHorizontalScrollIndicator={
+                    !responsive.useSideCart
+                  }
+                  showsVerticalScrollIndicator={
+                    responsive.useSideCart
+                  }
+                  persistentScrollbar={true}
+                  indicatorStyle="black"
                   style={[
                     styles.cartList,
                     responsive.useSideCart
@@ -2001,6 +2183,10 @@ export default function MenuScreen({
                       responsive.useSideCart
                         ? 14
                         : 4,
+                    paddingRight:
+                      responsive.useSideCart
+                        ? 8
+                        : 0,
                     gap:
                       responsive.useSideCart
                         ? 0
@@ -2008,6 +2194,14 @@ export default function MenuScreen({
                   }}
                 />
               )}
+
+              {cartItems.length > 1 ? (
+                <Text style={styles.cartScrollHint}>
+                  {responsive.useSideCart
+                    ? 'Scroll to see more items'
+                    : 'Swipe to see more items'}
+                </Text>
+              ) : null}
 
               <View style={styles.cartFooter}>
                 <View style={styles.totalRow}>
@@ -2078,58 +2272,6 @@ export default function MenuScreen({
               </View>
             </View>
           </View>
-
-          <View
-            style={[
-              styles.searchBar,
-              {
-                padding:
-                  responsive.searchPadding,
-                paddingBottom:
-                  responsive.searchBottomPadding,
-              },
-            ]}
-          >
-            <TextInput
-              placeholder="Search menu"
-              value={search}
-              onChangeText={setSearch}
-              style={[
-                styles.searchInput,
-                {
-                  fontSize:
-                    responsive.searchFont,
-                },
-              ]}
-              placeholderTextColor="#999"
-            />
-
-            <TouchableOpacity
-              style={[
-                styles.searchButton,
-                {
-                  paddingVertical:
-                    responsive.searchButtonPaddingV,
-                  paddingHorizontal:
-                    responsive.searchButtonPaddingH,
-                },
-              ]}
-              onPress={() => { }}
-            >
-              <Text
-                style={[
-                  styles.searchButtonText,
-                  {
-                    fontSize:
-                      responsive.searchButtonText,
-                  },
-                ]}
-                numberOfLines={1}
-              >
-                Search
-              </Text>
-            </TouchableOpacity>
-          </View>
         </View>
       </SafeAreaView>
 
@@ -2197,6 +2339,112 @@ export default function MenuScreen({
           </View>
         </TouchableOpacity>
       </Modal>
+
+      <Modal
+        transparent
+        visible={logoutModalVisible}
+        animationType="fade"
+        onRequestClose={closeLogoutModal}
+      >
+        <KeyboardAvoidingView
+          style={styles.modalOverlay}
+          behavior={
+            Platform.OS === 'ios'
+              ? 'padding'
+              : undefined
+          }
+        >
+          <ScrollView
+            contentContainerStyle={styles.modalScrollContent}
+            keyboardShouldPersistTaps="handled"
+          >
+            <View
+              style={[
+                styles.logoutModal,
+                {
+                  width:
+                    responsive.modalWidth,
+                },
+              ]}
+            >
+              <Text
+                style={[
+                  styles.modalTitle,
+                  {
+                    fontSize:
+                      responsive.modalTitle,
+                  },
+                ]}
+              >
+                Staff Logout
+              </Text>
+
+              <Text
+                style={[
+                  styles.modalText,
+                  {
+                    fontSize:
+                      responsive.modalText,
+                  },
+                ]}
+              >
+                Enter staff password to logout this tablet.
+              </Text>
+
+              <TextInput
+                value={logoutPassword}
+                onChangeText={setLogoutPassword}
+                placeholder="Password"
+                placeholderTextColor="#999"
+                secureTextEntry
+                style={[
+                  styles.passwordInput,
+                  {
+                    fontSize:
+                      responsive.modalInput,
+                  },
+                ]}
+              />
+
+              <View style={styles.modalActions}>
+                <TouchableOpacity
+                  style={styles.cancelButton}
+                  onPress={closeLogoutModal}
+                >
+                  <Text
+                    style={[
+                      styles.cancelButtonText,
+                      {
+                        fontSize:
+                          responsive.modalButton,
+                      },
+                    ]}
+                  >
+                    Cancel
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={styles.confirmButton}
+                  onPress={handleConfirmLogout}
+                >
+                  <Text
+                    style={[
+                      styles.confirmButtonText,
+                      {
+                        fontSize:
+                          responsive.modalButton,
+                      },
+                    ]}
+                  >
+                    Logout
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </ScrollView>
+        </KeyboardAvoidingView>
+      </Modal>
     </View>
   );
 }
@@ -2231,7 +2479,9 @@ const styles =
       justifyContent: 'space-between',
       alignItems: 'center',
       gap: 10,
+      flexShrink: 0,
     },
+
     topBarCompact: {
       justifyContent: 'center',
     },
@@ -2262,9 +2512,10 @@ const styles =
       alignItems: 'center',
       justifyContent: 'center',
     },
+
     brandBox: {
       flexShrink: 1,
-      minWidth: 130,
+      minWidth: 120,
       maxWidth: 210,
     },
 
@@ -2285,7 +2536,9 @@ const styles =
       flexWrap: 'nowrap',
       justifyContent: 'flex-end',
       gap: 8,
+      flexShrink: 1,
     },
+
     compactHeaderRight: {
       flexDirection: 'row',
       alignItems: 'center',
@@ -2314,7 +2567,7 @@ const styles =
       backgroundColor: 'rgba(0, 0, 0, 0.35)',
       justifyContent: 'flex-start',
       alignItems: 'flex-end',
-      paddingTop: 86,
+      paddingTop: 70,
       paddingHorizontal: 16,
     },
 
@@ -2409,6 +2662,7 @@ const styles =
       backgroundColor: '#f7f7f7',
       borderBottomWidth: 1,
       borderColor: '#e3e3e3',
+      flexShrink: 0,
     },
 
     categoryBtn: {
@@ -2450,10 +2704,12 @@ const styles =
 
     contentArea: {
       flex: 1,
+      minHeight: 0,
     },
 
     menuSection: {
       flex: 1,
+      minHeight: 0,
     },
 
     menuItem: {
@@ -2624,6 +2880,15 @@ const styles =
 
     cartListSide: {
       flex: 1,
+    },
+
+    cartScrollHint: {
+      color: '#999',
+      fontSize: 11,
+      fontWeight: '800',
+      textAlign: 'center',
+      paddingTop: 2,
+      paddingBottom: 4,
     },
 
     cartHeader: {
@@ -2803,13 +3068,14 @@ const styles =
     },
 
     searchBar: {
-      borderTopWidth: 1,
+      borderBottomWidth: 1,
       borderColor: '#ddd',
       flexDirection: 'row',
       justifyContent: 'center',
       alignItems: 'center',
       backgroundColor: '#fafafa',
       gap: 10,
+      flexShrink: 0,
     },
 
     searchInput: {

@@ -10,3 +10,5 @@ node_modules/
 # Backend build / logs
 backend/node_modules/
 
+
+.expo/

@@ -13,6 +13,7 @@ import {
   Alert,
   useWindowDimensions,
   StatusBar,
+  Platform,
 } from 'react-native';
 
 import {
@@ -59,17 +60,28 @@ export default function PaymentWebViewScreen({
       const longest =
         Math.max(width, height);
 
+      const usableWidth =
+        width -
+        insets.left -
+        insets.right;
+
+      const usableHeight =
+        height -
+        insets.top -
+        insets.bottom;
+
       const isPhone =
         shortest < 600;
 
       const isVeryNarrow =
-        width < 430;
+        usableWidth < 390;
 
       const isLandscape =
         width > height;
 
-      const base =
-        Math.min(shortest / 768, 1.05);
+      const isShortLandscape =
+        isLandscape &&
+        usableHeight < 430;
 
       const clamp = (
         value,
@@ -82,10 +94,15 @@ export default function PaymentWebViewScreen({
         );
       };
 
+      const base =
+        isPhone
+          ? Math.min(shortest / 390, 1)
+          : Math.min(shortest / 768, 1.05);
+
       const scale = (
         size,
-        min = size * 0.65,
-        max = size * 1.08
+        min = size * 0.72,
+        max = size * 1.12
       ) => {
         return Math.round(
           clamp(size * base, min, max)
@@ -96,47 +113,58 @@ export default function PaymentWebViewScreen({
         isPhone,
         isVeryNarrow,
         isLandscape,
+        isShortLandscape,
 
         safeTopExtra: 0,
 
         safeBottomExtra:
-          Math.max(insets.bottom, 0),
+          Math.max(
+            insets.bottom +
+            (Platform.OS === 'android' ? 8 : 6),
+            10
+          ),
 
         headerHeight:
           isPhone
             ? isLandscape
               ? scale(52, 44, 56)
-              : scale(58, 50, 62)
-            : scale(72, 58, 74),
+              : scale(58, 50, 64)
+            : scale(72, 58, 76),
 
         headerPadding:
           isVeryNarrow
-            ? scale(12, 10, 14)
+            ? scale(10, 8, 12)
             : isPhone
               ? scale(14, 12, 16)
               : scale(20, 12, 22),
 
         sideWidth:
-          isPhone
-            ? isLandscape
-              ? scale(58, 50, 62)
-              : scale(64, 54, 68)
-            : scale(76, 58, 80),
+          isVeryNarrow
+            ? scale(58, 50, 62)
+            : isPhone
+              ? isLandscape
+                ? scale(60, 52, 66)
+                : scale(68, 58, 74)
+              : scale(82, 62, 88),
 
         closeText:
-          isPhone
-            ? scale(16, 14, 17)
-            : scale(20, 15, 20),
+          isVeryNarrow
+            ? scale(14, 12, 15)
+            : isPhone
+              ? scale(16, 14, 17)
+              : scale(20, 15, 20),
 
         title:
           isVeryNarrow
-            ? scale(18, 16, 19)
+            ? scale(17, 15, 18)
             : isPhone
               ? scale(19, 17, 20)
               : scale(22, 17, 22),
 
         loadingText:
-          scale(18, 14, 18),
+          isPhone
+            ? scale(15, 13, 17)
+            : scale(18, 14, 18),
 
         errorPadding:
           isPhone
@@ -146,7 +174,7 @@ export default function PaymentWebViewScreen({
         errorCardMaxWidth:
           Math.min(
             isPhone
-              ? width - 32
+              ? usableWidth - 28
               : 520,
             longest * 0.78
           ),
@@ -166,34 +194,43 @@ export default function PaymentWebViewScreen({
 
         errorTitle:
           isPhone
-            ? scale(26, 23, 28)
+            ? scale(25, 22, 28)
             : scale(34, 24, 34),
 
         errorText:
           isPhone
-            ? scale(17, 15, 18)
+            ? scale(16, 14, 18)
             : scale(20, 15, 20),
 
         errorLine:
           isPhone
-            ? scale(24, 21, 25)
+            ? scale(23, 20, 25)
             : scale(28, 21, 28),
 
         buttonPaddingV:
-          scale(16, 12, 16),
+          isPhone
+            ? scale(14, 11, 16)
+            : scale(16, 12, 16),
 
         buttonPaddingH:
-          scale(28, 20, 28),
+          isPhone
+            ? scale(22, 18, 28)
+            : scale(28, 20, 28),
 
         buttonRadius:
           scale(16, 12, 16),
 
         buttonText:
-          scale(18, 14, 18),
+          isPhone
+            ? scale(16, 14, 18)
+            : scale(18, 14, 18),
       };
     }, [
       width,
       height,
+      insets.top,
+      insets.left,
+      insets.right,
       insets.bottom,
     ]);
 
@@ -379,7 +416,12 @@ export default function PaymentWebViewScreen({
 
         <SafeAreaView
           style={styles.safeAreaLight}
-          edges={['top']}
+          edges={[
+            'top',
+            'left',
+            'right',
+            'bottom',
+          ]}
         >
           <View
             style={[
@@ -387,6 +429,9 @@ export default function PaymentWebViewScreen({
               {
                 padding:
                   responsive.errorPadding,
+                paddingBottom:
+                  responsive.errorPadding +
+                  responsive.safeBottomExtra,
               },
             ]}
           >
@@ -413,6 +458,8 @@ export default function PaymentWebViewScreen({
                       responsive.errorTitle,
                   },
                 ]}
+                numberOfLines={1}
+                adjustsFontSizeToFit
               >
                 Payment Error
               </Text>
@@ -460,6 +507,7 @@ export default function PaymentWebViewScreen({
                     },
                   ]}
                   numberOfLines={1}
+                  adjustsFontSizeToFit
                 >
                   Go to Order Status
                 </Text>
@@ -481,7 +529,12 @@ export default function PaymentWebViewScreen({
 
       <SafeAreaView
         style={styles.safeAreaWhite}
-        edges={['top']}
+        edges={[
+          'top',
+          'left',
+          'right',
+          'bottom',
+        ]}
       >
         <View
           style={[
@@ -509,7 +562,7 @@ export default function PaymentWebViewScreen({
               style={[
                 styles.closeButton,
                 {
-                  minWidth:
+                  width:
                     responsive.sideWidth,
                 },
               ]}
@@ -530,6 +583,7 @@ export default function PaymentWebViewScreen({
                   },
                 ]}
                 numberOfLines={1}
+                adjustsFontSizeToFit
               >
                 Close
               </Text>
@@ -545,6 +599,7 @@ export default function PaymentWebViewScreen({
               ]}
               numberOfLines={1}
               adjustsFontSizeToFit
+              minimumFontScale={0.72}
             >
               Xendit QR PH Checkout
             </Text>
@@ -636,6 +691,7 @@ const styles =
       justifyContent: 'space-between',
       borderBottomWidth: 1,
       borderBottomColor: '#ddd',
+      flexShrink: 0,
     },
 
     closeButton: {
@@ -643,6 +699,7 @@ const styles =
       paddingHorizontal: 4,
       justifyContent: 'center',
       alignItems: 'flex-start',
+      flexShrink: 0,
     },
 
     closeText: {
@@ -655,12 +712,14 @@ const styles =
       fontWeight: '900',
       color: '#333',
       textAlign: 'center',
-      paddingHorizontal: 10,
+      paddingHorizontal: 8,
+      minWidth: 0,
     },
 
     webViewWrapper: {
       flex: 1,
       backgroundColor: '#ffffff',
+      minHeight: 0,
     },
 
     loadingContainer: {
@@ -714,6 +773,7 @@ const styles =
     button: {
       backgroundColor: '#f68c45',
       alignItems: 'center',
+      justifyContent: 'center',
     },
 
     buttonText: {

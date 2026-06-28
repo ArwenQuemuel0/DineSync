@@ -14,6 +14,7 @@ import {
   useWindowDimensions,
   ScrollView,
   StatusBar,
+  Platform,
 } from 'react-native';
 
 import {
@@ -36,6 +37,7 @@ import { useTableStatus } from '../context/TableStatusContext';
 import { TABLE_ASSIGNMENT_MESSAGE } from '../constants/tableStatus';
 
 import {
+  getItemId,
   isCustomItem,
 } from '../utils/inventory';
 
@@ -296,17 +298,28 @@ export default function OrderConfirmScreen({
       const longest =
         Math.max(width, height);
 
-      const isPortrait =
-        height >= width;
+      const isLandscape =
+        width > height;
 
       const isPhone =
-        width < 600;
+        shortest < 600;
 
       const isVeryNarrow =
-        width < 430;
+        width < 390;
 
-      const base =
-        shortest / 768;
+      const isShortLandscape =
+        isLandscape &&
+        height < 430;
+
+      const usableWidth =
+        width -
+        insets.left -
+        insets.right;
+
+      const usableHeight =
+        height -
+        insets.top -
+        insets.bottom;
 
       const clamp = (
         value,
@@ -319,10 +332,15 @@ export default function OrderConfirmScreen({
         );
       };
 
+      const base =
+        isPhone
+          ? Math.min(shortest / 390, 1)
+          : Math.min(shortest / 768, 1.05);
+
       const scale = (
         size,
-        min = size * 0.65,
-        max = size * 1.08
+        min = size * 0.72,
+        max = size * 1.12
       ) => {
         return Math.round(
           clamp(size * base, min, max)
@@ -330,150 +348,257 @@ export default function OrderConfirmScreen({
       };
 
       const useTwoPane =
-        !isPortrait &&
-        width >= 720 &&
-        height >= 520;
+        isLandscape &&
+        usableWidth >= 720 &&
+        usableHeight >= 330;
 
       const screenPadding =
-        isVeryNarrow
-          ? scale(12, 10, 14)
+        useTwoPane
+          ? scale(12, 8, 14)
+          : isVeryNarrow
+            ? scale(12, 10, 14)
+            : isPhone
+              ? scale(14, 12, 16)
+              : scale(22, 16, 24);
+
+      const receiptItemsMaxHeight =
+        useTwoPane
+          ? isShortLandscape
+            ? clamp(usableHeight * 0.26, 88, 118)
+            : clamp(usableHeight * 0.34, 125, 220)
           : isPhone
-            ? scale(14, 12, 16)
-            : scale(22, 16, 24);
+            ? clamp(usableHeight * 0.32, 185, 285)
+            : clamp(usableHeight * 0.34, 220, 360);
+
+      const optionMaxHeight =
+        useTwoPane
+          ? clamp(usableHeight * 0.76, 235, 520)
+          : undefined;
 
       return {
         isPhone,
         isVeryNarrow,
+        isLandscape,
+        isShortLandscape,
         useTwoPane,
 
         safeTopExtra: 0,
 
         safeBottomExtra:
-          Math.max(insets.bottom + 6, 12),
+          Math.max(
+            insets.bottom +
+            (Platform.OS === 'android' ? 10 : 8),
+            16
+          ),
 
         containerPadding:
           screenPadding,
 
         topBarHeight:
-          isPhone
-            ? scale(50, 44, 54)
-            : scale(58, 48, 62),
+          useTwoPane
+            ? scale(44, 38, 48)
+            : isPhone
+              ? scale(52, 46, 56)
+              : scale(60, 50, 64),
 
         backText:
-          isPhone
-            ? scale(17, 15, 18)
-            : scale(24, 17, 24),
+          useTwoPane
+            ? scale(15, 13, 16)
+            : isPhone
+              ? scale(17, 15, 18)
+              : scale(24, 17, 24),
 
         tableText:
-          isPhone
-            ? scale(17, 15, 18)
-            : scale(24, 17, 24),
+          useTwoPane
+            ? scale(15, 13, 16)
+            : isPhone
+              ? scale(17, 15, 18)
+              : scale(24, 17, 24),
 
         header:
-          isVeryNarrow
-            ? scale(30, 26, 32)
-            : isPhone
-              ? scale(34, 28, 36)
-              : scale(46, 32, 48),
+          useTwoPane
+            ? scale(28, 24, 30)
+            : isVeryNarrow
+              ? scale(30, 26, 32)
+              : isPhone
+                ? scale(34, 28, 36)
+                : scale(46, 32, 48),
 
         subHeader:
-          isPhone
-            ? scale(14, 12, 15)
-            : scale(18, 14, 18),
+          useTwoPane
+            ? scale(12, 10, 13)
+            : isPhone
+              ? scale(14, 12, 15)
+              : scale(18, 14, 18),
 
         subHeaderMargin:
-          isPhone
-            ? scale(12, 10, 14)
-            : scale(18, 14, 20),
+          useTwoPane
+            ? scale(8, 6, 10)
+            : isPhone
+              ? scale(12, 10, 14)
+              : scale(18, 14, 20),
 
         contentGap:
-          isPhone
-            ? scale(14, 12, 16)
-            : scale(18, 12, 20),
+          useTwoPane
+            ? scale(10, 8, 12)
+            : isPhone
+              ? scale(14, 12, 16)
+              : scale(18, 12, 20),
 
         cardPadding:
-          isVeryNarrow
-            ? scale(14, 12, 15)
-            : isPhone
-              ? scale(16, 13, 18)
-              : scale(22, 16, 24),
+          useTwoPane
+            ? scale(12, 9, 14)
+            : isVeryNarrow
+              ? scale(14, 12, 15)
+              : isPhone
+                ? scale(16, 13, 18)
+                : scale(22, 16, 24),
 
         cardRadius:
           scale(22, 16, 24),
 
         receiptTitle:
-          isPhone
-            ? scale(23, 20, 24)
-            : scale(30, 22, 30),
+          useTwoPane
+            ? scale(21, 18, 22)
+            : isPhone
+              ? scale(23, 20, 24)
+              : scale(30, 22, 30),
 
         receiptTable:
-          scale(18, 13, 18),
+          useTwoPane
+            ? scale(13, 11, 14)
+            : scale(18, 13, 18),
 
         dividerMargin:
-          isPhone
-            ? scale(12, 9, 13)
-            : scale(16, 10, 16),
+          useTwoPane
+            ? scale(8, 6, 10)
+            : isPhone
+              ? scale(12, 9, 13)
+              : scale(16, 10, 16),
 
         itemName:
-          scale(19, 14, 19),
+          useTwoPane
+            ? scale(13, 11, 14)
+            : isPhone
+              ? scale(16, 14, 18)
+              : scale(19, 14, 19),
 
         itemUnit:
-          scale(14, 11, 14),
+          useTwoPane
+            ? scale(11, 9, 12)
+            : isPhone
+              ? scale(13, 11, 14)
+              : scale(14, 11, 14),
 
         itemSubtotal:
-          scale(18, 13, 18),
+          useTwoPane
+            ? scale(13, 11, 14)
+            : isPhone
+              ? scale(16, 13, 18)
+              : scale(18, 13, 18),
 
         requestText:
-          scale(14, 11, 14),
+          useTwoPane
+            ? scale(11, 9, 12)
+            : scale(14, 11, 14),
+
+        qtyButton:
+          useTwoPane
+            ? scale(26, 22, 28)
+            : isPhone
+              ? scale(30, 26, 34)
+              : scale(32, 26, 34),
+
+        qtyText:
+          useTwoPane
+            ? scale(14, 12, 15)
+            : scale(17, 14, 18),
+
+        removeText:
+          useTwoPane
+            ? scale(17, 14, 18)
+            : scale(20, 16, 22),
 
         summaryLabel:
-          scale(18, 14, 18),
+          useTwoPane
+            ? scale(13, 11, 14)
+            : scale(18, 14, 18),
 
         summaryValue:
-          scale(20, 15, 20),
+          useTwoPane
+            ? scale(14, 12, 15)
+            : scale(20, 15, 20),
 
         totalLabel:
-          isPhone
-            ? scale(18, 16, 19)
-            : scale(23, 17, 23),
+          useTwoPane
+            ? scale(16, 13, 17)
+            : isPhone
+              ? scale(18, 16, 19)
+              : scale(23, 17, 23),
 
         totalValue:
-          isPhone
-            ? scale(23, 20, 24)
-            : scale(28, 22, 28),
+          useTwoPane
+            ? scale(20, 16, 21)
+            : isPhone
+              ? scale(23, 20, 24)
+              : scale(28, 22, 28),
 
         noticeText:
-          scale(14, 11, 14),
+          useTwoPane
+            ? scale(11, 9, 12)
+            : scale(14, 11, 14),
 
         optionTitle:
-          isPhone
-            ? scale(21, 18, 22)
-            : scale(26, 20, 26),
+          useTwoPane
+            ? scale(20, 16, 21)
+            : isPhone
+              ? scale(21, 18, 22)
+              : scale(26, 20, 26),
 
         paymentTitle:
-          scale(20, 15, 20),
+          useTwoPane
+            ? scale(15, 12, 16)
+            : scale(20, 15, 20),
 
         paymentDesc:
-          scale(14, 11, 14),
+          useTwoPane
+            ? scale(11, 9, 12)
+            : scale(14, 11, 14),
 
         disclaimerTitle:
-          scale(18, 14, 18),
+          useTwoPane
+            ? scale(13, 11, 14)
+            : scale(18, 14, 18),
 
         disclaimerText:
-          scale(15, 12, 15),
+          useTwoPane
+            ? scale(11, 9, 12)
+            : scale(15, 12, 15),
 
         buttonText:
-          scale(20, 15, 20),
+          useTwoPane
+            ? scale(16, 13, 17)
+            : isPhone
+              ? scale(18, 16, 20)
+              : scale(20, 15, 20),
 
         buttonPadding:
-          scale(16, 12, 16),
+          useTwoPane
+            ? scale(10, 8, 11)
+            : scale(16, 12, 16),
 
         maxContentWidth:
-          clamp(longest * 0.95, 340, 1300),
+          clamp(longest * 0.96, 340, 1400),
+
+        receiptItemsMaxHeight,
+        optionMaxHeight,
       };
     }, [
       width,
       height,
+      insets.top,
+      insets.left,
+      insets.right,
       insets.bottom,
     ]);
 
@@ -489,6 +614,9 @@ export default function OrderConfirmScreen({
     setActiveOrderId,
     refreshCartInventory,
     getEnrichedItem,
+    updateQuantity,
+    incrementQuantity,
+    removeFromCart,
   } = useCart();
 
   const {
@@ -563,19 +691,6 @@ export default function OrderConfirmScreen({
       ];
     }, [
       hasCustomRequest,
-    ]);
-
-  const selectedOption =
-    useMemo(() => {
-      return (
-        paymentOptions.find(
-          (option) =>
-            option.label === selectedPayment
-        ) || paymentOptions[0]
-      );
-    }, [
-      paymentOptions,
-      selectedPayment,
     ]);
 
   useEffect(() => {
@@ -668,16 +783,6 @@ export default function OrderConfirmScreen({
       return;
     }
 
-    console.log(
-      'SELECTED PAYMENT OPTION:',
-      {
-        label:
-          option.label,
-        apiMethod:
-          option.apiMethod,
-      }
-    );
-
     setSelectedPayment(option.label);
   };
 
@@ -712,6 +817,86 @@ export default function OrderConfirmScreen({
     return validateDailyInventoryCartItems(
       cartItems,
       getEnrichedItem
+    );
+  };
+
+  const handleIncreaseItem = (item) => {
+    const enrichedItem =
+      getEnrichedItem
+        ? getEnrichedItem(item)
+        : item;
+
+    const customItem =
+      isCustomItem(enrichedItem);
+
+    if (customItem) {
+      Alert.alert(
+        'Chef Oppa Special',
+        'Chef Oppa Special requests can only have quantity of 1.'
+      );
+
+      return;
+    }
+
+    if (
+      !isValidDailyInventoryMenuItem(
+        enrichedItem
+      )
+    ) {
+      Alert.alert(
+        'Unavailable',
+        `${item?.name || 'This item'} is no longer enabled in Daily Menu Inventory.`
+      );
+
+      return;
+    }
+
+    const allowedQuantity =
+      getAllowedOrderQuantity(
+        enrichedItem
+      );
+
+    const currentQuantity =
+      Number(item.quantity || 0);
+
+    if (
+      allowedQuantity <= 0 ||
+      currentQuantity >= allowedQuantity
+    ) {
+      Alert.alert(
+        'Limited Stock',
+        `You can only order up to ${allowedQuantity} of this item today.`
+      );
+
+      return;
+    }
+
+    incrementQuantity(
+      getItemId(item)
+    );
+  };
+
+  const handleDecreaseItem = (item) => {
+    const itemId =
+      getItemId(item);
+
+    const quantity =
+      Number(item.quantity || 0);
+
+    if (quantity <= 1) {
+      removeFromCart(itemId);
+      return;
+    }
+
+    updateQuantity(
+      itemId,
+      quantity - 1
+    );
+  };
+
+  const handleRemoveItem = (item) => {
+    removeFromCart(
+      getItemId(item)
     );
   };
 
@@ -763,17 +948,6 @@ export default function OrderConfirmScreen({
 
       return;
     }
-
-    console.log(
-      'CONFIRM PAYMENT SNAPSHOT:',
-      {
-        selectedPayment,
-        label:
-          paymentSnapshot.label,
-        apiMethod:
-          paymentSnapshot.apiMethod,
-      }
-    );
 
     Alert.alert(
       'Confirm Order',
@@ -856,16 +1030,6 @@ export default function OrderConfirmScreen({
       const selectedPaymentOption =
         paymentSnapshot ||
         getSafeSelectedOption();
-
-      console.log(
-        'SUBMIT ORDER PAYMENT:',
-        {
-          label:
-            selectedPaymentOption.label,
-          apiMethod:
-            selectedPaymentOption.apiMethod,
-        }
-      );
 
       const tableCheck =
         await ensureCanOrder();
@@ -1057,7 +1221,8 @@ export default function OrderConfirmScreen({
 
     const itemKey =
       String(
-        item.menu_item_id ||
+        getItemId(item) ||
+          item.menu_item_id ||
           item.id ||
           index
       );
@@ -1080,24 +1245,51 @@ export default function OrderConfirmScreen({
       allowedQuantity > 0 &&
       quantity > allowedQuantity;
 
+    const atMax =
+      customItem ||
+      invalidToday ||
+      allowedQuantity <= 0 ||
+      quantity >= allowedQuantity;
+
     return (
       <View
         key={itemKey}
         style={styles.receiptItem}
       >
         <View style={styles.receiptItemLeft}>
-          <Text
-            style={[
-              styles.itemName,
-              {
-                fontSize:
-                  responsive.itemName,
-              },
-            ]}
-            numberOfLines={2}
-          >
-            {quantity}x {item.name}
-          </Text>
+          <View style={styles.itemTitleRow}>
+            <Text
+              style={[
+                styles.itemName,
+                {
+                  fontSize:
+                    responsive.itemName,
+                },
+              ]}
+              numberOfLines={2}
+            >
+              {item.name}
+            </Text>
+
+            <TouchableOpacity
+              style={styles.removeButton}
+              onPress={() =>
+                handleRemoveItem(item)
+              }
+            >
+              <Text
+                style={[
+                  styles.removeButtonText,
+                  {
+                    fontSize:
+                      responsive.removeText,
+                  },
+                ]}
+              >
+                ×
+              </Text>
+            </TouchableOpacity>
+          </View>
 
           {customItem ? (
             <>
@@ -1179,11 +1371,70 @@ export default function OrderConfirmScreen({
                     },
                   ]}
                 >
-                  Quantity exceeds today&apos;s limit
+                  Quantity exceeds today's limit
                 </Text>
               ) : null}
             </>
           )}
+
+          <View style={styles.quantityRow}>
+            <TouchableOpacity
+              style={[
+                styles.qtyButton,
+                {
+                  width:
+                    responsive.qtyButton,
+                  height:
+                    responsive.qtyButton,
+                  borderRadius:
+                    responsive.qtyButton / 3,
+                },
+              ]}
+              onPress={() =>
+                handleDecreaseItem(item)
+              }
+            >
+              <Text style={styles.qtyButtonText}>
+                -
+              </Text>
+            </TouchableOpacity>
+
+            <Text
+              style={[
+                styles.qtyText,
+                {
+                  fontSize:
+                    responsive.qtyText,
+                },
+              ]}
+            >
+              {quantity}
+            </Text>
+
+            <TouchableOpacity
+              style={[
+                styles.qtyButton,
+                {
+                  width:
+                    responsive.qtyButton,
+                  height:
+                    responsive.qtyButton,
+                  borderRadius:
+                    responsive.qtyButton / 3,
+                },
+                atMax &&
+                  styles.qtyButtonDisabled,
+              ]}
+              disabled={atMax}
+              onPress={() =>
+                handleIncreaseItem(item)
+              }
+            >
+              <Text style={styles.qtyButtonText}>
+                +
+              </Text>
+            </TouchableOpacity>
+          </View>
         </View>
 
         <Text
@@ -1252,11 +1503,42 @@ export default function OrderConfirmScreen({
         ]}
       />
 
-      <View style={styles.receiptItemsList}>
-        {cartItems.map(
-          renderReceiptItem
-        )}
-      </View>
+      {cartItems.length === 0 ? (
+        <View style={styles.emptyOrderBox}>
+          <Text style={styles.emptyOrderText}>
+            No items in your order.
+          </Text>
+
+          <TouchableOpacity
+            style={styles.backToMenuButton}
+            onPress={() =>
+              navigation.navigate('Menu')
+            }
+          >
+            <Text style={styles.backToMenuText}>
+              Back to Menu
+            </Text>
+          </TouchableOpacity>
+        </View>
+      ) : (
+        <ScrollView
+          style={[
+            styles.receiptItemsScroll,
+            {
+              maxHeight:
+                responsive.receiptItemsMaxHeight,
+            },
+          ]}
+          showsVerticalScrollIndicator={true}
+          nestedScrollEnabled={true}
+        >
+          <View style={styles.receiptItemsList}>
+            {cartItems.map(
+              renderReceiptItem
+            )}
+          </View>
+        </ScrollView>
+      )}
 
       <View
         style={[
@@ -1452,7 +1734,12 @@ export default function OrderConfirmScreen({
             paddingVertical:
               responsive.buttonPadding,
           },
+          cartItems.length === 0 &&
+            styles.confirmButtonDisabled,
         ]}
+        disabled={
+          cartItems.length === 0
+        }
         onPress={handleFinalConfirm}
       >
         <Text
@@ -1470,7 +1757,7 @@ export default function OrderConfirmScreen({
     </>
   );
 
-  const optionCard = responsive.useTwoPane ? (
+  const optionCard = (
     <ScrollView
       style={[
         styles.optionCard,
@@ -1479,30 +1766,23 @@ export default function OrderConfirmScreen({
             responsive.cardPadding,
           borderRadius:
             responsive.cardRadius,
+          maxHeight:
+            responsive.optionMaxHeight,
         },
-        styles.optionTwoPane,
+        responsive.useTwoPane &&
+          styles.optionTwoPane,
       ]}
-      showsVerticalScrollIndicator={false}
+      showsVerticalScrollIndicator={responsive.useTwoPane}
+      nestedScrollEnabled={true}
       contentContainerStyle={{
-        paddingBottom: 20,
+        paddingBottom:
+          responsive.useTwoPane
+            ? 20
+            : 0,
       }}
     >
       {optionCardContent}
     </ScrollView>
-  ) : (
-    <View
-      style={[
-        styles.optionCard,
-        {
-          padding:
-            responsive.cardPadding,
-          borderRadius:
-            responsive.cardRadius,
-        },
-      ]}
-    >
-      {optionCardContent}
-    </View>
   );
 
   if (loading) {
@@ -1540,6 +1820,8 @@ export default function OrderConfirmScreen({
         style={styles.safeArea}
         edges={[
           'top',
+          'left',
+          'right',
           'bottom',
         ]}
       >
@@ -1707,6 +1989,7 @@ const styles =
         'space-between',
       alignItems: 'center',
       gap: 12,
+      flexShrink: 0,
     },
 
     backText: {
@@ -1724,20 +2007,21 @@ const styles =
       fontWeight: '900',
       color: '#333',
       textAlign: 'center',
-      marginTop: 4,
+      marginTop: 2,
     },
 
     subHeader: {
       fontWeight: '700',
       color: '#666',
       textAlign: 'center',
-      marginTop: 6,
+      marginTop: 4,
     },
 
     content: {
       flex: 1,
       alignSelf: 'center',
       width: '100%',
+      minHeight: 0,
     },
 
     phoneScroll: {
@@ -1752,10 +2036,15 @@ const styles =
       backgroundColor: '#fff',
       borderWidth: 1.5,
       borderColor: '#f0b287',
+      minHeight: 0,
     },
 
     receiptTwoPane: {
-      flex: 1.18,
+      flex: 1.08,
+    },
+
+    receiptItemsScroll: {
+      width: '100%',
     },
 
     receiptItemsList: {
@@ -1766,10 +2055,11 @@ const styles =
       backgroundColor: '#fff',
       borderWidth: 1,
       borderColor: '#ddd',
+      minHeight: 0,
     },
 
     optionTwoPane: {
-      flex: 0.82,
+      flex: 0.92,
     },
 
     receiptTitle: {
@@ -1795,20 +2085,45 @@ const styles =
       justifyContent:
         'space-between',
       alignItems: 'flex-start',
-      paddingVertical: 10,
+      paddingVertical: 8,
       borderBottomWidth: 1,
       borderBottomColor: '#f3f3f3',
-      gap: 12,
+      gap: 10,
     },
 
     receiptItemLeft: {
       flex: 1,
       paddingRight: 8,
+      minWidth: 0,
+    },
+
+    itemTitleRow: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      justifyContent: 'space-between',
+      gap: 8,
     },
 
     itemName: {
+      flex: 1,
       fontWeight: '900',
       color: '#333',
+    },
+
+    removeButton: {
+      width: 26,
+      height: 26,
+      borderRadius: 13,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: '#f4f4f4',
+      flexShrink: 0,
+    },
+
+    removeButtonText: {
+      fontWeight: '900',
+      color: '#999',
+      marginTop: -2,
     },
 
     itemUnitPrice: {
@@ -1839,7 +2154,38 @@ const styles =
       fontWeight: '700',
       color: '#666',
       marginTop: 5,
-      lineHeight: 20,
+      lineHeight: 18,
+    },
+
+    quantityRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginTop: 8,
+      gap: 10,
+    },
+
+    qtyButton: {
+      backgroundColor: '#f68c45',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+
+    qtyButtonDisabled: {
+      backgroundColor: '#c9c9c9',
+    },
+
+    qtyButtonText: {
+      color: '#fff',
+      fontWeight: '900',
+      fontSize: 18,
+      marginTop: -2,
+    },
+
+    qtyText: {
+      fontWeight: '900',
+      color: '#333',
+      minWidth: 24,
+      textAlign: 'center',
     },
 
     itemSubtotal: {
@@ -1847,6 +2193,7 @@ const styles =
       color: '#f68c45',
       textAlign: 'right',
       maxWidth: 150,
+      flexShrink: 1,
     },
 
     summaryRow: {
@@ -1886,17 +2233,42 @@ const styles =
       borderWidth: 1,
       borderColor: '#f68c45',
       borderRadius: 12,
-      padding: 12,
+      padding: 10,
       color: '#8a4b12',
       fontWeight: '800',
-      lineHeight: 20,
+      lineHeight: 18,
       textAlign: 'center',
+    },
+
+    emptyOrderBox: {
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingVertical: 18,
+    },
+
+    emptyOrderText: {
+      fontWeight: '800',
+      color: '#777',
+      textAlign: 'center',
+      marginBottom: 12,
+    },
+
+    backToMenuButton: {
+      backgroundColor: '#f68c45',
+      borderRadius: 12,
+      paddingVertical: 10,
+      paddingHorizontal: 18,
+    },
+
+    backToMenuText: {
+      color: '#fff',
+      fontWeight: '900',
     },
 
     optionTitle: {
       fontWeight: '900',
       color: '#333',
-      marginBottom: 14,
+      marginBottom: 12,
       textAlign: 'center',
     },
 
@@ -1905,14 +2277,14 @@ const styles =
       borderWidth: 1,
       borderColor: '#f68c45',
       borderRadius: 14,
-      padding: 12,
-      marginBottom: 12,
+      padding: 10,
+      marginBottom: 10,
     },
 
     qrWarningText: {
       color: '#8a4b12',
       fontWeight: '800',
-      lineHeight: 20,
+      lineHeight: 18,
       textAlign: 'center',
     },
 
@@ -1920,8 +2292,8 @@ const styles =
       borderWidth: 1.5,
       borderColor: '#ddd',
       borderRadius: 16,
-      padding: 14,
-      marginBottom: 12,
+      padding: 12,
+      marginBottom: 10,
       backgroundColor: '#fafafa',
     },
 
@@ -1952,7 +2324,7 @@ const styles =
       fontWeight: '700',
       color: '#777',
       marginTop: 4,
-      lineHeight: 19,
+      lineHeight: 18,
     },
 
     disclaimerBox: {
@@ -1960,8 +2332,8 @@ const styles =
       borderWidth: 1,
       borderColor: '#f68c45',
       borderRadius: 16,
-      padding: 14,
-      marginTop: 8,
+      padding: 12,
+      marginTop: 6,
     },
 
     disclaimerTitle: {
@@ -1973,14 +2345,18 @@ const styles =
     disclaimerText: {
       fontWeight: '700',
       color: '#8a4b12',
-      lineHeight: 21,
+      lineHeight: 19,
     },
 
     confirmButton: {
       backgroundColor: '#f68c45',
       borderRadius: 16,
       alignItems: 'center',
-      marginTop: 16,
+      marginTop: 14,
+    },
+
+    confirmButtonDisabled: {
+      backgroundColor: '#c9c9c9',
     },
 
     confirmButtonText: {

@@ -14,6 +14,7 @@ import {
   ActivityIndicator,
   useWindowDimensions,
   StatusBar,
+  Platform,
 } from 'react-native';
 
 import {
@@ -55,14 +56,23 @@ export default function OrderHistoryScreen({
       const longest =
         Math.max(width, height);
 
+      const isLandscape =
+        width > height;
+
       const isPhone =
         shortest < 600;
 
       const isVeryNarrow =
-        width < 430;
+        width < 390;
 
-      const base =
-        Math.min(shortest / 768, 1.05);
+      const isShortLandscape =
+        isLandscape &&
+        height < 430;
+
+      const usableWidth =
+        width -
+        insets.left -
+        insets.right;
 
       const clamp = (
         value,
@@ -75,59 +85,86 @@ export default function OrderHistoryScreen({
         );
       };
 
+      const base =
+        isPhone
+          ? Math.min(shortest / 390, 1)
+          : Math.min(shortest / 768, 1.05);
+
       const scale = (
         size,
-        min = size * 0.65,
-        max = size * 1.08
+        min = size * 0.72,
+        max = size * 1.12
       ) => {
         return Math.round(
           clamp(size * base, min, max)
         );
       };
 
+      const useCompactHeader =
+        isVeryNarrow ||
+        isShortLandscape ||
+        usableWidth < 420;
+
       return {
         isPhone,
         isVeryNarrow,
+        isLandscape,
+        isShortLandscape,
+        useCompactHeader,
 
         safeTopExtra: 0,
 
         safeBottomExtra:
-          Math.max(insets.bottom + 6, 12),
+          Math.max(
+            insets.bottom +
+            (Platform.OS === 'android' ? 12 : 8),
+            18
+          ),
 
         topBarHeight:
-          isPhone
-            ? scale(60, 52, 64)
-            : scale(76, 60, 78),
+          useCompactHeader
+            ? scale(54, 48, 58)
+            : isPhone
+              ? scale(60, 52, 66)
+              : scale(76, 60, 80),
 
         topBarPadding:
           isVeryNarrow
-            ? scale(12, 10, 14)
+            ? scale(10, 8, 12)
             : isPhone
               ? scale(14, 12, 16)
-              : scale(24, 14, 26),
+              : scale(24, 16, 28),
 
         topGap:
-          scale(12, 6, 12),
+          useCompactHeader
+            ? scale(7, 5, 8)
+            : scale(12, 8, 12),
 
         backText:
-          isPhone
-            ? scale(16, 14, 17)
-            : scale(26, 16, 26),
+          useCompactHeader
+            ? scale(13, 11, 14)
+            : isPhone
+              ? scale(16, 14, 17)
+              : scale(24, 17, 26),
 
         title:
-          isVeryNarrow
-            ? scale(20, 18, 22)
+          useCompactHeader
+            ? scale(18, 16, 20)
             : isPhone
               ? scale(23, 20, 24)
-              : scale(30, 20, 30),
+              : scale(30, 22, 30),
 
         tableText:
-          isPhone
-            ? scale(16, 14, 17)
-            : scale(22, 15, 22),
+          useCompactHeader
+            ? scale(13, 11, 14)
+            : isPhone
+              ? scale(16, 14, 17)
+              : scale(22, 16, 22),
 
         loadingText:
-          scale(22, 16, 22),
+          isPhone
+            ? scale(18, 15, 20)
+            : scale(22, 16, 22),
 
         listPadding:
           isVeryNarrow
@@ -138,8 +175,8 @@ export default function OrderHistoryScreen({
 
         listBottom:
           isPhone
-            ? Math.max(insets.bottom + 22, 30)
-            : Math.max(insets.bottom + 32, 40),
+            ? Math.max(insets.bottom + 26, 36)
+            : Math.max(insets.bottom + 36, 46),
 
         cardPadding:
           isVeryNarrow
@@ -158,85 +195,117 @@ export default function OrderHistoryScreen({
 
         batchTitle:
           isPhone
-            ? scale(22, 19, 23)
+            ? scale(21, 18, 23)
             : scale(28, 20, 28),
 
         orderNumber:
-          scale(17, 12, 17),
+          isPhone
+            ? scale(14, 12, 15)
+            : scale(17, 12, 17),
 
         statusText:
-          scale(15, 11, 15),
+          isPhone
+            ? scale(13, 11, 14)
+            : scale(15, 11, 15),
 
         statusPaddingV:
-          scale(8, 5, 8),
+          isPhone
+            ? scale(7, 5, 8)
+            : scale(8, 5, 8),
 
         statusPaddingH:
-          scale(14, 9, 14),
+          isPhone
+            ? scale(11, 9, 13)
+            : scale(14, 9, 14),
 
         createdText:
-          scale(15, 11, 15),
+          isPhone
+            ? scale(13, 11, 14)
+            : scale(15, 11, 15),
 
         dividerMargin:
-          scale(16, 10, 16),
+          isPhone
+            ? scale(12, 10, 14)
+            : scale(16, 10, 16),
 
         itemName:
-          scale(18, 14, 18),
+          isPhone
+            ? scale(15, 13, 17)
+            : scale(18, 14, 18),
 
         itemDetails:
-          scale(15, 11, 15),
+          isPhone
+            ? scale(13, 11, 14)
+            : scale(15, 11, 15),
 
         itemSubtotal:
-          scale(17, 13, 17),
+          isPhone
+            ? scale(15, 13, 16)
+            : scale(17, 13, 17),
 
         noItemsText:
-          scale(16, 12, 16),
+          isPhone
+            ? scale(14, 12, 15)
+            : scale(16, 12, 16),
 
         totalPadding:
-          scale(16, 11, 16),
+          isPhone
+            ? scale(13, 11, 15)
+            : scale(16, 11, 16),
 
         totalRadius:
           scale(14, 10, 14),
 
         totalLabel:
           isPhone
-            ? scale(17, 15, 18)
+            ? scale(16, 14, 18)
             : scale(20, 15, 20),
 
         totalValue:
           isPhone
-            ? scale(21, 18, 22)
+            ? scale(20, 17, 22)
             : scale(24, 18, 24),
 
         emptyIcon:
           isPhone
-            ? scale(70, 55, 74)
-            : scale(90, 60, 90),
+            ? scale(70, 55, 76)
+            : scale(90, 60, 92),
 
         emptyTitle:
           isPhone
-            ? scale(23, 19, 24)
+            ? scale(22, 18, 24)
             : scale(30, 21, 30),
 
         emptyText:
-          scale(19, 13, 19),
+          isPhone
+            ? scale(15, 13, 17)
+            : scale(19, 13, 19),
 
         emptyLine:
-          scale(28, 20, 28),
+          isPhone
+            ? scale(22, 19, 24)
+            : scale(28, 20, 28),
 
         refreshMargin:
           scale(28, 18, 28),
 
         refreshPaddingV:
-          scale(16, 11, 16),
+          isPhone
+            ? scale(13, 11, 15)
+            : scale(16, 11, 16),
 
         refreshPaddingH:
-          scale(34, 22, 34),
+          isPhone
+            ? scale(26, 22, 32)
+            : scale(34, 22, 34),
 
         refreshRadius:
           scale(14, 10, 14),
 
         refreshText:
-          scale(20, 15, 20),
+          isPhone
+            ? scale(17, 15, 19)
+            : scale(20, 15, 20),
 
         maxContentWidth:
           clamp(longest * 0.94, 340, 1100),
@@ -244,6 +313,8 @@ export default function OrderHistoryScreen({
     }, [
       width,
       height,
+      insets.left,
+      insets.right,
       insets.bottom,
     ]);
 
@@ -579,6 +650,7 @@ export default function OrderHistoryScreen({
                 },
               ]}
               numberOfLines={1}
+              adjustsFontSizeToFit
             >
               {getOrderStatusLabel(
                 order.status
@@ -649,6 +721,8 @@ export default function OrderHistoryScreen({
                   responsive.totalLabel,
               },
             ]}
+            numberOfLines={1}
+            adjustsFontSizeToFit
           >
             Total Amount
           </Text>
@@ -685,7 +759,12 @@ export default function OrderHistoryScreen({
 
         <SafeAreaView
           style={styles.safeArea}
-          edges={['top']}
+          edges={[
+            'top',
+            'left',
+            'right',
+            'bottom',
+          ]}
         >
           <View style={styles.loadingContainer}>
             <ActivityIndicator
@@ -720,7 +799,11 @@ export default function OrderHistoryScreen({
 
       <SafeAreaView
         style={styles.safeArea}
-        edges={['top']}
+        edges={[
+          'top',
+          'left',
+          'right',
+        ]}
       >
         <View style={styles.container}>
           <View
@@ -751,6 +834,7 @@ export default function OrderHistoryScreen({
                   },
                 ]}
                 numberOfLines={1}
+                adjustsFontSizeToFit
               >
                 {'<'} Go Back
               </Text>
@@ -766,6 +850,7 @@ export default function OrderHistoryScreen({
               ]}
               numberOfLines={1}
               adjustsFontSizeToFit
+              minimumFontScale={0.75}
             >
               Order History
             </Text>
@@ -780,6 +865,7 @@ export default function OrderHistoryScreen({
                   },
                 ]}
                 numberOfLines={1}
+                adjustsFontSizeToFit
               >
                 Table {tableNumber || '-'}
               </Text>
@@ -887,7 +973,8 @@ export default function OrderHistoryScreen({
                   padding:
                     responsive.listPadding,
                   paddingBottom:
-                    responsive.listBottom,
+                    responsive.listBottom +
+                    responsive.safeBottomExtra,
                   maxWidth:
                     responsive.maxContentWidth,
                 },
@@ -938,16 +1025,19 @@ const styles =
       alignItems: 'center',
       justifyContent: 'space-between',
       paddingVertical: 8,
+      flexShrink: 0,
     },
 
     topBarSide: {
-      flex: 1,
+      flex: 0.9,
       alignItems: 'flex-start',
+      minWidth: 0,
     },
 
     topBarSideRight: {
-      flex: 1,
+      flex: 0.9,
       alignItems: 'flex-end',
+      minWidth: 0,
     },
 
     backText: {
@@ -956,10 +1046,11 @@ const styles =
     },
 
     title: {
-      flex: 1.2,
+      flex: 1.25,
       color: '#fff',
       fontWeight: '900',
       textAlign: 'center',
+      minWidth: 0,
     },
 
     tableText: {
@@ -993,6 +1084,7 @@ const styles =
     batchHeaderLeft: {
       flex: 1,
       paddingRight: 8,
+      minWidth: 0,
     },
 
     batchTitle: {
@@ -1011,7 +1103,9 @@ const styles =
       borderColor: '#f68c45',
       borderWidth: 1.5,
       borderRadius: 999,
-      maxWidth: 160,
+      maxWidth: 165,
+      minWidth: 78,
+      flexShrink: 1,
     },
 
     statusText: {
@@ -1048,6 +1142,7 @@ const styles =
     itemInfo: {
       flex: 1,
       paddingRight: 8,
+      minWidth: 0,
     },
 
     itemName: {
@@ -1066,6 +1161,7 @@ const styles =
       color: '#f68c45',
       textAlign: 'right',
       maxWidth: 150,
+      flexShrink: 1,
     },
 
     noItemsText: {
@@ -1087,6 +1183,7 @@ const styles =
     totalLabel: {
       fontWeight: '900',
       color: '#333',
+      flexShrink: 0,
     },
 
     totalValue: {
