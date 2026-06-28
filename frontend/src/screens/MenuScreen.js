@@ -313,8 +313,11 @@ export default function MenuScreen({
 
       const useSideCart =
         isLandscape &&
-        width >= 760 &&
-        height >= 520;
+        width >= 700;
+
+      const useCompactTopBar =
+        isPhoneWidth &&
+        !isLandscape;
 
       const cartWidth =
         useSideCart
@@ -345,7 +348,9 @@ export default function MenuScreen({
             2,
             3
           )
-          : 2;
+          : isPhoneWidth
+            ? 2
+            : 2;
 
       const menuCardWidth =
         Math.floor(
@@ -387,6 +392,7 @@ export default function MenuScreen({
       return {
         isPhone,
         isPhoneWidth,
+        useCompactTopBar,
         isVeryNarrow,
         isShortHeight,
         useSideCart,
@@ -401,10 +407,11 @@ export default function MenuScreen({
         topSafeExtra: 0,
 
         topBarMinHeight:
-          isPhoneWidth
-            ? scale(78, 70, 84)
-            : scale(74, 62, 82),
-
+          useCompactTopBar
+            ? scale(82, 76, 90)
+            : isPhoneWidth
+              ? scale(74, 66, 82)
+              : scale(74, 62, 86),
         topBarPaddingH:
           isPhoneWidth
             ? scale(12, 10, 14)
@@ -430,18 +437,18 @@ export default function MenuScreen({
 
         topButtonFont:
           isPhoneWidth
-            ? scale(11, 9, 12)
-            : scale(15, 10, 15),
+            ? scale(13, 12, 14)
+            : scale(15, 12, 16),
 
         topButtonPaddingV:
           isPhoneWidth
-            ? scale(5, 4, 6)
-            : scale(8, 5, 8),
+            ? scale(8, 7, 9)
+            : scale(8, 6, 9),
 
         topButtonPaddingH:
           isPhoneWidth
-            ? scale(8, 6, 10)
-            : scale(14, 7, 14),
+            ? scale(12, 10, 14)
+            : scale(14, 10, 16),
 
         categoryHeight:
           isPhoneWidth
@@ -643,6 +650,11 @@ export default function MenuScreen({
   const [
     logoutModalVisible,
     setLogoutModalVisible,
+  ] = useState(false);
+
+  const [
+    actionMenuVisible,
+    setActionMenuVisible,
   ] = useState(false);
 
   const [
@@ -1616,108 +1628,135 @@ export default function MenuScreen({
               </Text>
             </View>
 
-            <View style={styles.topIcons}>
-              <Text
-                style={[
-                  styles.tableText,
-                  {
-                    fontSize:
-                      responsive.tableText,
-                  },
-                ]}
-                numberOfLines={1}
-              >
-                Table {tableNumber || user?.table_number || '-'}
-              </Text>
-
-              <TouchableOpacity
-                style={[
-                  styles.historyButton,
-                  {
-                    paddingVertical:
-                      responsive.topButtonPaddingV,
-                    paddingHorizontal:
-                      responsive.topButtonPaddingH,
-                  },
-                ]}
-                onPress={() =>
-                  navigation.navigate(
-                    'OrderHistory'
-                  )
-                }
-              >
+            {responsive.useCompactTopBar ? (
+              <View style={styles.compactHeaderRight}>
                 <Text
                   style={[
-                    styles.historyButtonText,
+                    styles.tableText,
                     {
                       fontSize:
-                        responsive.topButtonFont,
+                        responsive.tableText,
                     },
                   ]}
                   numberOfLines={1}
                 >
-                  Order History
+                  Table {tableNumber || user?.table_number || '-'}
                 </Text>
-              </TouchableOpacity>
 
-              <TouchableOpacity
-                style={[
-                  styles.statusButton,
-                  {
-                    paddingVertical:
-                      responsive.topButtonPaddingV,
-                    paddingHorizontal:
-                      responsive.topButtonPaddingH,
-                  },
-                ]}
-                onPress={() =>
-                  navigation.navigate(
-                    'OrderStatus'
-                  )
-                }
-              >
+                <TouchableOpacity
+                  style={styles.hamburgerButton}
+                  onPress={() =>
+                    setActionMenuVisible(true)
+                  }
+                >
+                  <Text style={styles.hamburgerText}>
+                    ☰
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <View style={styles.topIcons}>
                 <Text
                   style={[
-                    styles.statusButtonText,
+                    styles.tableText,
                     {
                       fontSize:
-                        responsive.topButtonFont,
+                        responsive.tableText,
                     },
                   ]}
                   numberOfLines={1}
                 >
-                  View Order Status
+                  Table {tableNumber || user?.table_number || '-'}
                 </Text>
-              </TouchableOpacity>
 
-              <TouchableOpacity
-                style={[
-                  styles.logoutButton,
-                  {
-                    paddingVertical:
-                      responsive.topButtonPaddingV,
-                    paddingHorizontal:
-                      responsive.topButtonPaddingH,
-                  },
-                ]}
-                onPress={openLogoutModal}
-              >
-                <Text
+                <TouchableOpacity
                   style={[
-                    styles.logoutButtonText,
+                    styles.historyButton,
                     {
-                      fontSize:
-                        responsive.topButtonFont,
+                      paddingVertical:
+                        responsive.topButtonPaddingV,
+                      paddingHorizontal:
+                        responsive.topButtonPaddingH,
                     },
                   ]}
-                  numberOfLines={1}
+                  onPress={() =>
+                    navigation.navigate(
+                      'OrderHistory'
+                    )
+                  }
                 >
-                  Staff Logout
-                </Text>
-              </TouchableOpacity>
-            </View>
+                  <Text
+                    style={[
+                      styles.historyButtonText,
+                      {
+                        fontSize:
+                          responsive.topButtonFont,
+                      },
+                    ]}
+                    numberOfLines={1}
+                  >
+                    Order History
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[
+                    styles.statusButton,
+                    {
+                      paddingVertical:
+                        responsive.topButtonPaddingV,
+                      paddingHorizontal:
+                        responsive.topButtonPaddingH,
+                    },
+                  ]}
+                  onPress={() =>
+                    navigation.navigate(
+                      'OrderStatus'
+                    )
+                  }
+                >
+                  <Text
+                    style={[
+                      styles.statusButtonText,
+                      {
+                        fontSize:
+                          responsive.topButtonFont,
+                      },
+                    ]}
+                    numberOfLines={1}
+                  >
+                    View Order Status
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[
+                    styles.logoutButton,
+                    {
+                      paddingVertical:
+                        responsive.topButtonPaddingV,
+                      paddingHorizontal:
+                        responsive.topButtonPaddingH,
+                    },
+                  ]}
+                  onPress={openLogoutModal}
+                >
+                  <Text
+                    style={[
+                      styles.logoutButtonText,
+                      {
+                        fontSize:
+                          responsive.topButtonFont,
+                      },
+                    ]}
+                    numberOfLines={1}
+                  >
+                    Staff Logout
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            )}
           </View>
-
           <FlatList
             horizontal
             data={categories}
@@ -1868,6 +1907,10 @@ export default function MenuScreen({
                     responsive.useSideCart
                       ? responsive.cartWidth
                       : '100%',
+                  height:
+                    responsive.useSideCart
+                      ? '100%'
+                      : undefined,
                   minHeight:
                     responsive.useSideCart
                       ? undefined
@@ -1945,11 +1988,13 @@ export default function MenuScreen({
                   showsVerticalScrollIndicator={false}
                   style={[
                     styles.cartList,
-                    !responsive.useSideCart && {
-                      maxHeight:
-                        responsive.stackedCartListMaxHeight,
-                      minHeight: 82,
-                    },
+                    responsive.useSideCart
+                      ? styles.cartListSide
+                      : {
+                        maxHeight:
+                          responsive.stackedCartListMaxHeight,
+                        minHeight: 82,
+                      },
                   ]}
                   contentContainerStyle={{
                     paddingBottom:
@@ -2090,109 +2135,67 @@ export default function MenuScreen({
 
       <Modal
         transparent
-        visible={logoutModalVisible}
+        visible={actionMenuVisible}
         animationType="fade"
-        onRequestClose={closeLogoutModal}
+        onRequestClose={() =>
+          setActionMenuVisible(false)
+        }
       >
-        <KeyboardAvoidingView
-          style={styles.modalOverlay}
-          behavior={
-            Platform.OS === 'ios'
-              ? 'padding'
-              : 'height'
+        <TouchableOpacity
+          style={styles.actionMenuOverlay}
+          activeOpacity={1}
+          onPress={() =>
+            setActionMenuVisible(false)
           }
         >
-          <ScrollView
-            contentContainerStyle={styles.modalScrollContent}
-            keyboardShouldPersistTaps="handled"
-            showsVerticalScrollIndicator={false}
-          >
-            <View
-              style={[
-                styles.logoutModal,
-                {
-                  width:
-                    responsive.modalWidth,
-                },
-              ]}
+          <View style={styles.actionMenuCard}>
+            <Text style={styles.actionMenuTitle}>
+              Table {tableNumber || user?.table_number || '-'}
+            </Text>
+
+            <TouchableOpacity
+              style={styles.actionMenuItem}
+              onPress={() => {
+                setActionMenuVisible(false);
+                navigation.navigate('OrderHistory');
+              }}
             >
-              <Text
-                style={[
-                  styles.modalTitle,
-                  {
-                    fontSize:
-                      responsive.modalTitle,
-                  },
-                ]}
-              >
+              <Text style={styles.actionMenuItemText}>
+                Order History
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[
+                styles.actionMenuItem,
+                styles.actionMenuItemOrange,
+              ]}
+              onPress={() => {
+                setActionMenuVisible(false);
+                navigation.navigate('OrderStatus');
+              }}
+            >
+              <Text style={styles.actionMenuItemTextWhite}>
+                View Order Status
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[
+                styles.actionMenuItem,
+                styles.actionMenuItemDark,
+              ]}
+              onPress={() => {
+                setActionMenuVisible(false);
+                openLogoutModal();
+              }}
+            >
+              <Text style={styles.actionMenuItemTextWhite}>
                 Staff Logout
               </Text>
-
-              <Text
-                style={[
-                  styles.modalText,
-                  {
-                    fontSize:
-                      responsive.modalText,
-                  },
-                ]}
-              >
-                Enter staff password to logout this tablet.
-              </Text>
-
-              <TextInput
-                style={[
-                  styles.passwordInput,
-                  {
-                    fontSize:
-                      responsive.modalInput,
-                  },
-                ]}
-                value={logoutPassword}
-                onChangeText={setLogoutPassword}
-                placeholder="Enter password"
-                secureTextEntry
-                autoCapitalize="none"
-              />
-
-              <View style={styles.modalActions}>
-                <TouchableOpacity
-                  style={styles.cancelButton}
-                  onPress={closeLogoutModal}
-                >
-                  <Text
-                    style={[
-                      styles.cancelButtonText,
-                      {
-                        fontSize:
-                          responsive.modalButton,
-                      },
-                    ]}
-                  >
-                    Cancel
-                  </Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={styles.confirmButton}
-                  onPress={handleConfirmLogout}
-                >
-                  <Text
-                    style={[
-                      styles.confirmButtonText,
-                      {
-                        fontSize:
-                          responsive.modalButton,
-                      },
-                    ]}
-                  >
-                    Logout
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          </ScrollView>
-        </KeyboardAvoidingView>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
       </Modal>
     </View>
   );
@@ -2227,14 +2230,42 @@ const styles =
       flexDirection: 'row',
       justifyContent: 'space-between',
       alignItems: 'center',
-      gap: 8,
-      flexWrap: 'wrap',
+      gap: 10,
+    },
+    topBarCompact: {
+      justifyContent: 'center',
     },
 
+    topBarMainRow: {
+      width: '100%',
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      gap: 10,
+    },
+
+    topBarMainRowCompact: {
+      marginBottom: 8,
+    },
+
+    topIconsCompact: {
+      width: '100%',
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      gap: 7,
+    },
+
+    headerActionButtonCompact: {
+      flex: 1,
+      minHeight: 36,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
     brandBox: {
       flexShrink: 1,
-      minWidth: 92,
-      maxWidth: 145,
+      minWidth: 130,
+      maxWidth: 210,
     },
 
     topBarText: {
@@ -2249,13 +2280,88 @@ const styles =
     },
 
     topIcons: {
-      flex: 1,
       flexDirection: 'row',
       alignItems: 'center',
-      flexWrap: 'wrap',
+      flexWrap: 'nowrap',
       justifyContent: 'flex-end',
-      gap: 6,
-      minWidth: 220,
+      gap: 8,
+    },
+    compactHeaderRight: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+      flexShrink: 0,
+    },
+
+    hamburgerButton: {
+      width: 42,
+      height: 42,
+      borderRadius: 14,
+      backgroundColor: '#f68c45',
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+
+    hamburgerText: {
+      color: '#fff',
+      fontSize: 24,
+      fontWeight: '900',
+      marginTop: -2,
+    },
+
+    actionMenuOverlay: {
+      flex: 1,
+      backgroundColor: 'rgba(0, 0, 0, 0.35)',
+      justifyContent: 'flex-start',
+      alignItems: 'flex-end',
+      paddingTop: 86,
+      paddingHorizontal: 16,
+    },
+
+    actionMenuCard: {
+      width: 235,
+      backgroundColor: '#fff',
+      borderRadius: 18,
+      padding: 14,
+      shadowColor: '#000',
+      shadowOpacity: 0.18,
+      shadowRadius: 10,
+      elevation: 8,
+    },
+
+    actionMenuTitle: {
+      fontSize: 16,
+      fontWeight: '900',
+      color: '#333',
+      marginBottom: 10,
+    },
+
+    actionMenuItem: {
+      backgroundColor: '#f7f7f7',
+      borderRadius: 12,
+      paddingVertical: 13,
+      paddingHorizontal: 14,
+      marginTop: 8,
+    },
+
+    actionMenuItemOrange: {
+      backgroundColor: '#f68c45',
+    },
+
+    actionMenuItemDark: {
+      backgroundColor: '#333',
+    },
+
+    actionMenuItemText: {
+      color: '#333',
+      fontWeight: '900',
+      fontSize: 15,
+    },
+
+    actionMenuItemTextWhite: {
+      color: '#fff',
+      fontWeight: '900',
+      fontSize: 15,
     },
 
     tableText: {
@@ -2266,6 +2372,8 @@ const styles =
     historyButton: {
       backgroundColor: '#fff',
       borderRadius: 12,
+      minHeight: 36,
+      justifyContent: 'center',
     },
 
     historyButtonText: {
@@ -2276,6 +2384,8 @@ const styles =
     statusButton: {
       backgroundColor: '#f68c45',
       borderRadius: 12,
+      minHeight: 36,
+      justifyContent: 'center',
     },
 
     statusButtonText: {
@@ -2286,6 +2396,8 @@ const styles =
     logoutButton: {
       backgroundColor: '#333',
       borderRadius: 12,
+      minHeight: 36,
+      justifyContent: 'center',
     },
 
     logoutButtonText: {
@@ -2508,6 +2620,10 @@ const styles =
     cartList: {
       flexGrow: 0,
       minHeight: 72,
+    },
+
+    cartListSide: {
+      flex: 1,
     },
 
     cartHeader: {
