@@ -42,13 +42,11 @@ import { useTableStatus } from '../context/TableStatusContext';
 
 import {
   getItemId,
-  isItemOrderable,
-  isOutOfStock,
-  canIncreaseQuantity,
-  getAvailabilityDisplayText,
-  shouldShowLowStockWarning,
   isCustomItem,
 } from '../utils/inventory';
+
+const EXPECTED_MENU_DEBUG_SOURCE =
+  'WEB_MENU_INGREDIENT_AVAILABILITY_FIXED_2026';
 
 const ASSIGNED_TABLE_STATUSES = [
   'seated',
@@ -56,11 +54,6 @@ const ASSIGNED_TABLE_STATUSES = [
   'assigned',
   'in_use',
   'active',
-];
-
-const VALID_NORMAL_INVENTORY_TYPES = [
-  'per_order',
-  'per_head',
 ];
 
 const excludedPopularCategories = [
@@ -99,8 +92,9 @@ const isExcludedPopularCategory = (item) => {
     normalizeText(item?.name);
 
   const excluded =
-    excludedPopularCategories
-      .map(normalizeText);
+    excludedPopularCategories.map(
+      normalizeText
+    );
 
   return (
     excluded.includes(category) ||
@@ -161,7 +155,7 @@ const getStrictOrderPermission = (
   );
 };
 
-const isAvailableTrue = (value) => {
+const isBackendAvailableTrue = (value) => {
   return (
     value === true ||
     value === 1 ||
@@ -172,87 +166,115 @@ const isAvailableTrue = (value) => {
   );
 };
 
-const hasInventoryType = (item) => {
-  return (
-    item?.inventory_type !== null &&
-    item?.inventory_type !== undefined &&
-    String(item.inventory_type).trim() !== ''
-  );
-};
+const isIngredientCustomItem = (item) => {
+  const category =
+    normalizeText(item?.category);
 
-const hasDailyLimit = (item) => {
-  return (
-    item?.daily_limit !== null &&
-    item?.daily_limit !== undefined &&
-    String(item.daily_limit).trim() !== ''
-  );
-};
-
-const toNumber = (value) => {
-  const numberValue =
-    Number(value);
-
-  return Number.isFinite(numberValue)
-    ? numberValue
-    : 0;
-};
-
-const getRemainingToday = (item) => {
-  return toNumber(
-    item?.remaining_today
-  );
-};
-
-const getMaxOrderQuantity = (item) => {
-  return toNumber(
-    item?.max_order_quantity
-  );
-};
-
-const isValidDailyInventoryMenuItem = (item) => {
   const inventoryType =
     normalizeInventoryType(
       item?.inventory_type
     );
 
-  const available =
-    isAvailableTrue(
-      item?.is_available
-    );
-
-  if (!available) {
-    return false;
-  }
-
-  if (!hasInventoryType(item)) {
-    return false;
-  }
-
-  if (inventoryType === 'custom') {
-    return true;
-  }
-
-  if (
-    !VALID_NORMAL_INVENTORY_TYPES.includes(
-      inventoryType
-    )
-  ) {
-    return false;
-  }
-
-  if (!hasDailyLimit(item)) {
-    return false;
-  }
-
-  const remainingToday =
-    getRemainingToday(item);
-
-  const maxOrderQuantity =
-    getMaxOrderQuantity(item);
+  const name =
+    normalizeText(item?.name);
 
   return (
-    remainingToday > 0 ||
-    maxOrderQuantity > 0
+    isCustomItem(item) ||
+    category === 'chef oppa special' ||
+    inventoryType === 'custom' ||
+    name.includes(
+      'custom chef oppa special'
+    )
+  );
+};
+
+const getBackendMaxQuantity = (item) => {
+  if (!item) {
+    return 0;
+  }
+
+  if (isIngredientCustomItem(item)) {
+    return 1;
+  }
+
+  const maxQty =
+    Number(
+      item?.max_order_quantity ??
+      item?.remaining_today ??
+      0
+    );
+
+  return Number.isFinite(maxQty)
+    ? Math.max(0, maxQty)
+    : 0;
+};
+
+const getMaxOrderQuantity = (item) => {
+  if (!item) {
+    return 0;
+  }
+
+  if (isIngredientCustomItem(item)) {
+    return 1;
+  }
+
+  return getBackendMaxQuantity(item);
+};
+
+const isMenuItemAvailableByBackend = (item) => {
+  if (!item) {
+    return false;
+  }
+
+  if (isIngredientCustomItem(item)) {
+    return isBackendAvailableTrue(
+      item?.is_available
+    );
+  }
+
+  const maxQty =
+    getBackendMaxQuantity(item);
+
+  return (
+    isBackendAvailableTrue(
+      item?.is_available
+    ) &&
+    maxQty > 0
+  );
+};
+
+const isMenuItemDisabledByStock = (item) => {
+  return !isMenuItemAvailableByBackend(item);
+};
+
+const getMenuCardStockText = (item) => {
+  if (!item) {
+    return '';
+  }
+
+  if (isIngredientCustomItem(item)) {
+    return isMenuItemAvailableByBackend(item)
+      ? 'Custom request available'
+      : (
+          item?.unavailable_reason ||
+          item?.stock_label ||
+          'Unavailable'
+        );
+  }
+
+  if (isMenuItemAvailableByBackend(item)) {
+    return (
+      item?.stock_label ||
+      item?.daily_inventory_label ||
+      ''
+    );
+  }
+
+  return (
+    item?.unavailable_reason ||
+    item?.stock_label ||
+    item?.daily_inventory_label ||
+    'Unavailable'
   );
 };
 
@@ -359,19 +381,19 @@ export default function MenuScreen({
         useSideCart
           ? isLandscapePhone
             ? clamp(
-              Math.floor(
-                availableMenuWidth / 250
-              ),
-              1,
-              2
-            )
+                Math.floor(
+                  availableMenuWidth / 250
+                ),
+                1,
+                2
+              )
             : clamp(
-              Math.floor(
-                availableMenuWidth / 215
-              ),
-              2,
-              3
-            )
+                Math.floor(
+                  availableMenuWidth / 215
+                ),
+                2,
+                3
+              )
           : isPhoneWidth
             ? 2
             : 2;
@@ -817,6 +839,108 @@ export default function MenuScreen({
     assignmentMessage ||
     'Please wait for service staff to assign your table before placing an order.';
 
+  const fetchMenu = useCallback(async () => {
+    try {
+      const response =
+        await getMenu();
+
+      console.log(
+        'MENU RESPONSE:',
+        response
+      );
+
+      console.log(
+        'MENU DEBUG SOURCE:',
+        response?.debug_source
+      );
+
+      console.log(
+        'MENU ITEMS:',
+        response?.data
+      );
+
+      console.log(
+        'FIRST MENU ITEM:',
+        response?.data?.[0]
+      );
+
+      if (response.success) {
+        const rawItems =
+          Array.isArray(response.data)
+            ? response.data
+            : [];
+
+        console.log(
+          'MOBILE MENU SOURCE OF TRUTH:',
+          {
+            debug_source:
+              response.debug_source,
+            expected_debug_source:
+              EXPECTED_MENU_DEBUG_SOURCE,
+            correct_backend:
+              response.debug_source ===
+              EXPECTED_MENU_DEBUG_SOURCE,
+            returned_count:
+              rawItems.length,
+          }
+        );
+
+        rawItems.forEach((item) => {
+          console.log(
+            'MENU CARD INVENTORY CHECK:',
+            {
+              id:
+                item?.id,
+              name:
+                item?.name,
+              is_available:
+                item?.is_available,
+              max_order_quantity:
+                item?.max_order_quantity,
+              remaining_today:
+                item?.remaining_today,
+              stock_label:
+                item?.stock_label,
+              unavailable_reason:
+                item?.unavailable_reason,
+              mobile_available:
+                isMenuItemAvailableByBackend(
+                  item
+                ),
+              mobile_max_quantity:
+                getBackendMaxQuantity(
+                  item
+                ),
+            }
+          );
+        });
+
+        setMenuItems(rawItems);
+
+        syncMenuInventory(rawItems);
+      } else {
+        Alert.alert(
+          'Error',
+          response.message ||
+          'Failed to fetch menu.'
+        );
+      }
+    } catch (error) {
+      console.error(
+        'Failed to fetch menu:',
+        error?.response?.data ||
+        error.message
+      );
+
+      Alert.alert(
+        'Error',
+        'Failed to fetch menu.'
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, [syncMenuInventory]);
+
   useEffect(() => {
     fetchMenu();
 
@@ -827,7 +951,7 @@ export default function MenuScreen({
 
     return () =>
       clearInterval(refreshTimer);
-  }, []);
+  }, [fetchMenu]);
 
   useEffect(() => {
     if (!tableResetRequired) {
@@ -871,67 +995,11 @@ export default function MenuScreen({
     useCallback(() => {
       fetchMenu();
       refreshTableStatus();
-    }, [refreshTableStatus])
+    }, [
+      fetchMenu,
+      refreshTableStatus,
+    ])
   );
-
-  const fetchMenu = async () => {
-    try {
-      const response =
-        await getMenu();
-
-      console.log(
-        'MENU RESPONSE:',
-        response
-      );
-
-      if (response.success) {
-        const rawItems =
-          response.data || [];
-
-        const visibleItems =
-          rawItems.filter(
-            isValidDailyInventoryMenuItem
-          );
-
-        console.log(
-          'MOBILE MENU FILTER:',
-          {
-            raw_count:
-              rawItems.length,
-            visible_count:
-              visibleItems.length,
-          }
-        );
-
-        setMenuItems(
-          visibleItems
-        );
-
-        syncMenuInventory(
-          visibleItems
-        );
-      } else {
-        Alert.alert(
-          'Error',
-          response.message ||
-          'Failed to fetch menu.'
-        );
-      }
-    } catch (error) {
-      console.error(
-        'Failed to fetch menu:',
-        error?.response?.data ||
-        error.message
-      );
-
-      Alert.alert(
-        'Error',
-        'Failed to fetch menu.'
-      );
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const openLogoutModal = () => {
     setLogoutPassword('');
@@ -1031,22 +1099,10 @@ export default function MenuScreen({
       return;
     }
 
-    if (
-      !isValidDailyInventoryMenuItem(item)
-    ) {
+    if (isMenuItemDisabledByStock(item)) {
       Alert.alert(
         'Unavailable',
-        'This item is not enabled in Daily Menu Inventory.'
-      );
-
-      return;
-    }
-
-    if (!isItemOrderable(item)) {
-      Alert.alert(
-        'Unavailable',
-        getAvailabilityDisplayText(item) ||
-        'This item is currently unavailable.'
+        getMenuCardStockText(item)
       );
 
       return;
@@ -1064,36 +1120,41 @@ export default function MenuScreen({
     const enrichedItem =
       getEnrichedItem(item);
 
-    if (isCustomItem(enrichedItem)) {
-      return;
-    }
-
-    if (
-      !isValidDailyInventoryMenuItem(
-        enrichedItem
-      )
-    ) {
+    if (isIngredientCustomItem(enrichedItem)) {
       Alert.alert(
-        'Unavailable',
-        'This item is no longer enabled in Daily Menu Inventory.'
+        'Limited Stock',
+        'Chef Oppa Special requests can only have quantity of 1.'
       );
 
       return;
     }
 
+    if (isMenuItemDisabledByStock(enrichedItem)) {
+      Alert.alert(
+        'Unavailable',
+        getMenuCardStockText(
+          enrichedItem
+        )
+      );
+
+      return;
+    }
+
+    const maxQuantity =
+      getMaxOrderQuantity(
+        enrichedItem
+      );
+
+    const currentQuantity =
+      Number(item.quantity || 0);
+
     if (
-      !canIncreaseQuantity(
-        enrichedItem,
-        item.quantity,
-        1
-      )
+      currentQuantity + 1 >
+      maxQuantity
     ) {
       Alert.alert(
         'Limited Stock',
-        getAvailabilityDisplayText(
-          enrichedItem
-        ) ||
-        'You reached the available quantity for this item.'
+        `You can only order up to ${maxQuantity} of this item based on ingredient stock.`
       );
 
       return;
@@ -1160,30 +1221,6 @@ export default function MenuScreen({
       return;
     }
 
-    const invalidDailyInventoryItems =
-      cartItems.filter((cartItem) => {
-        const enrichedItem =
-          getEnrichedItem(cartItem);
-
-        return (
-          !isCustomItem(enrichedItem) &&
-          !isValidDailyInventoryMenuItem(
-            enrichedItem
-          )
-        );
-      });
-
-    if (
-      invalidDailyInventoryItems.length > 0
-    ) {
-      Alert.alert(
-        'Unavailable Item',
-        'Some items in your cart are no longer enabled in Daily Menu Inventory. Please remove them before confirming your order.'
-      );
-
-      return;
-    }
-
     if (!tableNumber && !user?.table_number) {
       Alert.alert(
         'Table Error',
@@ -1209,9 +1246,6 @@ export default function MenuScreen({
     'All',
     ...new Set(
       menuItems
-        .filter(
-          isValidDailyInventoryMenuItem
-        )
         .map((m) => m.category)
         .filter(Boolean)
     ),
@@ -1219,9 +1253,6 @@ export default function MenuScreen({
 
   const filteredItems =
     menuItems
-      .filter(
-        isValidDailyInventoryMenuItem
-      )
       .filter((item) => {
         const byCategory =
           selectedCategory === 'All' ||
@@ -1244,26 +1275,26 @@ export default function MenuScreen({
         const bPopular =
           isBestSeller(b);
 
-        const aAvailable =
-          isItemOrderable(a);
+        const aDisabled =
+          isMenuItemDisabledByStock(a);
 
-        const bAvailable =
-          isItemOrderable(b);
+        const bDisabled =
+          isMenuItemDisabledByStock(b);
 
         if (aPopular !== bPopular) {
           return Number(bPopular) -
             Number(aPopular);
         }
 
-        if (aAvailable !== bAvailable) {
-          return Number(bAvailable) -
-            Number(aAvailable);
+        if (aDisabled !== bDisabled) {
+          return Number(aDisabled) -
+            Number(bDisabled);
         }
 
         return String(
           a.name || ''
         ).localeCompare(
-          String(b.name || '')
+          String(a.name || '')
         );
       });
 
@@ -1276,7 +1307,9 @@ export default function MenuScreen({
     );
 
   const hasCustomRequest =
-    cartItems.some(isCustomItem);
+    cartItems.some(
+      isIngredientCustomItem
+    );
 
   const renderMenuItem = ({
     item,
@@ -1285,28 +1318,22 @@ export default function MenuScreen({
       getItemImage(item);
 
     const customItem =
-      isCustomItem(item);
-
-    const isValidForMobile =
-      isValidDailyInventoryMenuItem(item);
+      isIngredientCustomItem(item);
 
     const isAvailable =
-      isValidForMobile &&
-      isItemOrderable(item);
+      isMenuItemAvailableByBackend(item);
 
-    const isLowStock =
-      shouldShowLowStockWarning(item);
+    const disabledByStock =
+      !isAvailable;
 
     const availabilityText =
-      customItem
-        ? 'Custom request available'
-        : getAvailabilityDisplayText(item);
+      getMenuCardStockText(item);
 
     const bestSeller =
       isBestSeller(item);
 
     const disabled =
-      !isAvailable || !strictCanOrder;
+      disabledByStock || !strictCanOrder;
 
     return (
       <TouchableOpacity
@@ -1440,9 +1467,7 @@ export default function MenuScreen({
                 ? styles.notAvailableText
                 : !isAvailable
                   ? styles.notAvailableText
-                  : isLowStock
-                    ? styles.lowStockText
-                    : styles.availableText,
+                  : styles.availableText,
               {
                 fontSize:
                   responsive.stockText,
@@ -1465,7 +1490,9 @@ export default function MenuScreen({
             ]}
           >
             {strictCanOrder
-              ? 'Tap to view'
+              ? disabledByStock
+                ? 'Unavailable'
+                : 'Tap to view'
               : 'Waiting for staff'}
           </Text>
         </View>
@@ -1480,23 +1507,36 @@ export default function MenuScreen({
       getEnrichedItem(item);
 
     const customCartItem =
-      isCustomItem(enrichedItem);
-
-    const validDailyInventoryItem =
-      customCartItem ||
-      isValidDailyInventoryMenuItem(
+      isIngredientCustomItem(
         enrichedItem
       );
 
+    const disabledByStock =
+      customCartItem
+        ? false
+        : isMenuItemDisabledByStock(
+            enrichedItem
+          );
+
+    const maxQuantity =
+      customCartItem
+        ? 1
+        : getMaxOrderQuantity(
+            enrichedItem
+          );
+
+    const currentQuantity =
+      Number(item.quantity || 0);
+
     const atMaxQuantity =
       customCartItem ||
-        !validDailyInventoryItem
-        ? true
-        : !canIncreaseQuantity(
-          enrichedItem,
-          item.quantity,
-          1
-        );
+      disabledByStock ||
+      currentQuantity >= maxQuantity;
+
+    const stockText =
+      getMenuCardStockText(
+        enrichedItem
+      );
 
     return (
       <View
@@ -1535,10 +1575,16 @@ export default function MenuScreen({
                 : `₱${formatMoney(item.price)}`}
             </Text>
 
+            {!customCartItem ? (
+              <Text style={styles.cartStockText}>
+                {stockText}
+              </Text>
+            ) : null}
+
             {!customCartItem &&
-              !validDailyInventoryItem ? (
+              disabledByStock ? (
               <Text style={styles.cartInvalidText}>
-                No longer available today
+                No longer available
               </Text>
             ) : null}
 
@@ -1641,21 +1687,12 @@ export default function MenuScreen({
                   borderRadius:
                     responsive.qtyButton / 3,
                 },
-                (atMaxQuantity ||
-                  isOutOfStock(enrichedItem)) &&
+                atMaxQuantity &&
                 styles.qtyButtonDisabled,
               ]}
-              disabled={
-                atMaxQuantity ||
-                isOutOfStock(enrichedItem)
-              }
+              disabled={atMaxQuantity}
               onPress={() => {
-                if (
-                  !atMaxQuantity &&
-                  !isOutOfStock(
-                    enrichedItem
-                  )
-                ) {
+                if (!atMaxQuantity) {
                   handleIncreaseQuantity(
                     item
                   );
@@ -1916,7 +1953,7 @@ export default function MenuScreen({
                     responsive.searchButtonPaddingH,
                 },
               ]}
-              onPress={() => { }}
+              onPress={() => {}}
             >
               <Text
                 style={[
@@ -2043,11 +2080,11 @@ export default function MenuScreen({
                 columnWrapperStyle={
                   responsive.menuColumns > 1
                     ? {
-                      justifyContent:
-                        'center',
-                      gap:
-                        responsive.cardGap,
-                    }
+                        justifyContent:
+                          'center',
+                        gap:
+                          responsive.cardGap,
+                      }
                     : undefined
                 }
                 contentContainerStyle={{
@@ -2064,11 +2101,11 @@ export default function MenuScreen({
                 ListEmptyComponent={() => (
                   <View style={styles.emptyMenuBox}>
                     <Text style={styles.emptyMenuTitle}>
-                      No available menu items
+                      No menu items found
                     </Text>
 
                     <Text style={styles.emptyMenuText}>
-                      Menu items must be enabled in Daily Menu Inventory before they appear here.
+                      Menu items returned by the latest menu inventory will appear here.
                     </Text>
                   </View>
                 )}
@@ -2078,6 +2115,8 @@ export default function MenuScreen({
             <View
               style={[
                 styles.cartSidebar,
+                responsive.useSideCart &&
+                styles.cartSidebarSide,
                 {
                   width:
                     responsive.useSideCart
@@ -2139,17 +2178,19 @@ export default function MenuScreen({
               </View>
 
               {cartItems.length === 0 ? (
-                <Text
-                  style={[
-                    styles.emptyCartText,
-                    {
-                      fontSize:
-                        responsive.cartItemName,
-                    },
-                  ]}
-                >
-                  No items added yet.
-                </Text>
+                <View style={styles.emptyCartBox}>
+                  <Text
+                    style={[
+                      styles.emptyCartText,
+                      {
+                        fontSize:
+                          responsive.cartItemName,
+                      },
+                    ]}
+                  >
+                    No items added yet.
+                  </Text>
+                </View>
               ) : (
                 <FlatList
                   data={cartItems}
@@ -2168,15 +2209,18 @@ export default function MenuScreen({
                   }
                   persistentScrollbar={true}
                   indicatorStyle="black"
+                  keyboardShouldPersistTaps="handled"
                   style={[
-                    styles.cartList,
                     responsive.useSideCart
                       ? styles.cartListSide
-                      : {
-                        maxHeight:
-                          responsive.stackedCartListMaxHeight,
-                        minHeight: 82,
-                      },
+                      : [
+                          styles.cartListStacked,
+                          {
+                            maxHeight:
+                              responsive.stackedCartListMaxHeight,
+                            minHeight: 82,
+                          },
+                        ],
                   ]}
                   contentContainerStyle={{
                     paddingBottom:
@@ -2871,30 +2915,18 @@ const styles =
       borderLeftColor: '#ddd',
       borderTopColor: '#ddd',
       flexShrink: 0,
+      minHeight: 0,
     },
 
-    cartList: {
-      flexGrow: 0,
-      minHeight: 72,
-    },
-
-    cartListSide: {
-      flex: 1,
-    },
-
-    cartScrollHint: {
-      color: '#999',
-      fontSize: 11,
-      fontWeight: '800',
-      textAlign: 'center',
-      paddingTop: 2,
-      paddingBottom: 4,
+    cartSidebarSide: {
+      minHeight: 0,
     },
 
     cartHeader: {
       flexDirection: 'row',
       alignItems: 'center',
       marginBottom: 8,
+      flexShrink: 0,
     },
 
     cartIcon: {
@@ -2906,12 +2938,39 @@ const styles =
       color: '#222',
     },
 
+    cartListSide: {
+      flex: 1,
+      flexGrow: 1,
+      flexShrink: 1,
+      minHeight: 0,
+    },
+
+    cartListStacked: {
+      flexGrow: 0,
+      minHeight: 72,
+    },
+
+    emptyCartBox: {
+      flex: 1,
+      minHeight: 0,
+    },
+
     emptyCartText: {
       color: '#777',
       marginTop: 4,
       borderBottomWidth: 1,
       borderBottomColor: '#dddddd',
       paddingBottom: 8,
+    },
+
+    cartScrollHint: {
+      color: '#999',
+      fontSize: 11,
+      fontWeight: '800',
+      textAlign: 'center',
+      paddingTop: 2,
+      paddingBottom: 4,
+      flexShrink: 0,
     },
 
     cartItem: {
@@ -2949,6 +3008,14 @@ const styles =
       fontWeight: '700',
       color: '#f68c45',
       marginTop: 4,
+    },
+
+    cartStockText: {
+      marginTop: 5,
+      color: '#666',
+      fontSize: 12,
+      fontWeight: '800',
+      lineHeight: 16,
     },
 
     cartInvalidText: {
@@ -3030,6 +3097,8 @@ const styles =
       borderTopColor: '#dddddd',
       paddingTop: 8,
       paddingBottom: 4,
+      marginTop: 'auto',
+      flexShrink: 0,
     },
 
     totalRow: {

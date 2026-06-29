@@ -14,7 +14,6 @@ import {
   useWindowDimensions,
   ScrollView,
   StatusBar,
-  Platform,
 } from 'react-native';
 
 import {
@@ -25,12 +24,45 @@ import {
 import {
   placeOrder,
   extractApiErrorMessage,
+  validateCartAgainstLatestMenu,
 } from '../api/dinesync';
 
 import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
 import { useTableStatus } from '../context/TableStatusContext';
 import { TABLE_ASSIGNMENT_MESSAGE } from '../constants/tableStatus';
+
+const normalizeText = (value) => {
+  return String(value || '')
+    .trim()
+    .toLowerCase();
+};
+
+const normalizeInventoryType = (value) => {
+  return normalizeText(value)
+    .replace(/[-\s]+/g, '_');
+};
+
+const isCustomCartItem = (item) => {
+  const category =
+    normalizeText(item?.category);
+
+  const inventoryType =
+    normalizeInventoryType(
+      item?.inventory_type
+    );
+
+  const name =
+    normalizeText(item?.name);
+
+  return (
+    category === 'chef oppa special' ||
+    inventoryType === 'custom' ||
+    name.includes(
+      'custom chef oppa special'
+    )
+  );
+};
 
 export default function PaymentScreen({
   route,
@@ -52,31 +84,17 @@ export default function PaymentScreen({
       const longest =
         Math.max(width, height);
 
-      const usableWidth =
-        width -
-        insets.left -
-        insets.right;
-
-      const usableHeight =
-        height -
-        insets.top -
-        insets.bottom;
-
       const isPhone =
         shortest < 600;
 
       const isVeryNarrow =
-        usableWidth < 390;
+        width < 430;
 
       const isLandscape =
         width > height;
 
-      const isShortHeight =
-        usableHeight < 650;
-
-      const isShortLandscape =
-        isLandscape &&
-        usableHeight < 430;
+      const base =
+        Math.min(shortest / 768, 1.05);
 
       const clamp = (
         value,
@@ -89,89 +107,45 @@ export default function PaymentScreen({
         );
       };
 
-      const base =
-        isPhone
-          ? Math.min(shortest / 390, 1)
-          : Math.min(shortest / 768, 1.05);
-
       const scale = (
         size,
-        min = size * 0.72,
-        max = size * 1.12
+        min = size * 0.65,
+        max = size * 1.08
       ) => {
         return Math.round(
           clamp(size * base, min, max)
         );
       };
 
-      const compact =
-        isPhone ||
-        isShortHeight;
-
-      const methodColumns =
-        isLandscape && usableWidth >= 720
-          ? 3
-          : 1;
-
-      const methodGap =
+      const methodCardWidth =
         isPhone
           ? isLandscape
-            ? scale(10, 8, 12)
-            : scale(14, 12, 16)
-          : scale(20, 12, 20);
-
-      const methodAvailableWidth =
-        usableWidth -
-        (
-          isVeryNarrow
-            ? 24
-            : isPhone
-              ? 28
-              : 64
-        );
-
-      const methodCardWidth =
-        methodColumns === 3
-          ? clamp(
-            (
-              methodAvailableWidth -
-              methodGap * 2
-            ) / 3,
-            isPhone ? 170 : 220,
-            isPhone ? 235 : 340
-          )
-          : isPhone
-            ? isVeryNarrow
-              ? clamp(methodAvailableWidth, 260, 350)
-              : clamp(usableWidth * 0.88, 280, 420)
-            : clamp(usableWidth * 0.52, 360, 460);
+            ? clamp(width * 0.3, 170, 230)
+            : isVeryNarrow
+              ? clamp(width - 44, 250, 340)
+              : clamp(width * 0.88, 270, 400)
+          : isLandscape
+            ? clamp(width * 0.26, 230, 330)
+            : clamp(width * 0.36, 250, 350);
 
       const methodCardHeight =
-        methodColumns === 3
-          ? isShortLandscape
-            ? clamp(usableHeight * 0.32, 118, 148)
-            : isPhone
-              ? clamp(usableHeight * 0.34, 130, 165)
-              : clamp(usableHeight * 0.34, 180, 240)
-          : isPhone
-            ? scale(158, 138, 172)
-            : scale(230, 175, 255);
+        isPhone
+          ? isLandscape
+            ? clamp(height * 0.28, 112, 142)
+            : scale(150, 132, 162)
+          : isLandscape
+            ? scale(230, 165, 245)
+            : scale(240, 175, 255);
 
       return {
         isPhone,
         isVeryNarrow,
         isLandscape,
-        compact,
-        methodColumns,
 
         safeTopExtra: 0,
 
         safeBottomExtra:
-          Math.max(
-            insets.bottom +
-            (Platform.OS === 'android' ? 10 : 8),
-            16
-          ),
+          Math.max(insets.bottom + 6, 12),
 
         containerPadding:
           isVeryNarrow
@@ -186,34 +160,30 @@ export default function PaymentScreen({
           scale(12, 8, 14),
 
         backText:
-          isVeryNarrow
-            ? scale(14, 12, 15)
-            : isPhone
-              ? scale(16, 14, 17)
-              : scale(26, 18, 28),
+          isPhone
+            ? scale(17, 15, 18)
+            : scale(28, 17, 28),
 
         tableText:
-          isVeryNarrow
-            ? scale(14, 12, 15)
-            : isPhone
-              ? scale(16, 14, 17)
-              : scale(24, 16, 24),
+          isPhone
+            ? scale(17, 15, 18)
+            : scale(24, 16, 24),
 
         logo:
           isPhone
             ? isLandscape
-              ? scale(44, 36, 48)
-              : scale(56, 44, 62)
-            : scale(80, 50, 82),
+              ? scale(46, 36, 48)
+              : scale(56, 44, 60)
+            : scale(80, 50, 80),
 
         header:
           isVeryNarrow
-            ? scale(32, 28, 34)
+            ? scale(34, 30, 36)
             : isPhone
               ? isLandscape
-                ? scale(32, 28, 34)
-                : scale(40, 34, 42)
-              : scale(56, 38, 60),
+                ? scale(34, 28, 36)
+                : scale(42, 34, 44)
+              : scale(58, 36, 60),
 
         headerMargin:
           isPhone
@@ -225,9 +195,9 @@ export default function PaymentScreen({
         subHeader:
           isPhone
             ? isLandscape
-              ? scale(18, 16, 19)
-              : scale(22, 19, 24)
-            : scale(32, 22, 34),
+              ? scale(19, 16, 20)
+              : scale(23, 20, 24)
+            : scale(34, 22, 34),
 
         subHeaderBottom:
           isPhone
@@ -251,16 +221,17 @@ export default function PaymentScreen({
           scale(16, 12, 18),
 
         warningText:
-          isPhone
-            ? scale(14, 12, 15)
-            : scale(18, 12, 18),
+          scale(18, 12, 18),
 
         warningLine:
-          isPhone
-            ? scale(20, 17, 21)
-            : scale(25, 18, 25),
+          scale(25, 18, 25),
 
-        methodGap,
+        methodGap:
+          isPhone
+            ? isLandscape
+              ? scale(10, 8, 12)
+              : scale(14, 12, 16)
+            : scale(20, 12, 20),
 
         methodCardWidth,
 
@@ -335,8 +306,8 @@ export default function PaymentScreen({
         totalText:
           isPhone
             ? isLandscape
-              ? scale(19, 16, 20)
-              : scale(24, 20, 26)
+              ? scale(20, 17, 21)
+              : scale(25, 21, 27)
             : scale(38, 24, 38),
 
         buttonPaddingV:
@@ -354,25 +325,18 @@ export default function PaymentScreen({
 
         buttonText:
           isPhone
-            ? scale(17, 15, 19)
+            ? scale(18, 16, 19)
             : scale(24, 17, 24),
 
         disclaimer:
-          isPhone
-            ? scale(14, 12, 15)
-            : scale(17, 12, 17),
+          scale(17, 12, 17),
 
         loadingText:
-          isPhone
-            ? scale(17, 15, 19)
-            : scale(20, 15, 20),
+          scale(20, 15, 20),
       };
     }, [
       width,
       height,
-      insets.top,
-      insets.left,
-      insets.right,
       insets.bottom,
     ]);
 
@@ -452,30 +416,9 @@ export default function PaymentScreen({
 
   const hasCustomRequest =
     useMemo(() => {
-      return cartItems.some((item) => {
-        const category =
-          String(item?.category || '')
-            .trim()
-            .toLowerCase();
-
-        const inventoryType =
-          String(item?.inventory_type || '')
-            .trim()
-            .toLowerCase();
-
-        const name =
-          String(item?.name || '')
-            .trim()
-            .toLowerCase();
-
-        return (
-          category === 'chef oppa special' ||
-          inventoryType === 'custom' ||
-          name.includes(
-            'custom chef oppa special'
-          )
-        );
-      });
+      return cartItems.some(
+        isCustomCartItem
+      );
     }, [cartItems]);
 
   const getSelectedOption = () => {
@@ -592,6 +535,33 @@ export default function PaymentScreen({
     );
   };
 
+  const validateBeforePayment = async () => {
+    const cartInventoryCheck =
+      await refreshCartInventory();
+
+    if (!cartInventoryCheck.valid) {
+      return cartInventoryCheck;
+    }
+
+    try {
+      await validateCartAgainstLatestMenu(
+        cartItems
+      );
+
+      return {
+        valid: true,
+        message: '',
+      };
+    } catch (error) {
+      return {
+        valid: false,
+        message:
+          error?.message ||
+          'Unable to verify latest stock. Please try again.',
+      };
+    }
+  };
+
   const handlePayment = async () => {
     if (
       !cartItems ||
@@ -659,12 +629,13 @@ export default function PaymentScreen({
       }
 
       const inventoryCheck =
-        await refreshCartInventory();
+        await validateBeforePayment();
 
       if (!inventoryCheck.valid) {
         Alert.alert(
           'Limited Stock',
-          inventoryCheck.message
+          inventoryCheck.message ||
+            'Unable to verify latest stock. Please try again.'
         );
 
         return;
@@ -782,9 +753,17 @@ export default function PaymentScreen({
         errorMessage ===
           TABLE_ASSIGNMENT_MESSAGE;
 
+      const normalizedError =
+        normalizeText(errorMessage);
+
       const isInventoryError =
         statusCode === 422 ||
-        statusCode === 400;
+        statusCode === 400 ||
+        normalizedError.includes('stock') ||
+        normalizedError.includes('available') ||
+        normalizedError.includes('sold out') ||
+        normalizedError.includes('quantity') ||
+        normalizedError.includes('unavailable');
 
       Alert.alert(
         isAssignmentError
@@ -855,7 +834,6 @@ export default function PaymentScreen({
           ]}
           numberOfLines={2}
           adjustsFontSizeToFit
-          minimumFontScale={0.75}
         >
           {method}
         </Text>
@@ -876,7 +854,6 @@ export default function PaymentScreen({
               : 4
           }
           adjustsFontSizeToFit
-          minimumFontScale={0.78}
         >
           {subtitle}
         </Text>
@@ -895,12 +872,7 @@ export default function PaymentScreen({
 
         <SafeAreaView
           style={styles.safeAreaLight}
-          edges={[
-            'top',
-            'left',
-            'right',
-            'bottom',
-          ]}
+          edges={['top']}
         >
           <View style={styles.loadingContainer}>
             <ActivityIndicator
@@ -935,12 +907,7 @@ export default function PaymentScreen({
 
       <SafeAreaView
         style={styles.safeAreaLight}
-        edges={[
-          'top',
-          'left',
-          'right',
-          'bottom',
-        ]}
+        edges={['top']}
       >
         <ScrollView
           style={styles.container}
@@ -959,7 +926,6 @@ export default function PaymentScreen({
           ]}
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
-          bounces={false}
         >
           <View
             style={[
@@ -985,7 +951,6 @@ export default function PaymentScreen({
                   },
                 ]}
                 numberOfLines={1}
-                adjustsFontSizeToFit
               >
                 {'<'} Go Back
               </Text>
@@ -1000,7 +965,6 @@ export default function PaymentScreen({
                 },
               ]}
               numberOfLines={1}
-              adjustsFontSizeToFit
             >
               Table {finalTableNumber || '-'}
             </Text>
@@ -1034,7 +998,6 @@ export default function PaymentScreen({
             ]}
             numberOfLines={1}
             adjustsFontSizeToFit
-            minimumFontScale={0.75}
           >
             Payment
           </Text>
@@ -1051,7 +1014,6 @@ export default function PaymentScreen({
             ]}
             numberOfLines={1}
             adjustsFontSizeToFit
-            minimumFontScale={0.75}
           >
             Select Payment Method
           </Text>
@@ -1142,7 +1104,6 @@ export default function PaymentScreen({
               ]}
               numberOfLines={1}
               adjustsFontSizeToFit
-              minimumFontScale={0.75}
             >
               Total: ₱
               {Number(total || 0).toFixed(2)}
@@ -1171,7 +1132,6 @@ export default function PaymentScreen({
                   },
                 ]}
                 numberOfLines={1}
-                adjustsFontSizeToFit
               >
                 Confirm Order
               </Text>
@@ -1222,18 +1182,18 @@ const styles =
       justifyContent:
         'space-between',
       alignItems: 'center',
-      flexWrap: 'nowrap',
+      flexWrap: 'wrap',
     },
 
     topLeft: {
       flex: 1,
-      minWidth: 0,
+      minWidth: 110,
       alignItems: 'flex-start',
     },
 
     topRight: {
       flex: 1,
-      minWidth: 0,
+      minWidth: 60,
       alignItems: 'flex-end',
     },
 
@@ -1244,7 +1204,7 @@ const styles =
 
     tableText: {
       flex: 1,
-      minWidth: 0,
+      minWidth: 110,
       color: '#3b3b3b',
       fontWeight: '900',
       textAlign: 'center',

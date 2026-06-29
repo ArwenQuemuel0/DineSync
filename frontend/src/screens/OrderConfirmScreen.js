@@ -29,6 +29,7 @@ import {
 import {
   placeOrder,
   extractApiErrorMessage,
+  validateCartAgainstLatestMenu,
 } from '../api/dinesync';
 
 import { useCart } from '../context/CartContext';
@@ -41,11 +42,6 @@ import {
   isCustomItem,
 } from '../utils/inventory';
 
-const VALID_NORMAL_INVENTORY_TYPES = [
-  'per_order',
-  'per_head',
-];
-
 const normalizeText = (value) => {
   return String(value || '')
     .trim()
@@ -55,6 +51,18 @@ const normalizeText = (value) => {
 const normalizeInventoryType = (value) => {
   return normalizeText(value)
     .replace(/[-\s]+/g, '_');
+};
+
+const isAvailableFalse = (value) => {
+  return (
+    value === false ||
+    value === 0 ||
+    value === '0' ||
+    normalizeText(value) === 'false' ||
+    normalizeText(value) === 'no' ||
+    normalizeText(value) === 'unavailable' ||
+    normalizeText(value) === 'sold out'
+  );
 };
 
 const isAvailableTrue = (value) => {
@@ -68,127 +76,151 @@ const isAvailableTrue = (value) => {
   );
 };
 
-const hasInventoryType = (item) => {
-  return (
-    item?.inventory_type !== null &&
-    item?.inventory_type !== undefined &&
-    String(item.inventory_type).trim() !== ''
-  );
-};
+const toNumberOrNull = (value) => {
+  if (
+    value === null ||
+    value === undefined ||
+    value === ''
+  ) {
+    return null;
+  }
 
-const hasDailyLimit = (item) => {
-  return (
-    item?.daily_limit !== null &&
-    item?.daily_limit !== undefined &&
-    String(item.daily_limit).trim() !== ''
-  );
-};
-
-const toNumber = (value) => {
   const numberValue =
     Number(value);
 
   return Number.isFinite(numberValue)
     ? numberValue
-    : 0;
+    : null;
 };
 
-const getRemainingToday = (item) => {
-  return toNumber(
-    item?.remaining_today
-  );
-};
+const isIngredientCustomItem = (item) => {
+  const category =
+    normalizeText(item?.category);
 
-const getMaxOrderQuantity = (item) => {
-  return toNumber(
-    item?.max_order_quantity
-  );
-};
-
-const getAllowedOrderQuantity = (item) => {
-  if (!item) {
-    return 0;
-  }
-
-  if (isCustomItem(item)) {
-    return 1;
-  }
-
-  const maxOrderQuantity =
-    getMaxOrderQuantity(item);
-
-  const remainingToday =
-    getRemainingToday(item);
-
-  if (
-    maxOrderQuantity > 0 &&
-    remainingToday > 0
-  ) {
-    return Math.min(
-      maxOrderQuantity,
-      remainingToday
-    );
-  }
-
-  if (maxOrderQuantity > 0) {
-    return maxOrderQuantity;
-  }
-
-  if (remainingToday > 0) {
-    return remainingToday;
-  }
-
-  return 0;
-};
-
-const isValidDailyInventoryMenuItem = (item) => {
   const inventoryType =
     normalizeInventoryType(
       item?.inventory_type
     );
 
-  const available =
-    isAvailableTrue(
-      item?.is_available
-    );
-
-  if (!available) {
-    return false;
-  }
-
-  if (!hasInventoryType(item)) {
-    return false;
-  }
-
-  if (inventoryType === 'custom') {
-    return true;
-  }
-
-  if (
-    !VALID_NORMAL_INVENTORY_TYPES.includes(
-      inventoryType
-    )
-  ) {
-    return false;
-  }
-
-  if (!hasDailyLimit(item)) {
-    return false;
-  }
-
-  const remainingToday =
-    getRemainingToday(item);
-
-  const maxOrderQuantity =
-    getMaxOrderQuantity(item);
+  const name =
+    normalizeText(item?.name);
 
   return (
-    remainingToday > 0 ||
-    maxOrderQuantity > 0
+    isCustomItem(item) ||
+    category === 'chef oppa special' ||
+    inventoryType === 'custom' ||
+    name.includes(
+      'custom chef oppa special'
+    )
   );
 };
 
-const validateDailyInventoryCartItems = (
+const getMaxOrderQuantity = (item) => {
+  if (!item) {
+    return null;
+  }
+
+  if (isIngredientCustomItem(item)) {
+    return 1;
+  }
+
+  const maxOrderQuantity =
+    toNumberOrNull(
+      item?.max_order_quantity
+    );
+
+  if (maxOrderQuantity === null) {
+    return null;
+  }
+
+  return Math.max(
+    0,
+    maxOrderQuantity
+  );
+};
+
+const getBackendStockText = (item) => {
+  if (!item) {
+    return 'Available';
+  }
+
+  if (isIngredientCustomItem(item)) {
+    if (
+      isAvailableFalse(
+        item?.is_available
+      )
+    ) {
+      return (
+        item?.unavailable_reason ||
+        item?.stock_label ||
+        'Chef Oppa Special is currently unavailable.'
+      );
+    }
+
+    return 'Custom request available';
+  }
+
+  if (item?.unavailable_reason) {
+    return String(
+      item.unavailable_reason
+    );
+  }
+
+  if (item?.stock_label) {
+    return String(item.stock_label);
+  }
+
+  if (item?.daily_inventory_label) {
+    return String(
+      item.daily_inventory_label
+    );
+  }
+
+  const maxQuantity =
+    getMaxOrderQuantity(item);
+
+  if (maxQuantity > 0) {
+    return `Only ${maxQuantity} order(s) available based on ingredient stock.`;
+  }
+
+  if (maxQuantity === 0) {
+    return 'Unavailable based on ingredient stock.';
+  }
+
+  if (
+    isAvailableFalse(
+      item?.is_available
+    )
+  ) {
+    return 'Currently unavailable based on ingredient stock.';
+  }
+
+  return 'Available';
+};
+
+const isBackendItemAvailable = (item) => {
+  if (!item) {
+    return false;
+  }
+
+  if (isIngredientCustomItem(item)) {
+    return isAvailableTrue(
+      item?.is_available
+    );
+  }
+
+  const maxQuantity =
+    getMaxOrderQuantity(item);
+
+  return (
+    !isAvailableFalse(
+      item?.is_available
+    ) &&
+    maxQuantity !== 0
+  );
+};
+
+const validateBackendCartItems = (
   cartItems = [],
   getEnrichedItem
 ) => {
@@ -199,12 +231,15 @@ const validateDailyInventoryCartItems = (
         : cartItem;
 
     const customItem =
-      isCustomItem(item);
+      isIngredientCustomItem(item);
+
+    const quantity =
+      customItem
+        ? Number(cartItem.quantity || 1)
+        : Number(cartItem.quantity || 0);
 
     if (customItem) {
-      if (
-        Number(cartItem.quantity || 0) !== 1
-      ) {
+      if (quantity !== 1) {
         return {
           valid: false,
           message:
@@ -213,17 +248,14 @@ const validateDailyInventoryCartItems = (
       }
 
       if (
-        !isAvailableTrue(
+        isAvailableFalse(
           item?.is_available
-        ) ||
-        normalizeInventoryType(
-          item?.inventory_type
-        ) !== 'custom'
+        )
       ) {
         return {
           valid: false,
           message:
-            'Chef Oppa Special is currently not enabled.',
+            getBackendStockText(item),
         };
       }
 
@@ -231,37 +263,34 @@ const validateDailyInventoryCartItems = (
     }
 
     if (
-      !isValidDailyInventoryMenuItem(item)
+      !isBackendItemAvailable(item)
     ) {
       return {
         valid: false,
         message:
-          `${item?.name || cartItem?.name || 'An item'} is no longer enabled in Daily Menu Inventory.`,
+          getBackendStockText(item),
       };
     }
 
-    const allowedQuantity =
-      getAllowedOrderQuantity(item);
+    const maxQuantity =
+      getMaxOrderQuantity(item);
 
-    const requestedQuantity =
-      Number(cartItem.quantity || 0);
-
-    if (allowedQuantity <= 0) {
+    if (quantity <= 0) {
       return {
         valid: false,
         message:
-          `${item?.name || cartItem?.name || 'An item'} is sold out for today.`,
+          `${item?.name || cartItem?.name || 'An item'} has invalid quantity.`,
       };
     }
 
     if (
-      requestedQuantity >
-      allowedQuantity
+      maxQuantity !== null &&
+      quantity > maxQuantity
     ) {
       return {
         valid: false,
         message:
-          `${item?.name || cartItem?.name || 'An item'} only has ${allowedQuantity} available today.`,
+          `${item?.name || cartItem?.name || 'An item'} only has ${maxQuantity} order(s) available based on ingredient stock. Please reduce the quantity.`,
       };
     }
   }
@@ -649,7 +678,7 @@ export default function OrderConfirmScreen({
             ? getEnrichedItem(item)
             : item;
 
-        return isCustomItem(enrichedItem);
+        return isIngredientCustomItem(enrichedItem);
       });
     }, [
       cartItems,
@@ -814,10 +843,33 @@ export default function OrderConfirmScreen({
       return inventoryCheck;
     }
 
-    return validateDailyInventoryCartItems(
-      cartItems,
-      getEnrichedItem
-    );
+    const localValidation =
+      validateBackendCartItems(
+        cartItems,
+        getEnrichedItem
+      );
+
+    if (!localValidation.valid) {
+      return localValidation;
+    }
+
+    try {
+      await validateCartAgainstLatestMenu(
+        cartItems
+      );
+
+      return {
+        valid: true,
+        message: '',
+      };
+    } catch (error) {
+      return {
+        valid: false,
+        message:
+          error?.message ||
+          'Unable to verify latest stock. Please try again.',
+      };
+    }
   };
 
   const handleIncreaseItem = (item) => {
@@ -827,7 +879,7 @@ export default function OrderConfirmScreen({
         : item;
 
     const customItem =
-      isCustomItem(enrichedItem);
+      isIngredientCustomItem(enrichedItem);
 
     if (customItem) {
       Alert.alert(
@@ -839,20 +891,22 @@ export default function OrderConfirmScreen({
     }
 
     if (
-      !isValidDailyInventoryMenuItem(
+      !isBackendItemAvailable(
         enrichedItem
       )
     ) {
       Alert.alert(
         'Unavailable',
-        `${item?.name || 'This item'} is no longer enabled in Daily Menu Inventory.`
+        getBackendStockText(
+          enrichedItem
+        )
       );
 
       return;
     }
 
     const allowedQuantity =
-      getAllowedOrderQuantity(
+      getMaxOrderQuantity(
         enrichedItem
       );
 
@@ -860,12 +914,15 @@ export default function OrderConfirmScreen({
       Number(item.quantity || 0);
 
     if (
-      allowedQuantity <= 0 ||
-      currentQuantity >= allowedQuantity
+      allowedQuantity !== null &&
+      (
+        allowedQuantity <= 0 ||
+        currentQuantity >= allowedQuantity
+      )
     ) {
       Alert.alert(
         'Limited Stock',
-        `You can only order up to ${allowedQuantity} of this item today.`
+        `You can only order up to ${allowedQuantity} of this item based on ingredient stock.`
       );
 
       return;
@@ -928,7 +985,7 @@ export default function OrderConfirmScreen({
       Alert.alert(
         'Limited Stock',
         inventoryCheck.message ||
-          'Some items are no longer available today.'
+          'Unable to verify latest stock. Please try again.'
       );
 
       return;
@@ -1051,7 +1108,7 @@ export default function OrderConfirmScreen({
         Alert.alert(
           'Limited Stock',
           inventoryCheck.message ||
-            'Some items are no longer available today.'
+            'Unable to verify latest stock. Please try again.'
         );
 
         return;
@@ -1172,9 +1229,17 @@ export default function OrderConfirmScreen({
         errorMessage ===
           TABLE_ASSIGNMENT_MESSAGE;
 
+      const normalizedError =
+        normalizeText(errorMessage);
+
       const isInventoryError =
         statusCode === 422 ||
-        statusCode === 400;
+        statusCode === 400 ||
+        normalizedError.includes('stock') ||
+        normalizedError.includes('available') ||
+        normalizedError.includes('sold out') ||
+        normalizedError.includes('quantity') ||
+        normalizedError.includes('unavailable');
 
       Alert.alert(
         isAssignmentError
@@ -1199,7 +1264,7 @@ export default function OrderConfirmScreen({
         : item;
 
     const customItem =
-      isCustomItem(enrichedItem);
+      isIngredientCustomItem(enrichedItem);
 
     const quantity =
       customItem
@@ -1230,26 +1295,32 @@ export default function OrderConfirmScreen({
     const allowedQuantity =
       customItem
         ? 1
-        : getAllowedOrderQuantity(
+        : getMaxOrderQuantity(
             enrichedItem
           );
 
-    const invalidToday =
+    const invalidStock =
       !customItem &&
-      !isValidDailyInventoryMenuItem(
+      !isBackendItemAvailable(
         enrichedItem
       );
 
     const overLimit =
       !customItem &&
+      allowedQuantity !== null &&
       allowedQuantity > 0 &&
       quantity > allowedQuantity;
 
     const atMax =
       customItem ||
-      invalidToday ||
-      allowedQuantity <= 0 ||
-      quantity >= allowedQuantity;
+      invalidStock ||
+      (
+        allowedQuantity !== null &&
+        (
+          allowedQuantity <= 0 ||
+          quantity >= allowedQuantity
+        )
+      );
 
     return (
       <View
@@ -1333,21 +1404,21 @@ export default function OrderConfirmScreen({
                 ₱{formatMoney(price)} each
               </Text>
 
-              {allowedQuantity > 0 ? (
-                <Text
-                  style={[
-                    styles.itemLimitText,
-                    {
-                      fontSize:
-                        responsive.noticeText,
-                    },
-                  ]}
-                >
-                  Available today: {allowedQuantity}
-                </Text>
-              ) : null}
+              <Text
+                style={[
+                  styles.itemLimitText,
+                  {
+                    fontSize:
+                      responsive.noticeText,
+                  },
+                ]}
+              >
+                {getBackendStockText(
+                  enrichedItem
+                )}
+              </Text>
 
-              {invalidToday ? (
+              {invalidStock ? (
                 <Text
                   style={[
                     styles.invalidItemText,
@@ -1357,7 +1428,9 @@ export default function OrderConfirmScreen({
                     },
                   ]}
                 >
-                  Not enabled in Daily Menu Inventory
+                  {getBackendStockText(
+                    enrichedItem
+                  )}
                 </Text>
               ) : null}
 
@@ -1371,7 +1444,7 @@ export default function OrderConfirmScreen({
                     },
                   ]}
                 >
-                  Quantity exceeds today's limit
+                  Quantity exceeds latest ingredient stock
                 </Text>
               ) : null}
             </>
