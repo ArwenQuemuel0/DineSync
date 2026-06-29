@@ -39,50 +39,9 @@ import { TABLE_ASSIGNMENT_MESSAGE } from '../constants/tableStatus';
 import {
   getItemId,
   isCustomItem,
+  isValidIngredientInventoryMenuItem,
+  getAvailabilityDisplayText,
 } from '../utils/inventory';
-
-const VALID_NORMAL_INVENTORY_TYPES = [
-  'per_order',
-  'per_head',
-];
-
-const normalizeText = (value) => {
-  return String(value || '')
-    .trim()
-    .toLowerCase();
-};
-
-const normalizeInventoryType = (value) => {
-  return normalizeText(value)
-    .replace(/[-\s]+/g, '_');
-};
-
-const isAvailableTrue = (value) => {
-  return (
-    value === true ||
-    value === 1 ||
-    value === '1' ||
-    normalizeText(value) === 'true' ||
-    normalizeText(value) === 'yes' ||
-    normalizeText(value) === 'available'
-  );
-};
-
-const hasInventoryType = (item) => {
-  return (
-    item?.inventory_type !== null &&
-    item?.inventory_type !== undefined &&
-    String(item.inventory_type).trim() !== ''
-  );
-};
-
-const hasDailyLimit = (item) => {
-  return (
-    item?.daily_limit !== null &&
-    item?.daily_limit !== undefined &&
-    String(item.daily_limit).trim() !== ''
-  );
-};
 
 const toNumber = (value) => {
   const numberValue =
@@ -94,14 +53,36 @@ const toNumber = (value) => {
 };
 
 const getRemainingToday = (item) => {
+  if (!item) {
+    return 0;
+  }
+
+  if (isCustomItem(item)) {
+    return 1;
+  }
+
   return toNumber(
-    item?.remaining_today
+    item?.remaining_today ??
+      item?.available_quantity ??
+      item?.max_order_quantity ??
+      0
   );
 };
 
 const getMaxOrderQuantity = (item) => {
+  if (!item) {
+    return 0;
+  }
+
+  if (isCustomItem(item)) {
+    return 1;
+  }
+
   return toNumber(
-    item?.max_order_quantity
+    item?.max_order_quantity ??
+      item?.remaining_today ??
+      item?.available_quantity ??
+      0
   );
 };
 
@@ -141,54 +122,18 @@ const getAllowedOrderQuantity = (item) => {
   return 0;
 };
 
-const isValidDailyInventoryMenuItem = (item) => {
-  const inventoryType =
-    normalizeInventoryType(
-      item?.inventory_type
-    );
-
-  const available =
-    isAvailableTrue(
-      item?.is_available
-    );
-
-  if (!available) {
-    return false;
-  }
-
-  if (!hasInventoryType(item)) {
-    return false;
-  }
-
-  if (inventoryType === 'custom') {
-    return true;
-  }
-
-  if (
-    !VALID_NORMAL_INVENTORY_TYPES.includes(
-      inventoryType
-    )
-  ) {
-    return false;
-  }
-
-  if (!hasDailyLimit(item)) {
-    return false;
-  }
-
-  const remainingToday =
-    getRemainingToday(item);
-
-  const maxOrderQuantity =
-    getMaxOrderQuantity(item);
-
-  return (
-    remainingToday > 0 ||
-    maxOrderQuantity > 0
+const isValidOrderInventoryItem = (item) => {
+  return isValidIngredientInventoryMenuItem(
+    item
   );
 };
 
-const validateDailyInventoryCartItems = (
+// Compatibility wrapper para hindi masira existing calls
+const isValidDailyInventoryMenuItem = (item) => {
+  return isValidOrderInventoryItem(item);
+};
+
+const validateIngredientCartItems = (
   cartItems = [],
   getEnrichedItem
 ) => {
@@ -212,31 +157,16 @@ const validateDailyInventoryCartItems = (
         };
       }
 
-      if (
-        !isAvailableTrue(
-          item?.is_available
-        ) ||
-        normalizeInventoryType(
-          item?.inventory_type
-        ) !== 'custom'
-      ) {
-        return {
-          valid: false,
-          message:
-            'Chef Oppa Special is currently not enabled.',
-        };
-      }
-
       continue;
     }
 
     if (
-      !isValidDailyInventoryMenuItem(item)
+      !isValidOrderInventoryItem(item)
     ) {
       return {
         valid: false,
         message:
-          `${item?.name || cartItem?.name || 'An item'} is no longer enabled in Daily Menu Inventory.`,
+          `${item?.name || cartItem?.name || 'An item'} is no longer available based on ingredient stock.`,
       };
     }
 
@@ -250,7 +180,7 @@ const validateDailyInventoryCartItems = (
       return {
         valid: false,
         message:
-          `${item?.name || cartItem?.name || 'An item'} is sold out for today.`,
+          `${item?.name || cartItem?.name || 'An item'} is currently out of stock.`,
       };
     }
 
@@ -261,7 +191,7 @@ const validateDailyInventoryCartItems = (
       return {
         valid: false,
         message:
-          `${item?.name || cartItem?.name || 'An item'} only has ${allowedQuantity} available today.`,
+          `${item?.name || cartItem?.name || 'An item'} only has ${allowedQuantity} available based on ingredient stock.`,
       };
     }
   }
@@ -814,7 +744,7 @@ export default function OrderConfirmScreen({
       return inventoryCheck;
     }
 
-    return validateDailyInventoryCartItems(
+    return validateIngredientCartItems(
       cartItems,
       getEnrichedItem
     );
@@ -839,13 +769,14 @@ export default function OrderConfirmScreen({
     }
 
     if (
-      !isValidDailyInventoryMenuItem(
+      !isValidOrderInventoryItem(
         enrichedItem
       )
     ) {
       Alert.alert(
         'Unavailable',
-        `${item?.name || 'This item'} is no longer enabled in Daily Menu Inventory.`
+        getAvailabilityDisplayText(enrichedItem) ||
+          `${item?.name || 'This item'} is no longer available based on ingredient stock.`
       );
 
       return;
@@ -865,7 +796,7 @@ export default function OrderConfirmScreen({
     ) {
       Alert.alert(
         'Limited Stock',
-        `You can only order up to ${allowedQuantity} of this item today.`
+        `You can only order up to ${allowedQuantity} of this item.`
       );
 
       return;
@@ -899,8 +830,13 @@ export default function OrderConfirmScreen({
       getItemId(item)
     );
   };
-
   const handleFinalConfirm = async () => {
+    console.log('CONFIRM BUTTON PRESSED');
+
+    if (loading) {
+      return;
+    }
+
     if (!cartItems || cartItems.length === 0) {
       Alert.alert(
         'Empty Order',
@@ -924,11 +860,16 @@ export default function OrderConfirmScreen({
     const inventoryCheck =
       await validateBeforeConfirm();
 
+    console.log(
+      'CONFIRM INVENTORY CHECK:',
+      inventoryCheck
+    );
+
     if (!inventoryCheck.valid) {
       Alert.alert(
         'Limited Stock',
         inventoryCheck.message ||
-          'Some items are no longer available today.'
+          'Some items are no longer available based on ingredient stock.'
       );
 
       return;
@@ -949,28 +890,13 @@ export default function OrderConfirmScreen({
       return;
     }
 
-    Alert.alert(
-      'Confirm Order',
-      getConfirmDialogMessage(
-        paymentSnapshot.label
-      ),
-      [
-        {
-          text: 'Go Back',
-          style: 'cancel',
-        },
-        {
-          text: 'Confirm Order',
-          style: 'destructive',
-          onPress: () =>
-            submitOrder(
-              paymentSnapshot
-            ),
-        },
-      ]
+    console.log(
+      'SUBMITTING ORDER DIRECTLY:',
+      paymentSnapshot
     );
-  };
 
+    submitOrder(paymentSnapshot);
+  };
   const goToOrderStatusWithMessage = (
     orderId,
     message
@@ -1051,7 +977,7 @@ export default function OrderConfirmScreen({
         Alert.alert(
           'Limited Stock',
           inventoryCheck.message ||
-            'Some items are no longer available today.'
+            'Some items are no longer available based on ingredient stock.'
         );
 
         return;
@@ -1069,12 +995,24 @@ export default function OrderConfirmScreen({
         return;
       }
 
-      const orderResponse =
-        await placeOrder(
-          cartItems,
-          finalTableNumber,
-          selectedPaymentOption.apiMethod
-        );
+     console.log('SUBMIT ORDER START:', {
+  cartItems,
+  finalTableNumber,
+  paymentMethod:
+    selectedPaymentOption.apiMethod,
+});
+
+const orderResponse =
+  await placeOrder(
+    cartItems,
+    finalTableNumber,
+    selectedPaymentOption.apiMethod
+  );
+
+console.log(
+  'SUBMIT ORDER RESPONSE:',
+  orderResponse
+);
 
       if (
         !orderResponse.success ||
@@ -1234,9 +1172,9 @@ export default function OrderConfirmScreen({
             enrichedItem
           );
 
-    const invalidToday =
+    const invalidStock =
       !customItem &&
-      !isValidDailyInventoryMenuItem(
+      !isValidOrderInventoryItem(
         enrichedItem
       );
 
@@ -1247,7 +1185,7 @@ export default function OrderConfirmScreen({
 
     const atMax =
       customItem ||
-      invalidToday ||
+      invalidStock ||
       allowedQuantity <= 0 ||
       quantity >= allowedQuantity;
 
@@ -1343,11 +1281,11 @@ export default function OrderConfirmScreen({
                     },
                   ]}
                 >
-                  Available today: {allowedQuantity}
+                  Available: {allowedQuantity}
                 </Text>
               ) : null}
 
-              {invalidToday ? (
+              {invalidStock ? (
                 <Text
                   style={[
                     styles.invalidItemText,
@@ -1357,7 +1295,8 @@ export default function OrderConfirmScreen({
                     },
                   ]}
                 >
-                  Not enabled in Daily Menu Inventory
+                  {getAvailabilityDisplayText(enrichedItem) ||
+                    'No longer available based on ingredient stock'}
                 </Text>
               ) : null}
 
@@ -1371,7 +1310,7 @@ export default function OrderConfirmScreen({
                     },
                   ]}
                 >
-                  Quantity exceeds today's limit
+                  Quantity exceeds available ingredient stock
                 </Text>
               ) : null}
             </>
@@ -1657,19 +1596,31 @@ export default function OrderConfirmScreen({
 
         return (
           <TouchableOpacity
-            key={option.label}
-            style={[
-              styles.paymentOption,
-              active &&
-                styles.paymentOptionActive,
-              option.disabled &&
-                styles.paymentOptionDisabled,
-            ]}
-            disabled={option.disabled}
-            onPress={() =>
-              handleSelectPayment(option)
-            }
-          >
+  key={option.label}
+  activeOpacity={0.75}
+  hitSlop={{
+    top: 8,
+    bottom: 8,
+    left: 8,
+    right: 8,
+  }}
+  style={[
+    styles.paymentOption,
+    active &&
+      styles.paymentOptionActive,
+    option.disabled &&
+      styles.paymentOptionDisabled,
+  ]}
+  disabled={option.disabled}
+  onPress={() => {
+    console.log(
+      'PAYMENT OPTION PRESSED:',
+      option.label
+    );
+
+    handleSelectPayment(option);
+  }}
+>
             <Text
               style={[
                 styles.paymentOptionTitle,
@@ -1727,20 +1678,34 @@ export default function OrderConfirmScreen({
         </Text>
       </View>
 
-      <TouchableOpacity
+         <TouchableOpacity
+        activeOpacity={0.75}
+        hitSlop={{
+          top: 12,
+          bottom: 12,
+          left: 12,
+          right: 12,
+        }}
         style={[
           styles.confirmButton,
           {
             paddingVertical:
               responsive.buttonPadding,
           },
-          cartItems.length === 0 &&
+          (
+            loading ||
+            cartItems.length === 0
+          ) &&
             styles.confirmButtonDisabled,
         ]}
         disabled={
+          loading ||
           cartItems.length === 0
         }
-        onPress={handleFinalConfirm}
+        onPress={() => {
+          console.log('CONFIRM TOUCH FIRED');
+          handleFinalConfirm();
+        }}
       >
         <Text
           style={[
@@ -1757,56 +1722,45 @@ export default function OrderConfirmScreen({
     </>
   );
 
-  const optionCard = (
-    <ScrollView
-      style={[
-        styles.optionCard,
-        {
-          padding:
-            responsive.cardPadding,
-          borderRadius:
-            responsive.cardRadius,
-          maxHeight:
-            responsive.optionMaxHeight,
-        },
-        responsive.useTwoPane &&
+    const optionCard =
+    responsive.useTwoPane ? (
+      <ScrollView
+        style={[
+          styles.optionCard,
+          {
+            padding:
+              responsive.cardPadding,
+            borderRadius:
+              responsive.cardRadius,
+            maxHeight:
+              responsive.optionMaxHeight,
+          },
           styles.optionTwoPane,
-      ]}
-      showsVerticalScrollIndicator={responsive.useTwoPane}
-      nestedScrollEnabled={true}
-      contentContainerStyle={{
-        paddingBottom:
-          responsive.useTwoPane
-            ? 20
-            : 0,
-      }}
-    >
-      {optionCardContent}
-    </ScrollView>
-  );
-
-  if (loading) {
-    return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator
-          size="large"
-          color="#f68c45"
-        />
-
-        <Text
-          style={[
-            styles.loadingText,
-            {
-              fontSize:
-                responsive.buttonText,
-            },
-          ]}
-        >
-          Processing order...
-        </Text>
+        ]}
+        showsVerticalScrollIndicator={true}
+        nestedScrollEnabled={true}
+        keyboardShouldPersistTaps="always"
+        contentContainerStyle={{
+          paddingBottom: 20,
+        }}
+      >
+        {optionCardContent}
+      </ScrollView>
+    ) : (
+      <View
+        style={[
+          styles.optionCard,
+          {
+            padding:
+              responsive.cardPadding,
+            borderRadius:
+              responsive.cardRadius,
+          },
+        ]}
+      >
+        {optionCardContent}
       </View>
     );
-  }
 
   return (
     <View style={styles.frame}>

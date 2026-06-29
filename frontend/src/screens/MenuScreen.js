@@ -58,11 +58,6 @@ const ASSIGNED_TABLE_STATUSES = [
   'active',
 ];
 
-const VALID_NORMAL_INVENTORY_TYPES = [
-  'per_order',
-  'per_head',
-];
-
 const excludedPopularCategories = [
   'Drinks',
   'Drink',
@@ -172,22 +167,6 @@ const isAvailableTrue = (value) => {
   );
 };
 
-const hasInventoryType = (item) => {
-  return (
-    item?.inventory_type !== null &&
-    item?.inventory_type !== undefined &&
-    String(item.inventory_type).trim() !== ''
-  );
-};
-
-const hasDailyLimit = (item) => {
-  return (
-    item?.daily_limit !== null &&
-    item?.daily_limit !== undefined &&
-    String(item.daily_limit).trim() !== ''
-  );
-};
-
 const toNumber = (value) => {
   const numberValue =
     Number(value);
@@ -197,24 +176,23 @@ const toNumber = (value) => {
     : 0;
 };
 
-const getRemainingToday = (item) => {
+const getRemainingQuantity = (item) => {
   return toNumber(
-    item?.remaining_today
+    item?.remaining_today ??
+      item?.available_quantity ??
+      item?.max_order_quantity
   );
 };
 
 const getMaxOrderQuantity = (item) => {
   return toNumber(
-    item?.max_order_quantity
+    item?.max_order_quantity ??
+      item?.remaining_today ??
+      item?.available_quantity
   );
 };
 
-const isValidDailyInventoryMenuItem = (item) => {
-  const inventoryType =
-    normalizeInventoryType(
-      item?.inventory_type
-    );
-
+const isValidIngredientInventoryMenuItem = (item) => {
   const available =
     isAvailableTrue(
       item?.is_available
@@ -224,35 +202,19 @@ const isValidDailyInventoryMenuItem = (item) => {
     return false;
   }
 
-  if (!hasInventoryType(item)) {
-    return false;
-  }
-
-  if (inventoryType === 'custom') {
+  if (isCustomItem(item)) {
     return true;
   }
-
-  if (
-    !VALID_NORMAL_INVENTORY_TYPES.includes(
-      inventoryType
-    )
-  ) {
-    return false;
-  }
-
-  if (!hasDailyLimit(item)) {
-    return false;
-  }
-
-  const remainingToday =
-    getRemainingToday(item);
 
   const maxOrderQuantity =
     getMaxOrderQuantity(item);
 
+  const remainingQuantity =
+    getRemainingQuantity(item);
+
   return (
-    remainingToday > 0 ||
-    maxOrderQuantity > 0
+    maxOrderQuantity > 0 ||
+    remainingQuantity > 0
   );
 };
 
@@ -359,19 +321,19 @@ export default function MenuScreen({
         useSideCart
           ? isLandscapePhone
             ? clamp(
-              Math.floor(
-                availableMenuWidth / 250
-              ),
-              1,
-              2
-            )
+                Math.floor(
+                  availableMenuWidth / 250
+                ),
+                1,
+                2
+              )
             : clamp(
-              Math.floor(
-                availableMenuWidth / 215
-              ),
-              2,
-              3
-            )
+                Math.floor(
+                  availableMenuWidth / 215
+                ),
+                2,
+                3
+              )
           : isPhoneWidth
             ? 2
             : 2;
@@ -886,20 +848,30 @@ export default function MenuScreen({
 
       if (response.success) {
         const rawItems =
-          response.data || [];
+          Array.isArray(response.data)
+            ? response.data
+            : response.data?.data || [];
 
         const visibleItems =
-          rawItems.filter(
-            isValidDailyInventoryMenuItem
-          );
-
+  rawItems.map((item) => ({
+    ...item,
+    is_available:
+      isAvailableTrue(item?.is_available) &&
+      (
+        isCustomItem(item) ||
+        getMaxOrderQuantity(item) > 0 ||
+        getRemainingQuantity(item) > 0
+      ),
+  }));
         console.log(
-          'MOBILE MENU FILTER:',
+          'MOBILE MENU INGREDIENT FILTER:',
           {
             raw_count:
               rawItems.length,
             visible_count:
               visibleItems.length,
+            debug_source:
+              response.debug_source,
           }
         );
 
@@ -1032,11 +1004,12 @@ export default function MenuScreen({
     }
 
     if (
-      !isValidDailyInventoryMenuItem(item)
+      !isValidIngredientInventoryMenuItem(item)
     ) {
       Alert.alert(
         'Unavailable',
-        'This item is not enabled in Daily Menu Inventory.'
+        getAvailabilityDisplayText(item) ||
+        'This item is currently unavailable based on ingredient stock.'
       );
 
       return;
@@ -1069,13 +1042,14 @@ export default function MenuScreen({
     }
 
     if (
-      !isValidDailyInventoryMenuItem(
+      !isValidIngredientInventoryMenuItem(
         enrichedItem
       )
     ) {
       Alert.alert(
         'Unavailable',
-        'This item is no longer enabled in Daily Menu Inventory.'
+        getAvailabilityDisplayText(enrichedItem) ||
+        'This item is no longer available based on ingredient stock.'
       );
 
       return;
@@ -1160,25 +1134,25 @@ export default function MenuScreen({
       return;
     }
 
-    const invalidDailyInventoryItems =
+    const invalidIngredientItems =
       cartItems.filter((cartItem) => {
         const enrichedItem =
           getEnrichedItem(cartItem);
 
         return (
           !isCustomItem(enrichedItem) &&
-          !isValidDailyInventoryMenuItem(
+          !isValidIngredientInventoryMenuItem(
             enrichedItem
           )
         );
       });
 
     if (
-      invalidDailyInventoryItems.length > 0
+      invalidIngredientItems.length > 0
     ) {
       Alert.alert(
         'Unavailable Item',
-        'Some items in your cart are no longer enabled in Daily Menu Inventory. Please remove them before confirming your order.'
+        'Some items in your cart are no longer available based on ingredient stock. Please remove them before confirming your order.'
       );
 
       return;
@@ -1209,34 +1183,28 @@ export default function MenuScreen({
     'All',
     ...new Set(
       menuItems
-        .filter(
-          isValidDailyInventoryMenuItem
-        )
-        .map((m) => m.category)
+  .map((m) => m.category)
         .filter(Boolean)
     ),
   ];
 
-  const filteredItems =
-    menuItems
-      .filter(
-        isValidDailyInventoryMenuItem
-      )
-      .filter((item) => {
-        const byCategory =
-          selectedCategory === 'All' ||
-          item.category === selectedCategory;
+ const filteredItems =
+  menuItems
+    .filter((item) => {
+      const byCategory =
+        selectedCategory === 'All' ||
+        item.category === selectedCategory;
 
-        const bySearch =
-          !search ||
-          (item.name || '')
-            .toLowerCase()
-            .includes(
-              search.toLowerCase()
-            );
+      const bySearch =
+        !search ||
+        (item.name || '')
+          .toLowerCase()
+          .includes(
+            search.toLowerCase()
+          );
 
-        return byCategory && bySearch;
-      })
+      return byCategory && bySearch;
+    })
       .sort((a, b) => {
         const aPopular =
           isBestSeller(a);
@@ -1288,7 +1256,7 @@ export default function MenuScreen({
       isCustomItem(item);
 
     const isValidForMobile =
-      isValidDailyInventoryMenuItem(item);
+      isValidIngredientInventoryMenuItem(item);
 
     const isAvailable =
       isValidForMobile &&
@@ -1325,9 +1293,9 @@ export default function MenuScreen({
               responsive.cardGap,
           },
           disabled &&
-          styles.unavailableItem,
+            styles.unavailableItem,
           customItem &&
-          styles.customMenuItem,
+            styles.customMenuItem,
         ]}
         disabled={disabled}
         onPress={() =>
@@ -1425,7 +1393,7 @@ export default function MenuScreen({
                   responsive.itemPrice,
               },
               customItem &&
-              styles.customPrice,
+                styles.customPrice,
             ]}
             numberOfLines={1}
           >
@@ -1482,15 +1450,15 @@ export default function MenuScreen({
     const customCartItem =
       isCustomItem(enrichedItem);
 
-    const validDailyInventoryItem =
+    const validIngredientInventoryItem =
       customCartItem ||
-      isValidDailyInventoryMenuItem(
+      isValidIngredientInventoryMenuItem(
         enrichedItem
       );
 
     const atMaxQuantity =
       customCartItem ||
-        !validDailyInventoryItem
+        !validIngredientInventoryItem
         ? true
         : !canIncreaseQuantity(
           enrichedItem,
@@ -1503,7 +1471,7 @@ export default function MenuScreen({
         style={[
           styles.cartItem,
           !responsive.useSideCart &&
-          styles.cartItemBottom,
+            styles.cartItemBottom,
         ]}
       >
         <View style={styles.cartItemTop}>
@@ -1536,9 +1504,9 @@ export default function MenuScreen({
             </Text>
 
             {!customCartItem &&
-              !validDailyInventoryItem ? (
+              !validIngredientInventoryItem ? (
               <Text style={styles.cartInvalidText}>
-                No longer available today
+                No longer available based on ingredient stock
               </Text>
             ) : null}
 
@@ -1643,7 +1611,7 @@ export default function MenuScreen({
                 },
                 (atMaxQuantity ||
                   isOutOfStock(enrichedItem)) &&
-                styles.qtyButtonDisabled,
+                  styles.qtyButtonDisabled,
               ]}
               disabled={
                 atMaxQuantity ||
@@ -1916,7 +1884,7 @@ export default function MenuScreen({
                     responsive.searchButtonPaddingH,
                 },
               ]}
-              onPress={() => { }}
+              onPress={() => {}}
             >
               <Text
                 style={[
@@ -1962,7 +1930,7 @@ export default function MenuScreen({
                       responsive.categoryPaddingH,
                   },
                   selectedCategory === category &&
-                  styles.categoryBtnActive,
+                    styles.categoryBtnActive,
                 ]}
                 onPress={() =>
                   setSelectedCategory(category)
@@ -1976,7 +1944,7 @@ export default function MenuScreen({
                         responsive.categoryText,
                     },
                     selectedCategory === category &&
-                    styles.categoryTextActive,
+                      styles.categoryTextActive,
                   ]}
                   numberOfLines={1}
                 >
@@ -2037,17 +2005,17 @@ export default function MenuScreen({
                 ) =>
                   String(
                     getItemId(item) ||
-                    index
+                      index
                   )
                 }
                 columnWrapperStyle={
                   responsive.menuColumns > 1
                     ? {
-                      justifyContent:
-                        'center',
-                      gap:
-                        responsive.cardGap,
-                    }
+                        justifyContent:
+                          'center',
+                        gap:
+                          responsive.cardGap,
+                      }
                     : undefined
                 }
                 contentContainerStyle={{
@@ -2068,7 +2036,7 @@ export default function MenuScreen({
                     </Text>
 
                     <Text style={styles.emptyMenuText}>
-                      Menu items must be enabled in Daily Menu Inventory before they appear here.
+                      No menu items are currently available based on ingredient stock.
                     </Text>
                   </View>
                 )}
@@ -2173,10 +2141,10 @@ export default function MenuScreen({
                     responsive.useSideCart
                       ? styles.cartListSide
                       : {
-                        maxHeight:
-                          responsive.stackedCartListMaxHeight,
-                        minHeight: 82,
-                      },
+                          maxHeight:
+                            responsive.stackedCartListMaxHeight,
+                          minHeight: 82,
+                        },
                   ]}
                   contentContainerStyle={{
                     paddingBottom:
@@ -2247,7 +2215,7 @@ export default function MenuScreen({
                     },
                     (cartItems.length === 0 ||
                       !strictCanOrder) &&
-                    styles.checkoutButtonDisabled,
+                      styles.checkoutButtonDisabled,
                   ]}
                   disabled={
                     cartItems.length === 0 ||

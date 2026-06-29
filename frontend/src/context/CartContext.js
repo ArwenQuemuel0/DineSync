@@ -20,6 +20,8 @@ import {
   buildInventoryMap,
   enrichCartItem,
   isCustomItem,
+  isValidIngredientInventoryMenuItem,
+  getAvailabilityDisplayText,
 } from '../utils/inventory';
 
 const CartContext =
@@ -28,66 +30,13 @@ const CartContext =
 export const useCart = () =>
   useContext(CartContext);
 
-const VALID_NORMAL_INVENTORY_TYPES = [
-  'per_order',
-  'per_head',
-];
-
-const normalizeText = (value) => {
-  return String(value || '')
-    .trim()
-    .toLowerCase();
-};
-
-const normalizeInventoryType = (
-  value
-) => {
-  return normalizeText(value)
-    .replace(/[-\s]+/g, '_');
-};
-
-const isAvailableTrue = (value) => {
-  return (
-    value === true ||
-    value === 1 ||
-    value === '1' ||
-    normalizeText(value) === 'true' ||
-    normalizeText(value) === 'yes' ||
-    normalizeText(value) === 'available'
-  );
-};
-
-const hasInventoryType = (item) => {
-  return (
-    item?.inventory_type !== null &&
-    item?.inventory_type !== undefined &&
-    String(item.inventory_type).trim() !== ''
-  );
-};
-
-const hasDailyLimit = (item) => {
-  return (
-    item?.daily_limit !== null &&
-    item?.daily_limit !== undefined &&
-    String(item.daily_limit).trim() !== ''
-  );
-};
-
-const toNumberOrNull = (value) => {
-  if (
-    value === null ||
-    value === undefined ||
-    value === ''
-  ) {
-    return null;
-  }
-
+const toNumberOrZero = (value) => {
   const numberValue =
     Number(value);
 
   return Number.isFinite(numberValue)
     ? numberValue
-    : null;
+    : 0;
 };
 
 const getMobileMaxQuantity = (item) => {
@@ -99,117 +48,44 @@ const getMobileMaxQuantity = (item) => {
     return 1;
   }
 
-  const maxOrderQuantity =
-    toNumberOrNull(
-      item?.max_order_quantity
+  const quantity =
+    Number(
+      item?.max_order_quantity ??
+        item?.remaining_today ??
+        item?.available_quantity ??
+        0
     );
 
-  const remainingToday =
-    toNumberOrNull(
-      item?.remaining_today
-    );
+  return Number.isFinite(quantity)
+    ? Math.max(0, quantity)
+    : 0;
+};
 
-  const fallbackQuantity =
-    toNumberOrNull(
-      item?.available_quantity
-    );
-
-  const selectedQuantity =
-    maxOrderQuantity ??
-    remainingToday ??
-    fallbackQuantity ??
-    1;
-
-  return Math.max(
-    0,
-    Number(selectedQuantity) || 0
+const isValidIngredientItem = (item) => {
+  return isValidIngredientInventoryMenuItem(
+    item
   );
 };
 
-const isValidDailyInventoryMenuItem = (
-  item
-) => {
-  const inventoryType =
-    normalizeInventoryType(
-      item?.inventory_type
-    );
-
-  const available =
-    isAvailableTrue(
-      item?.is_available
-    );
-
-  if (!available) {
-    return false;
-  }
-
-  if (!hasInventoryType(item)) {
-    return false;
-  }
-
-  if (inventoryType === 'custom') {
-    return true;
-  }
-
-  if (
-    !VALID_NORMAL_INVENTORY_TYPES.includes(
-      inventoryType
-    )
-  ) {
-    return false;
-  }
-
-  if (!hasDailyLimit(item)) {
-    return false;
-  }
-
-  return getMobileMaxQuantity(item) > 0;
+// Compatibility wrapper para hindi masira existing calls
+const isValidDailyInventoryMenuItem = (item) => {
+  return isValidIngredientItem(item);
 };
 
-const getDailyInventoryMessage = (
-  item
-) => {
-  const inventoryType =
-    normalizeInventoryType(
-      item?.inventory_type
-    );
-
-  if (
-    !isAvailableTrue(
-      item?.is_available
-    )
-  ) {
+const getInventoryMessage = (item) => {
+  if (!item) {
     return 'This item is currently unavailable.';
   }
 
-  if (!hasInventoryType(item)) {
-    return 'This item is not enabled in Daily Menu Inventory.';
+  if (isCustomItem(item)) {
+    return 'Chef Oppa Special request is available.';
   }
 
-  if (
-    inventoryType !== 'custom' &&
-    !VALID_NORMAL_INVENTORY_TYPES.includes(
-      inventoryType
-    )
-  ) {
-    return 'This item has an invalid inventory type.';
-  }
-
-  if (
-    inventoryType !== 'custom' &&
-    !hasDailyLimit(item)
-  ) {
-    return 'This item has no daily limit set.';
-  }
-
-  if (
-    inventoryType !== 'custom' &&
-    getMobileMaxQuantity(item) <= 0
-  ) {
-    return 'This item is sold out for today.';
-  }
-
-  return 'This item is not available today.';
+  return (
+    item?.unavailable_reason ||
+    getAvailabilityDisplayText(item) ||
+    'This item is currently unavailable based on ingredient stock.'
+  );
 };
 
 const getQuantityLimitMessage = (
@@ -218,7 +94,14 @@ const getQuantityLimitMessage = (
   const maxQuantity =
     getMobileMaxQuantity(item);
 
-  return `You can only order up to ${maxQuantity} of this item today.`;
+  if (maxQuantity <= 0) {
+    return (
+      item?.unavailable_reason ||
+      'This item is currently out of stock.'
+    );
+  }
+
+  return `You can only order up to ${maxQuantity} of this item.`;
 };
 
 const mergeAndClampCartItem = (
@@ -232,18 +115,40 @@ const mergeAndClampCartItem = (
   const merged = {
     ...cartItem,
     ...menuInventory,
+
     max_order_quantity:
       menuInventory.max_order_quantity ??
-      cartItem.max_order_quantity,
+      cartItem.max_order_quantity ??
+      null,
+
     remaining_today:
       menuInventory.remaining_today ??
-      cartItem.remaining_today,
-    daily_limit:
-      menuInventory.daily_limit ??
-      cartItem.daily_limit,
+      cartItem.remaining_today ??
+      null,
+
+    available_quantity:
+      menuInventory.available_quantity ??
+      cartItem.available_quantity ??
+      null,
+
     inventory_type:
       menuInventory.inventory_type ??
-      cartItem.inventory_type,
+      cartItem.inventory_type ??
+      'ingredient',
+
+    is_available:
+      menuInventory.is_available ??
+      cartItem.is_available,
+
+    stock_label:
+      menuInventory.stock_label ??
+      cartItem.stock_label ??
+      null,
+
+    unavailable_reason:
+      menuInventory.unavailable_reason ??
+      cartItem.unavailable_reason ??
+      null,
   };
 
   if (isCustomItem(merged)) {
@@ -260,6 +165,10 @@ const mergeAndClampCartItem = (
         cartItem.notes ||
         '',
       inventory_type: 'custom',
+      is_available: true,
+      max_order_quantity: 1,
+      remaining_today: 1,
+      available_quantity: 1,
     };
   }
 
@@ -295,12 +204,12 @@ const filterRemovedOrZeroQuantityItems =
 
       return (
         Number(item.quantity || 0) > 0 &&
-        isValidDailyInventoryMenuItem(item)
+        isValidIngredientItem(item)
       );
     });
   };
 
-const validateDailyInventoryCartItems =
+const validateIngredientCartItems =
   (cartItems = []) => {
     for (const cartItem of cartItems) {
       const customItem =
@@ -321,14 +230,14 @@ const validateDailyInventoryCartItems =
       }
 
       if (
-        !isValidDailyInventoryMenuItem(
+        !isValidIngredientItem(
           cartItem
         )
       ) {
         return {
           valid: false,
           message:
-            `${cartItem?.name || 'An item'} is no longer enabled in Daily Menu Inventory.`,
+            `${cartItem?.name || 'An item'} is no longer available based on ingredient stock.`,
         };
       }
 
@@ -342,7 +251,7 @@ const validateDailyInventoryCartItems =
         return {
           valid: false,
           message:
-            `${cartItem?.name || 'An item'} is sold out for today.`,
+            `${cartItem?.name || 'An item'} is currently out of stock.`,
         };
       }
 
@@ -353,7 +262,7 @@ const validateDailyInventoryCartItems =
         return {
           valid: false,
           message:
-            `${cartItem?.name || 'An item'} only has ${maxQuantity} available today.`,
+            `${cartItem?.name || 'An item'} only has ${maxQuantity} available based on ingredient stock.`,
         };
       }
     }
@@ -402,7 +311,7 @@ export const CartProvider = ({
         const visibleMenuItems =
           Array.isArray(menuItems)
             ? menuItems.filter(
-                isValidDailyInventoryMenuItem
+                isValidIngredientItem
               )
             : [];
 
@@ -500,8 +409,8 @@ export const CartProvider = ({
           Alert.alert(
             'Limited Stock',
             result.removed
-              ? 'Some items in your cart were removed because they are no longer available today.'
-              : 'Some items in your cart were adjusted to match current inventory.'
+              ? 'Some items in your cart were removed because they are no longer available based on ingredient stock.'
+              : 'Some items in your cart were adjusted to match current ingredient stock.'
           );
         }
       },
@@ -520,7 +429,7 @@ export const CartProvider = ({
 
         const validMenuItems =
           menuItems.filter(
-            isValidDailyInventoryMenuItem
+            isValidIngredientItem
           );
 
         const mergedMap = {
@@ -602,8 +511,8 @@ export const CartProvider = ({
           Alert.alert(
             'Limited Stock',
             removed
-              ? 'Some items in your cart were removed because they are no longer available today.'
-              : 'Some items in your cart were adjusted to match current inventory.'
+              ? 'Some items in your cart were removed because they are no longer available based on ingredient stock.'
+              : 'Some items in your cart were adjusted to match current ingredient stock.'
           );
         }
       },
@@ -631,7 +540,7 @@ export const CartProvider = ({
           return baseValidation;
         }
 
-        return validateDailyInventoryCartItems(
+        return validateIngredientCartItems(
           cartItemsRef.current
         );
       }
@@ -650,7 +559,7 @@ export const CartProvider = ({
         return baseValidation;
       }
 
-      return validateDailyInventoryCartItems(
+      return validateIngredientCartItems(
         cartItemsRef.current
       );
     }, [applyMenuInventory]);
@@ -731,19 +640,25 @@ export const CartProvider = ({
     const orderableItem = {
       ...liveItem,
       ...inventoryFields,
+      inventory_type:
+        isCustomItem(liveItem)
+          ? 'custom'
+          : liveItem?.inventory_type ||
+            inventoryFields?.inventory_type ||
+            'ingredient',
     };
 
     const customItem =
       isCustomItem(orderableItem);
 
     if (
-      !isValidDailyInventoryMenuItem(
+      !isValidIngredientItem(
         orderableItem
       )
     ) {
       Alert.alert(
         'Unavailable',
-        getDailyInventoryMessage(
+        getInventoryMessage(
           orderableItem
         )
       );
@@ -757,7 +672,10 @@ export const CartProvider = ({
     ) {
       Alert.alert(
         'Out of Stock',
-        'This item is currently out of stock.'
+        getInventoryMessage(
+          orderableItem
+        ) ||
+          'This item is currently out of stock.'
       );
 
       return false;
@@ -773,8 +691,10 @@ export const CartProvider = ({
       !customItem
     ) {
       Alert.alert(
-        'Sold Out',
-        'This item is sold out for today.'
+        'Out of Stock',
+        getInventoryMessage(
+          orderableItem
+        )
       );
 
       return false;
@@ -854,7 +774,8 @@ export const CartProvider = ({
                   inventory_type:
                     customItem
                       ? 'custom'
-                      : liveItem.inventory_type,
+                      : orderableItem.inventory_type ||
+                        'ingredient',
                 }
               : cartItem
         );
@@ -888,7 +809,8 @@ export const CartProvider = ({
             inventory_type:
               customItem
                 ? 'custom'
-                : liveItem.inventory_type,
+                : orderableItem.inventory_type ||
+                  'ingredient',
           },
         ];
       }
@@ -961,7 +883,7 @@ export const CartProvider = ({
         ) || 0;
 
       if (
-        !isValidDailyInventoryMenuItem(
+        !isValidIngredientItem(
           enrichedItem
         )
       ) {
@@ -1017,7 +939,7 @@ export const CartProvider = ({
     if (invalidInventory) {
       Alert.alert(
         'Unavailable',
-        getDailyInventoryMessage(
+        getInventoryMessage(
           limitItem
         )
       );
@@ -1137,7 +1059,7 @@ export const CartProvider = ({
       }
 
       if (
-        !isValidDailyInventoryMenuItem(
+        !isValidIngredientItem(
           enrichedItem
         )
       ) {
@@ -1185,7 +1107,7 @@ export const CartProvider = ({
     if (invalidInventory) {
       Alert.alert(
         'Unavailable',
-        getDailyInventoryMessage(
+        getInventoryMessage(
           limitItem
         )
       );
@@ -1222,7 +1144,7 @@ export const CartProvider = ({
       return baseValidation;
     }
 
-    return validateDailyInventoryCartItems(
+    return validateIngredientCartItems(
       cartItemsRef.current
     );
   };

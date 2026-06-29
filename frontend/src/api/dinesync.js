@@ -1,22 +1,9 @@
 import axios from 'axios';
-import Constants from 'expo-constants';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 // =========================
-// DEV NODE BACKEND API
+// HOSTED NODE BACKEND API
 // =========================
-
-const BACKEND_PORT = 3000;
-
-const debuggerHost =
-  Constants.expoConfig?.hostUri ||
-  Constants.manifest2?.extra
-    ?.expoGo?.debuggerHost;
-
-const host =
-  debuggerHost
-    ?.split(':')
-    ?.shift() || 'localhost';
 
 const BASE_URL =
   'https://api.dinesync.shop/api';
@@ -26,7 +13,7 @@ console.log(
 );
 
 console.log(
-  'DINESYNC DEV NODE API:',
+  'DINESYNC NODE API:',
   BASE_URL
 );
 
@@ -74,11 +61,6 @@ api.interceptors.request.use(
 // HELPERS
 // =========================
 
-const VALID_NORMAL_INVENTORY_TYPES = [
-  'per_order',
-  'per_head',
-];
-
 const MENU_CACHE_KEYS = [
   'menu',
   'menuItems',
@@ -112,23 +94,6 @@ const normalizeInventoryType = (value) => {
     .replace(/[-\s]+/g, '_');
 };
 
-const parseNumeric = (value) => {
-  if (
-    value === undefined ||
-    value === null ||
-    value === ''
-  ) {
-    return null;
-  }
-
-  const numeric =
-    Number(value);
-
-  return Number.isFinite(numeric)
-    ? numeric
-    : null;
-};
-
 const toNumberOrZero = (value) => {
   const numeric =
     Number(value);
@@ -136,6 +101,18 @@ const toNumberOrZero = (value) => {
   return Number.isFinite(numeric)
     ? numeric
     : 0;
+};
+
+const parseNumericOrZero = (value) => {
+  if (
+    value === undefined ||
+    value === null ||
+    value === ''
+  ) {
+    return 0;
+  }
+
+  return toNumberOrZero(value);
 };
 
 const isAvailableTrue = (value) => {
@@ -146,22 +123,6 @@ const isAvailableTrue = (value) => {
     normalizeText(value) === 'true' ||
     normalizeText(value) === 'yes' ||
     normalizeText(value) === 'available'
-  );
-};
-
-const hasInventoryType = (item) => {
-  return (
-    item?.inventory_type !== null &&
-    item?.inventory_type !== undefined &&
-    String(item.inventory_type).trim() !== ''
-  );
-};
-
-const hasDailyLimit = (item) => {
-  return (
-    item?.daily_limit !== null &&
-    item?.daily_limit !== undefined &&
-    String(item.daily_limit).trim() !== ''
   );
 };
 
@@ -198,200 +159,228 @@ const getMobileMaxQuantity = (item) => {
   const maxQuantity =
     Number(
       item?.max_order_quantity ??
-      item?.remaining_today ??
-      1
+        item?.remaining_today ??
+        item?.available_quantity ??
+        0
     );
 
   return Number.isFinite(maxQuantity)
     ? Math.max(0, maxQuantity)
-    : 1;
+    : 0;
+};
+
+const getMobileRemainingQuantity = (item) => {
+  if (!item) {
+    return 0;
+  }
+
+  if (isCustomCartItem(item)) {
+    return 1;
+  }
+
+  const remainingQuantity =
+    Number(
+      item?.remaining_today ??
+        item?.available_quantity ??
+        item?.max_order_quantity ??
+        0
+    );
+
+  return Number.isFinite(remainingQuantity)
+    ? Math.max(0, remainingQuantity)
+    : 0;
+};
+
+const normalizeFlavorTags = (value) => {
+  if (Array.isArray(value)) {
+    return value
+      .map((tag) =>
+        String(tag).trim()
+      )
+      .filter(Boolean);
+  }
+
+  if (!value) {
+    return [];
+  }
+
+  return String(value)
+    .split(',')
+    .map((tag) => tag.trim())
+    .filter(Boolean);
 };
 
 const normalizeMenuItem = (item) => {
-  const inventoryType =
-    item?.inventory_type
-      ? normalizeInventoryType(
-        item.inventory_type
-      )
-      : null;
-
-  const dailyLimit =
-    parseNumeric(
-      item?.daily_limit
-    );
-
-  const soldToday =
-    parseNumeric(
-      item?.sold_today
-    );
-
-  const remainingToday =
-    parseNumeric(
-      item?.remaining_today
-    );
+  const custom =
+    isCustomCartItem(item);
 
   const maxOrderQuantity =
-    parseNumeric(
-      item?.max_order_quantity
+    custom
+      ? 1
+      : getMobileMaxQuantity(item);
+
+  const remainingQuantity =
+    custom
+      ? 1
+      : getMobileRemainingQuantity(item);
+
+  const available =
+    isAvailableTrue(
+      item?.is_available
+    ) &&
+    (
+      custom ||
+      maxOrderQuantity > 0 ||
+      remainingQuantity > 0
     );
 
-  const availableQuantity =
-    maxOrderQuantity ??
-    remainingToday ??
-    parseNumeric(
-      item?.available_quantity
-    );
+  const image =
+    item?.image_url ||
+    item?.image ||
+    null;
 
   return {
     ...item,
 
-    image:
-      item?.image_url ||
-      item?.image ||
-      null,
+    id:
+      item?.id ??
+      item?.menu_item_id,
 
-    image_url:
-      item?.image_url ||
-      item?.image ||
-      null,
+    menu_item_id:
+      item?.menu_item_id ??
+      item?.id,
+
+    image,
+    image_url: image,
 
     inventory_type:
-      inventoryType,
+      custom
+        ? 'custom'
+        : item?.inventory_type
+          ? normalizeInventoryType(
+              item.inventory_type
+            )
+          : 'ingredient',
 
-    daily_limit:
-      dailyLimit,
-
-    sold_today:
-      soldToday,
-
-    remaining_today:
-      remainingToday,
+    price:
+      parseNumericOrZero(
+        item?.price
+      ),
 
     max_order_quantity:
-      maxOrderQuantity,
+      available
+        ? maxOrderQuantity
+        : 0,
+
+    remaining_today:
+      available
+        ? remainingQuantity
+        : 0,
 
     available_quantity:
-      availableQuantity,
-
-    daily_inventory_label:
-      item?.daily_inventory_label
-        ? String(
-          item.daily_inventory_label
-        ).trim()
-        : null,
+      available
+        ? maxOrderQuantity
+        : 0,
 
     stock_label:
       item?.stock_label
         ? String(
-          item.stock_label
-        ).trim()
+            item.stock_label
+          ).trim()
+        : available
+          ? custom
+            ? 'Staff confirms'
+            : `${maxOrderQuantity} order(s) available`
+          : null,
+
+    daily_inventory_label:
+      item?.daily_inventory_label
+        ? String(
+            item.daily_inventory_label
+          ).trim()
         : null,
 
+    unavailable_reason:
+      available
+        ? null
+        : item?.unavailable_reason ||
+          item?.stock_label ||
+          'Unavailable based on ingredient stock.',
+
     is_available:
-      item?.is_available,
+      available,
 
     flavor_tags:
-      Array.isArray(
+      normalizeFlavorTags(
         item?.flavor_tags
-      )
-        ? item.flavor_tags
-        : item?.flavor_tags
-          ? String(item.flavor_tags)
-            .split(',')
-            .map((tag) =>
-              tag.trim()
-            )
-            .filter(Boolean)
-          : [],
+      ),
 
     meal_type:
       item?.meal_type
         ? String(
-          item.meal_type
-        ).trim()
+            item.meal_type
+          ).trim()
         : null,
   };
 };
 
-const isValidDailyInventoryMenuItem = (item) => {
-  const inventoryType =
-    normalizeInventoryType(
-      item?.inventory_type
-    );
+const isValidIngredientInventoryMenuItem = (item) => {
+  const normalizedItem =
+    normalizeMenuItem(item);
 
   if (
     !isAvailableTrue(
-      item?.is_available
+      normalizedItem?.is_available
     )
   ) {
     return false;
   }
 
-  if (!hasInventoryType(item)) {
-    return false;
-  }
-
-  if (inventoryType === 'custom') {
+  if (
+    isCustomCartItem(
+      normalizedItem
+    )
+  ) {
     return true;
   }
 
-  if (
-    !VALID_NORMAL_INVENTORY_TYPES.includes(
-      inventoryType
-    )
-  ) {
-    return false;
-  }
-
-  if (!hasDailyLimit(item)) {
-    return false;
-  }
-
-  return getMobileMaxQuantity(item) > 0;
+  return (
+    getMobileMaxQuantity(
+      normalizedItem
+    ) > 0 ||
+    getMobileRemainingQuantity(
+      normalizedItem
+    ) > 0
+  );
 };
 
-const getDailyInventoryErrorMessage = (item) => {
-  const inventoryType =
-    normalizeInventoryType(
-      item?.inventory_type
-    );
+const getIngredientInventoryErrorMessage = (item) => {
+  const normalizedItem =
+    normalizeMenuItem(item);
 
   if (
     !isAvailableTrue(
-      item?.is_available
+      normalizedItem?.is_available
     )
   ) {
-    return `${item?.name || 'This item'} is currently unavailable.`;
-  }
-
-  if (!hasInventoryType(item)) {
-    return `${item?.name || 'This item'} is not enabled in Daily Menu Inventory.`;
-  }
-
-  if (
-    inventoryType !== 'custom' &&
-    !VALID_NORMAL_INVENTORY_TYPES.includes(
-      inventoryType
-    )
-  ) {
-    return `${item?.name || 'This item'} has an invalid inventory type.`;
+    return (
+      normalizedItem?.unavailable_reason ||
+      `${normalizedItem?.name || 'This item'} is currently unavailable based on ingredient stock.`
+    );
   }
 
   if (
-    inventoryType !== 'custom' &&
-    !hasDailyLimit(item)
+    !isCustomCartItem(
+      normalizedItem
+    ) &&
+    getMobileMaxQuantity(
+      normalizedItem
+    ) <= 0
   ) {
-    return `${item?.name || 'This item'} has no daily limit set.`;
+    return `${normalizedItem?.name || 'This item'} is currently out of stock.`;
   }
 
-  if (
-    inventoryType !== 'custom' &&
-    getMobileMaxQuantity(item) <= 0
-  ) {
-    return `${item?.name || 'This item'} is sold out for today.`;
-  }
-
-  return `${item?.name || 'This item'} is not available today.`;
+  return `${normalizedItem?.name || 'This item'} is currently unavailable.`;
 };
 
 const validateCartBeforeOrder = (
@@ -419,16 +408,16 @@ const validateCartBeforeOrder = (
       custom
         ? 1
         : toNumberOrZero(
-          normalizedItem.quantity
-        );
+            normalizedItem.quantity
+          );
 
     if (
-      !isValidDailyInventoryMenuItem(
+      !isValidIngredientInventoryMenuItem(
         normalizedItem
       )
     ) {
       throw new Error(
-        getDailyInventoryErrorMessage(
+        getIngredientInventoryErrorMessage(
           normalizedItem
         )
       );
@@ -451,7 +440,7 @@ const validateCartBeforeOrder = (
 
     if (maxQuantity <= 0) {
       throw new Error(
-        `${normalizedItem?.name || 'This item'} is sold out for today.`
+        `${normalizedItem?.name || 'This item'} is currently out of stock.`
       );
     }
 
@@ -463,7 +452,7 @@ const validateCartBeforeOrder = (
 
     if (quantity > maxQuantity) {
       throw new Error(
-        `${normalizedItem?.name || 'This item'} only has ${maxQuantity} available today.`
+        `${normalizedItem?.name || 'This item'} only has ${maxQuantity} available based on ingredient stock.`
       );
     }
   }
@@ -588,7 +577,7 @@ export const getTableOrderHistory = async () => {
 };
 
 // =========================
-// GET MENU FROM DEV NODE API
+// GET MENU FROM NODE API
 // =========================
 
 export const getMenu = async () => {
@@ -602,8 +591,27 @@ export const getMenu = async () => {
     });
 
   console.log(
-    'DEV NODE MENU RESPONSE:',
-    response.data
+    'NODE MENU RESPONSE:',
+    {
+      success:
+        response.data?.success,
+      debug_source:
+        response.data?.debug_source,
+      source_debug:
+        response.data?.source_debug,
+      raw_count:
+        Array.isArray(
+          response.data?.data
+        )
+          ? response.data.data.length
+          : 0,
+      first_item:
+        response.data?.data?.[0]?.name,
+      first_available:
+        response.data?.data?.[0]?.is_available,
+      first_max_qty:
+        response.data?.data?.[0]?.max_order_quantity,
+    }
   );
 
   if (
@@ -615,59 +623,24 @@ export const getMenu = async () => {
         normalizeMenuItem
       );
 
-    const visibleItems =
-      normalizedItems.filter(
-        isValidDailyInventoryMenuItem
-      );
-
     console.log(
-      'MOBILE DAILY MENU FILTER:',
+      'MOBILE INGREDIENT MENU NORMALIZED:',
       {
         raw_count:
+          response.data.data.length,
+        normalized_count:
           normalizedItems.length,
-        visible_count:
-          visibleItems.length,
+        first_item:
+          normalizedItems?.[0]?.name,
+        first_available:
+          normalizedItems?.[0]?.is_available,
+        first_max_qty:
+          normalizedItems?.[0]?.max_order_quantity,
       }
     );
 
-    const bibimbap =
-      visibleItems.find(
-        (item) =>
-          String(item.name || '')
-            .trim()
-            .toLowerCase() ===
-          'bibimbap'
-      );
-
-    if (bibimbap) {
-      const maxQuantity =
-        getMobileMaxQuantity(
-          bibimbap
-        );
-
-      console.log(
-        'API ITEM:',
-        bibimbap
-      );
-
-      console.log(
-        'MAX ORDER QUANTITY:',
-        bibimbap?.max_order_quantity
-      );
-
-      console.log(
-        'REMAINING TODAY:',
-        bibimbap?.remaining_today
-      );
-
-      console.log(
-        'FINAL MAX QUANTITY:',
-        maxQuantity
-      );
-    }
-
     response.data.data =
-      visibleItems;
+      normalizedItems;
   }
 
   return response.data;
@@ -736,25 +709,7 @@ const normalizePaymentMethodForOrder = (
   return 'Pay Later';
 };
 
-const getInitialOrderStatus = (
-  paymentMethod
-) => {
-  const normalizedMethod =
-    normalizePaymentMethodForOrder(
-      paymentMethod
-    );
-
-  if (normalizedMethod === 'Pay Later') {
-    return 'pending';
-  }
-
-  if (
-    normalizedMethod === 'Pay at Counter' ||
-    normalizedMethod === 'Digital Payment'
-  ) {
-    return 'awaiting_payment';
-  }
-
+const getInitialOrderStatus = () => {
   return 'pending';
 };
 
@@ -797,9 +752,7 @@ export const placeOrder = async (
   }
 
   const initialStatus =
-    getInitialOrderStatus(
-      normalizedPaymentMethod
-    );
+    getInitialOrderStatus();
 
   console.log(
     'PLACE ORDER PAYMENT CHECK:',
@@ -1008,14 +961,9 @@ export const getDishRecommendations =
         response.data.data
       )
     ) {
-      const normalizedItems =
+      response.data.data =
         response.data.data.map(
           normalizeMenuItem
-        );
-
-      response.data.data =
-        normalizedItems.filter(
-          isValidDailyInventoryMenuItem
         );
     }
 

@@ -1,8 +1,3 @@
-const VALID_NORMAL_INVENTORY_TYPES = [
-  'per_order',
-  'per_head',
-];
-
 export const normalizeText = (value) => {
   return String(value || '')
     .trim()
@@ -90,22 +85,6 @@ export const isCustomItem = (item) => {
   );
 };
 
-export const hasInventoryType = (item) => {
-  return (
-    item?.inventory_type !== null &&
-    item?.inventory_type !== undefined &&
-    String(item.inventory_type).trim() !== ''
-  );
-};
-
-export const hasDailyLimit = (item) => {
-  return (
-    item?.daily_limit !== null &&
-    item?.daily_limit !== undefined &&
-    String(item.daily_limit).trim() !== ''
-  );
-};
-
 export const getMaxOrderQuantity = (item) => {
   if (!item) {
     return 0;
@@ -119,28 +98,41 @@ export const getMaxOrderQuantity = (item) => {
     Number(
       item?.max_order_quantity ??
         item?.remaining_today ??
-        1
+        item?.available_quantity ??
+        0
     );
 
   return Number.isFinite(maxQuantity)
     ? Math.max(0, maxQuantity)
-    : 1;
+    : 0;
 };
 
 export const getRemainingToday = (item) => {
+  if (!item) {
+    return 0;
+  }
+
+  if (isCustomItem(item)) {
+    return 1;
+  }
+
   const remaining =
-    toNumberOrNull(
-      item?.remaining_today
+    Number(
+      item?.remaining_today ??
+        item?.available_quantity ??
+        item?.max_order_quantity ??
+        0
     );
 
-  return remaining;
+  return Number.isFinite(remaining)
+    ? Math.max(0, remaining)
+    : 0;
 };
 
-export const isValidDailyInventoryMenuItem = (item) => {
-  const inventoryType =
-    normalizeInventoryType(
-      item?.inventory_type
-    );
+export const isValidIngredientInventoryMenuItem = (item) => {
+  if (!item) {
+    return false;
+  }
 
   if (
     !isAvailableTrue(
@@ -150,28 +142,19 @@ export const isValidDailyInventoryMenuItem = (item) => {
     return false;
   }
 
-  if (!hasInventoryType(item)) {
-    return false;
-  }
-
-  if (inventoryType === 'custom') {
+  if (isCustomItem(item)) {
     return true;
   }
 
-  if (
-    !VALID_NORMAL_INVENTORY_TYPES.includes(
-      inventoryType
-    )
-  ) {
-    return false;
-  }
-
-  if (!hasDailyLimit(item)) {
-    return false;
-  }
-
-  return getMaxOrderQuantity(item) > 0;
+  return (
+    getMaxOrderQuantity(item) > 0 ||
+    getRemainingToday(item) > 0
+  );
 };
+
+// Compatibility alias para hindi masira ibang imports
+export const isValidDailyInventoryMenuItem =
+  isValidIngredientInventoryMenuItem;
 
 export const isOutOfStock = (item) => {
   if (!item) {
@@ -197,7 +180,7 @@ export const isItemOrderable = (item) => {
     return false;
   }
 
-  return isValidDailyInventoryMenuItem(
+  return isValidIngredientInventoryMenuItem(
     item
   );
 };
@@ -267,10 +250,13 @@ export const getQuantityLimitMessage = (item) => {
   }
 
   if (maxQuantity <= 0) {
-    return 'This item is sold out for today.';
+    return (
+      item?.unavailable_reason ||
+      'This item is currently out of stock.'
+    );
   }
 
-  return `You can only order up to ${maxQuantity} of this item today.`;
+  return `You can only order up to ${maxQuantity} of this item.`;
 };
 
 export const getAvailabilityDisplayText = (item) => {
@@ -278,49 +264,28 @@ export const getAvailabilityDisplayText = (item) => {
     return 'Unavailable';
   }
 
-  const inventoryType =
-    normalizeInventoryType(
-      item?.inventory_type
-    );
-
   if (
     !isAvailableTrue(
       item?.is_available
     )
   ) {
-    return 'Unavailable';
+    return (
+      item?.unavailable_reason ||
+      'Unavailable based on ingredient stock'
+    );
   }
 
-  if (!hasInventoryType(item)) {
-    return 'Not enabled today';
-  }
-
-  if (inventoryType === 'custom') {
+  if (isCustomItem(item)) {
     return 'Custom request available';
-  }
-
-  if (
-    !VALID_NORMAL_INVENTORY_TYPES.includes(
-      inventoryType
-    )
-  ) {
-    return 'Invalid inventory setup';
-  }
-
-  if (!hasDailyLimit(item)) {
-    return 'No daily limit set';
   }
 
   const maxQuantity =
     getMaxOrderQuantity(item);
 
   if (maxQuantity <= 0) {
-    return 'Sold out today';
-  }
-
-  if (item?.daily_inventory_label) {
-    return String(
-      item.daily_inventory_label
+    return (
+      item?.unavailable_reason ||
+      'Out of stock'
     );
   }
 
@@ -330,7 +295,13 @@ export const getAvailabilityDisplayText = (item) => {
     );
   }
 
-  return `${maxQuantity} orders left today`;
+  if (item?.daily_inventory_label) {
+    return String(
+      item.daily_inventory_label
+    );
+  }
+
+  return `${maxQuantity} order(s) available`;
 };
 
 export const shouldShowLowStockWarning = (item) => {
@@ -350,13 +321,7 @@ export const shouldShowLowStockWarning = (item) => {
 export const pickInventoryFields = (item) => {
   return {
     inventory_type:
-      item?.inventory_type ?? null,
-
-    daily_limit:
-      item?.daily_limit ?? null,
-
-    sold_today:
-      item?.sold_today ?? null,
+      item?.inventory_type ?? 'ingredient',
 
     remaining_today:
       item?.remaining_today ?? null,
@@ -375,6 +340,9 @@ export const pickInventoryFields = (item) => {
 
     daily_inventory_label:
       item?.daily_inventory_label ?? null,
+
+    unavailable_reason:
+      item?.unavailable_reason ?? null,
   };
 };
 
@@ -404,17 +372,34 @@ export const enrichCartItem = (
       liveInventory.max_order_quantity ??
       item?.max_order_quantity ??
       null,
+
     remaining_today:
       liveInventory.remaining_today ??
       item?.remaining_today ??
       null,
-    daily_limit:
-      liveInventory.daily_limit ??
-      item?.daily_limit ??
+
+    available_quantity:
+      liveInventory.available_quantity ??
+      item?.available_quantity ??
       null,
+
     inventory_type:
       liveInventory.inventory_type ??
       item?.inventory_type ??
+      'ingredient',
+
+    is_available:
+      liveInventory.is_available ??
+      item?.is_available,
+
+    stock_label:
+      liveInventory.stock_label ??
+      item?.stock_label ??
+      null,
+
+    unavailable_reason:
+      liveInventory.unavailable_reason ??
+      item?.unavailable_reason ??
       null,
   };
 };
@@ -493,14 +478,14 @@ export const validateCartInventory = (
     }
 
     if (
-      !isValidDailyInventoryMenuItem(
+      !isValidIngredientInventoryMenuItem(
         liveItem
       )
     ) {
       return {
         valid: false,
         message:
-          `${cartItem?.name || 'An item'} is no longer available today.`,
+          `${cartItem?.name || 'An item'} is no longer available based on ingredient stock.`,
       };
     }
 
@@ -514,7 +499,7 @@ export const validateCartInventory = (
       return {
         valid: false,
         message:
-          `${cartItem?.name || 'An item'} is sold out for today.`,
+          `${cartItem?.name || 'An item'} is currently out of stock.`,
       };
     }
 
@@ -525,7 +510,7 @@ export const validateCartInventory = (
       return {
         valid: false,
         message:
-          `${cartItem?.name || 'An item'} only has ${maxQuantity} available today.`,
+          `${cartItem?.name || 'An item'} only has ${maxQuantity} available based on ingredient stock.`,
       };
     }
   }

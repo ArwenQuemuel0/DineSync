@@ -1,4 +1,5 @@
 const express = require('express');
+const axios = require('axios');
 const OpenAI = require('openai');
 
 const router = express.Router();
@@ -17,15 +18,16 @@ const MODEL =
   'gpt-4o-mini';
 
 // =========================
-// DAILY INVENTORY SETTINGS
+// FIXED INGREDIENT MENU SOURCE
 // =========================
 
-const VALID_NORMAL_INVENTORY_TYPES = [
-  'per_order',
-  'per_head',
-];
+const WEB_MENU_URL =
+  process.env.WEB_MENU_URL ||
+  process.env.LARAVEL_MENU_URL ||
+  'https://dinesync.shop/api/menu';
 
-const MANILA_UTC_OFFSET_HOURS = 8;
+const EXPECTED_MENU_DEBUG_SOURCE =
+  'WEB_MENU_INGREDIENT_AVAILABILITY_FIXED_2026';
 
 // =========================
 // BASIC HELPERS
@@ -79,19 +81,15 @@ const isAvailableTrue = (value) => {
   );
 };
 
-const hasInventoryType = (item) => {
+const isAvailableFalse = (value) => {
   return (
-    item?.inventory_type !== null &&
-    item?.inventory_type !== undefined &&
-    String(item.inventory_type).trim() !== ''
-  );
-};
-
-const hasDailyLimit = (item) => {
-  return (
-    item?.daily_limit !== null &&
-    item?.daily_limit !== undefined &&
-    String(item.daily_limit).trim() !== ''
+    value === false ||
+    value === 0 ||
+    value === '0' ||
+    normalizeText(value) === 'false' ||
+    normalizeText(value) === 'no' ||
+    normalizeText(value) === 'unavailable' ||
+    normalizeText(value) === 'sold out'
   );
 };
 
@@ -157,27 +155,6 @@ const normalizeMealType = (value) => {
   return String(value).trim();
 };
 
-const normalizeMenuItem = (item) => {
-  return {
-    ...item,
-
-    flavor_tags:
-      normalizeFlavorTags(
-        item?.flavor_tags
-      ),
-
-    meal_type:
-      normalizeMealType(
-        item?.meal_type
-      ),
-
-    image_url:
-      item?.image_url ||
-      item?.image ||
-      null,
-  };
-};
-
 const getFlavorTagSet = (item) => {
   return new Set(
     normalizeFlavorTags(
@@ -199,327 +176,181 @@ const getCategory = (item) => {
 };
 
 // =========================
-// MANILA TODAY RANGE
+// INGREDIENT INVENTORY HELPERS
 // =========================
 
-const getManilaTodayUtcRange = () => {
-  const now =
-    new Date();
-
-  const manilaNow =
-    new Date(
-      now.getTime() +
-      MANILA_UTC_OFFSET_HOURS *
-      60 *
-      60 *
-      1000
-    );
-
-  const year =
-    manilaNow.getUTCFullYear();
-
-  const month =
-    manilaNow.getUTCMonth();
-
-  const day =
-    manilaNow.getUTCDate();
-
-  const startUtc =
-    new Date(
-      Date.UTC(
-        year,
-        month,
-        day,
-        -MANILA_UTC_OFFSET_HOURS,
-        0,
-        0,
-        0
-      )
-    );
-
-  const endUtc =
-    new Date(
-      startUtc.getTime() +
-      24 * 60 * 60 * 1000
-    );
-
-  return {
-    startIso:
-      startUtc.toISOString(),
-    endIso:
-      endUtc.toISOString(),
-  };
-};
-
-// =========================
-// SOLD TODAY HELPERS
-// =========================
-
-const getSoldTodayMap = async () => {
-  const {
-    startIso,
-    endIso,
-  } = getManilaTodayUtcRange();
-
-  const {
-    data: orders,
-    error: ordersError,
-  } = await supabase
-    .from('orders')
-    .select('id, status, created_at')
-    .gte('created_at', startIso)
-    .lt('created_at', endIso);
-
-  if (ordersError) {
-    console.log(
-      'AI SOLD TODAY ORDERS ERROR:',
-      ordersError
-    );
-
-    return {};
+const getMaxOrderQuantity = (item) => {
+  if (!item) {
+    return 0;
   }
 
-  const validOrderIds =
-    (orders || [])
-      .filter((order) => {
-        const status =
-          normalizeText(order.status);
-
-        return ![
-          'cancelled',
-          'canceled',
-          'failed',
-          'voided',
-        ].includes(status);
-      })
-      .map((order) => order.id)
-      .filter(Boolean);
-
-  if (validOrderIds.length === 0) {
-    return {};
+  if (isChefOppaSpecialItem(item)) {
+    return 1;
   }
 
-  const {
-    data: orderItems,
-    error: orderItemsError,
-  } = await supabase
-    .from('order_items')
-    .select('order_id, menu_item_id, quantity')
-    .in('order_id', validOrderIds);
-
-  if (orderItemsError) {
-    console.log(
-      'AI SOLD TODAY ORDER ITEMS ERROR:',
-      orderItemsError
-    );
-
-    return {};
-  }
-
-  const soldTodayMap = {};
-
-  (orderItems || []).forEach((item) => {
-    const menuItemId =
-      item.menu_item_id;
-
-    const quantity =
-      Number(item.quantity) || 0;
-
-    if (!menuItemId) {
-      return;
-    }
-
-    if (!soldTodayMap[menuItemId]) {
-      soldTodayMap[menuItemId] = 0;
-    }
-
-    soldTodayMap[menuItemId] += quantity;
-  });
-
-  return soldTodayMap;
-};
-
-// =========================
-// DAILY INVENTORY ENRICHMENT
-// No old ingredient/recipe validation here.
-// Daily Menu Inventory controls mobile visibility.
-// =========================
-
-const enrichDailyInventoryItem = (
-  item,
-  soldTodayMap = {}
-) => {
-  const normalizedItem =
-    normalizeMenuItem(item);
-
-  const isCustom =
-    isChefOppaSpecialItem(
-      normalizedItem
-    );
-
-  if (isCustom) {
-    const customAvailable =
-      isAvailableTrue(
-        normalizedItem.is_available
-      );
-
-    return {
-      ...normalizedItem,
-      inventory_type:
-        'custom',
-      daily_limit:
-        null,
-      sold_today:
-        0,
-      remaining_today:
-        customAvailable ? 1 : 0,
-      max_order_quantity:
-        customAvailable ? 1 : 0,
-      available_quantity:
-        customAvailable ? 1 : 0,
-      is_available:
-        customAvailable,
-      stock_label:
-        customAvailable
-          ? 'Custom request available'
-          : 'Unavailable',
-    };
-  }
-
-  const inventoryType =
-    normalizeInventoryType(
-      normalizedItem.inventory_type
-    );
-
-  const dailyLimit =
+  const maxQty =
     toNumberOrNull(
-      normalizedItem.daily_limit
+      item?.max_order_quantity ??
+        item?.remaining_today ??
+        item?.available_quantity
     );
+
+  if (maxQty === null) {
+    return 0;
+  }
+
+  return Math.max(0, maxQty);
+};
+
+const normalizeMenuItem = (item = {}) => {
+  const custom =
+    isChefOppaSpecialItem(item);
+
+  const maxQty =
+    custom
+      ? 1
+      : getMaxOrderQuantity(item);
 
   const available =
-    isAvailableTrue(
-      normalizedItem.is_available
-    );
+    custom
+      ? !isAvailableFalse(item?.is_available)
+      : isAvailableTrue(item?.is_available) &&
+        maxQty > 0;
 
-  const validDailyInventory =
-    available &&
-    hasInventoryType(normalizedItem) &&
-    VALID_NORMAL_INVENTORY_TYPES.includes(
-      inventoryType
-    ) &&
-    hasDailyLimit(normalizedItem) &&
-    dailyLimit !== null;
-
-  if (!validDailyInventory) {
-    return {
-      ...normalizedItem,
-      sold_today:
-        Number(
-          soldTodayMap[normalizedItem.id] || 0
-        ),
-      remaining_today:
-        0,
-      max_order_quantity:
-        0,
-      available_quantity:
-        0,
-      is_available:
-        false,
-      stock_label:
-        'Not enabled in Daily Menu Inventory',
-    };
-  }
-
-  const soldToday =
-    Number(
-      soldTodayMap[normalizedItem.id] || 0
-    );
-
-  const remainingToday =
-    Math.max(
-      0,
-      dailyLimit - soldToday
-    );
-
-  const maxOrderQuantity =
-    remainingToday;
+  const image =
+    item?.image_url ||
+    item?.image ||
+    null;
 
   return {
-    ...normalizedItem,
+    ...item,
+
+    id:
+      item?.id ??
+      item?.menu_item_id,
+
+    menu_item_id:
+      item?.menu_item_id ??
+      item?.id,
+
+    name:
+      item?.name || 'Menu Item',
+
+    category:
+      item?.category || null,
+
+    description:
+      item?.description || '',
+
+    price:
+      toNumber(item?.price),
+
+    image,
+    image_url:
+      image,
+
     inventory_type:
-      inventoryType,
-    daily_limit:
-      dailyLimit,
-    sold_today:
-      soldToday,
-    remaining_today:
-      remainingToday,
+      custom
+        ? 'custom'
+        : item?.inventory_type
+          ? normalizeInventoryType(
+              item.inventory_type
+            )
+          : 'ingredient',
+
     max_order_quantity:
-      maxOrderQuantity,
+      available ? maxQty : 0,
+
+    remaining_today:
+      available ? maxQty : 0,
+
     available_quantity:
-      maxOrderQuantity,
+      available ? maxQty : 0,
+
     is_available:
-      remainingToday > 0,
+      available,
+
     stock_label:
-      remainingToday > 0
-        ? `${remainingToday} orders left today`
-        : 'Sold out today',
+      item?.stock_label ||
+      (
+        available
+          ? custom
+            ? 'Custom request available'
+            : `${maxQty} order(s) available based on ingredient stock.`
+          : null
+      ),
+
+    unavailable_reason:
+      available
+        ? null
+        : (
+            item?.unavailable_reason ||
+            item?.stock_label ||
+            'Unavailable based on ingredient stock.'
+          ),
+
+    flavor_tags:
+      normalizeFlavorTags(
+        item?.flavor_tags
+      ),
+
+    meal_type:
+      normalizeMealType(
+        item?.meal_type
+      ),
+
+    is_best_seller:
+      item?.is_best_seller,
   };
 };
 
-const isMobileVisibleMenuItem = (item) => {
+const isIngredientAvailableMenuItem = (item) => {
   if (!item) {
     return false;
   }
 
-  if (
-    !isAvailableTrue(
-      item.is_available
-    )
-  ) {
+  if (isChefOppaSpecialItem(item)) {
     return false;
   }
 
-  if (
-    isChefOppaSpecialItem(item)
-  ) {
-    return false;
-  }
-
-  const inventoryType =
-    normalizeInventoryType(
-      item.inventory_type
-    );
-
-  if (
-    !VALID_NORMAL_INVENTORY_TYPES.includes(
-      inventoryType
-    )
-  ) {
-    return false;
-  }
-
-  const dailyLimit =
-    toNumberOrNull(
-      item.daily_limit
-    );
-
-  const remainingToday =
-    toNumber(
-      item.remaining_today
-    );
-
-  const maxOrderQuantity =
-    toNumber(
-      item.max_order_quantity
-    );
+  const normalizedItem =
+    normalizeMenuItem(item);
 
   return (
-    dailyLimit !== null &&
-    (
-      remainingToday > 0 ||
-      maxOrderQuantity > 0
-    )
+    normalizedItem.is_available === true &&
+    getMaxOrderQuantity(normalizedItem) > 0
+  );
+};
+
+const extractMenuItemsFromPayload = (payload) => {
+  if (Array.isArray(payload)) {
+    return payload;
+  }
+
+  if (
+    payload &&
+    Array.isArray(payload.data)
+  ) {
+    return payload.data;
+  }
+
+  if (
+    payload &&
+    payload.data &&
+    Array.isArray(payload.data.data)
+  ) {
+    return payload.data.data;
+  }
+
+  return [];
+};
+
+const getMenuDebugSourceFromPayload = (payload) => {
+  return (
+    payload?.debug_source ||
+    payload?.data?.debug_source ||
+    payload?.data?.data?.debug_source ||
+    null
   );
 };
 
@@ -528,46 +359,81 @@ const isMobileVisibleMenuItem = (item) => {
 // =========================
 
 const getAvailableMenuItems = async () => {
-  const soldTodayMap =
-    await getSoldTodayMap();
+  const response =
+    await axios.get(
+      WEB_MENU_URL,
+      {
+        timeout: 20000,
+        headers: {
+          Accept: 'application/json',
+          'Cache-Control': 'no-cache',
+          Pragma: 'no-cache',
+        },
+        params: {
+          _ts: Date.now(),
+        },
+      }
+    );
 
-  const {
-    data: menuItems,
-    error,
-  } = await supabase
-    .from('menu_items')
-    .select('*')
-    .order('id', {
-      ascending: true,
-    });
+  const debugSource =
+    getMenuDebugSourceFromPayload(
+      response.data
+    );
 
-  if (error) {
-    throw error;
+  const rawItems =
+    extractMenuItemsFromPayload(
+      response.data
+    );
+
+  console.log(
+    'AI MENU DEBUG SOURCE:',
+    debugSource
+  );
+
+  console.log(
+    'AI RAW MENU COUNT:',
+    rawItems.length
+  );
+
+  if (
+    debugSource &&
+    debugSource !== EXPECTED_MENU_DEBUG_SOURCE
+  ) {
+    console.log(
+      'WARNING: AI MENU DEBUG SOURCE IS NOT EXPECTED:',
+      debugSource
+    );
   }
 
-  return (menuItems || [])
-    .map((item) =>
-      enrichDailyInventoryItem(
-        item,
-        soldTodayMap
-      )
-    )
-    .filter(
-      isMobileVisibleMenuItem
-    );
+  const availableItems =
+    rawItems
+      .map(normalizeMenuItem)
+      .filter(
+        isIngredientAvailableMenuItem
+      );
+
+  console.log(
+    'AI AVAILABLE INGREDIENT MENU COUNT:',
+    availableItems.length
+  );
+
+  return availableItems;
 };
 
 // =========================
 // HEURISTIC FALLBACK PAIRING
-// Used if OpenAI fails, returns invalid JSON,
-// or there is no OPENAI_API_KEY.
-// This keeps "Must try pairings!" from disappearing.
 // =========================
 
 const getComplementaryMealTypes = (
   mealType
 ) => {
   const map = {
+    set: [
+      'drink',
+      'side',
+      'soup',
+      'salad',
+    ],
     main: [
       'drink',
       'side',
@@ -712,6 +578,28 @@ const getFlavorComplements = (
         'side',
         'crispy',
         'savory',
+        'drink',
+      ].forEach((item) =>
+        complements.add(item)
+      );
+    }
+
+    if (tag === 'fermented') {
+      [
+        'mild',
+        'drink',
+        'refreshing',
+        'savory',
+      ].forEach((item) =>
+        complements.add(item)
+      );
+    }
+
+    if (tag === 'sweet') {
+      [
+        'savory',
+        'crispy',
+        'mild',
         'drink',
       ].forEach((item) =>
         complements.add(item)
@@ -903,12 +791,16 @@ const buildFallbackRecommendations = ({
 
 const simplifyCandidateItem = (item) => {
   return {
-    id: item.id,
-    name: item.name,
-    category: item.category,
+    id:
+      item.id,
+    name:
+      item.name,
+    category:
+      item.category,
     description:
       item.description || '',
-    price: item.price,
+    price:
+      item.price,
     image:
       item.image || null,
     image_url:
@@ -917,14 +809,16 @@ const simplifyCandidateItem = (item) => {
       null,
     is_available:
       item.is_available,
-    daily_limit:
-      item.daily_limit,
+    inventory_type:
+      item.inventory_type,
     remaining_today:
       item.remaining_today,
     max_order_quantity:
       item.max_order_quantity,
     available_quantity:
       item.available_quantity,
+    stock_label:
+      item.stock_label,
     flavor_tags:
       normalizeFlavorTags(
         item.flavor_tags
@@ -960,10 +854,50 @@ const simplifyCartItem = (item) => {
   };
 };
 
+const removeSelectedAndCartItems = ({
+  availableMenuItems = [],
+  selectedItem = null,
+  cartItems = [],
+}) => {
+  const selectedId =
+    Number(
+      selectedItem?.id ||
+      selectedItem?.menu_item_id
+    );
+
+  const cartIds =
+    Array.isArray(cartItems)
+      ? cartItems
+          .map((item) =>
+            Number(
+              item.id ||
+              item.menu_item_id
+            )
+          )
+          .filter(Boolean)
+      : [];
+
+  return availableMenuItems.filter(
+    (item) => {
+      const itemId =
+        Number(
+          item.id ||
+          item.menu_item_id
+        );
+
+      return (
+        itemId !== selectedId &&
+        !cartIds.includes(
+          itemId
+        )
+      );
+    }
+  );
+};
+
 // =========================
 // AI DISH RECOMMENDATIONS
 // POST /api/ai/recommend-dishes
-// Recommended route for mobile
 // =========================
 
 router.post(
@@ -994,22 +928,11 @@ router.post(
         });
       }
 
-      if (
-        !isConfigured ||
-        !supabase
-      ) {
-        return res.status(500).json({
-          success: false,
-          message:
-            'Supabase is not configured.',
-        });
-      }
-
       const normalizedSelectedItem =
         selectedItemFromBody
           ? normalizeMenuItem(
-            selectedItemFromBody
-          )
+              selectedItemFromBody
+            )
           : null;
 
       const normalizedCartItems =
@@ -1017,43 +940,21 @@ router.post(
           cartItemsFromBody
         )
           ? cartItemsFromBody.map(
-            normalizeMenuItem
-          )
+              normalizeMenuItem
+            )
           : [];
 
       const availableMenuItems =
         await getAvailableMenuItems();
 
-      const selectedId =
-        Number(
-          normalizedSelectedItem?.id ||
-          normalizedSelectedItem?.menu_item_id
-        );
-
-      const cartIds =
-        normalizedCartItems
-          .map((item) =>
-            Number(
-              item.id ||
-              item.menu_item_id
-            )
-          )
-          .filter(Boolean);
-
       const candidateItems =
-        availableMenuItems.filter(
-          (item) => {
-            const itemId =
-              Number(item.id);
-
-            return (
-              itemId !== selectedId &&
-              !cartIds.includes(
-                itemId
-              )
-            );
-          }
-        );
+        removeSelectedAndCartItems({
+          availableMenuItems,
+          selectedItem:
+            normalizedSelectedItem,
+          cartItems:
+            normalizedCartItems,
+        });
 
       if (
         candidateItems.length === 0
@@ -1061,6 +962,8 @@ router.post(
         return res.json({
           success: true,
           data: [],
+          source:
+            'ingredient_menu',
           message:
             'No available menu items to recommend.',
         });
@@ -1158,22 +1061,44 @@ Return format:
 }
 `;
 
-      const completion =
-        await client.chat.completions.create({
-          model: MODEL,
-          messages: [
-            {
-              role: 'system',
-              content:
-                'You are a restaurant food pairing AI. Return valid JSON only.',
-            },
-            {
-              role: 'user',
-              content: prompt,
-            },
-          ],
-          temperature: 0.6,
+      let completion;
+
+      try {
+        completion =
+          await client.chat.completions.create({
+            model: MODEL,
+            messages: [
+              {
+                role: 'system',
+                content:
+                  'You are a restaurant food pairing AI. Return valid JSON only.',
+              },
+              {
+                role: 'user',
+                content:
+                  prompt,
+              },
+            ],
+            temperature: 0.6,
+          });
+      } catch (openAiError) {
+        console.log(
+          'OPENAI RECOMMEND ERROR:',
+          openAiError?.response?.data ||
+            openAiError?.message ||
+            openAiError
+        );
+
+        return res.json({
+          success: true,
+          data:
+            fallbackRecommendations,
+          source:
+            'fallback',
+          message:
+            'AI request failed. Used local pairing fallback.',
         });
+      }
 
       const rawReply =
         completion.choices?.[0]
@@ -1268,17 +1193,12 @@ Return format:
     } catch (error) {
       console.log(
         'AI RECOMMEND DISHES ERROR:',
-        error
+        error?.response?.data ||
+          error?.message ||
+          error
       );
 
       try {
-        if (
-          !isConfigured ||
-          !supabase
-        ) {
-          throw error;
-        }
-
         const body =
           req.body || {};
 
@@ -1295,8 +1215,8 @@ Return format:
         const normalizedSelectedItem =
           selectedItemFromBody
             ? normalizeMenuItem(
-              selectedItemFromBody
-            )
+                selectedItemFromBody
+              )
             : null;
 
         const normalizedCartItems =
@@ -1304,43 +1224,21 @@ Return format:
             cartItemsFromBody
           )
             ? cartItemsFromBody.map(
-              normalizeMenuItem
-            )
+                normalizeMenuItem
+              )
             : [];
 
         const availableMenuItems =
           await getAvailableMenuItems();
 
-        const selectedId =
-          Number(
-            normalizedSelectedItem?.id ||
-            normalizedSelectedItem?.menu_item_id
-          );
-
-        const cartIds =
-          normalizedCartItems
-            .map((item) =>
-              Number(
-                item.id ||
-                item.menu_item_id
-              )
-            )
-            .filter(Boolean);
-
         const candidateItems =
-          availableMenuItems.filter(
-            (item) => {
-              const itemId =
-                Number(item.id);
-
-              return (
-                itemId !== selectedId &&
-                !cartIds.includes(
-                  itemId
-                )
-              );
-            }
-          );
+          removeSelectedAndCartItems({
+            availableMenuItems,
+            selectedItem:
+              normalizedSelectedItem,
+            cartItems:
+              normalizedCartItems,
+          });
 
         const fallbackRecommendations =
           buildFallbackRecommendations({
@@ -1361,6 +1259,13 @@ Return format:
             'AI failed. Used local pairing fallback.',
         });
       } catch (fallbackError) {
+        console.log(
+          'AI FALLBACK ERROR:',
+          fallbackError?.response?.data ||
+            fallbackError?.message ||
+            fallbackError
+        );
+
         return res.status(500).json({
           success: false,
           message:
@@ -1384,7 +1289,7 @@ router.post(
     try {
       const {
         itemName,
-      } = req.body;
+      } = req.body || {};
 
       if (!itemName) {
         return res.status(400).json({
@@ -1394,56 +1299,110 @@ router.post(
         });
       }
 
-      const {
-        data: menuItems,
-        error,
-      } = await supabase
-        .from('menu_items')
-        .select('*')
-        .order('id', {
-          ascending: true,
+      const availableMenuItems =
+        await getAvailableMenuItems();
+
+      const selected =
+        availableMenuItems.find(
+          (item) =>
+            normalizeText(item.name) ===
+            normalizeText(itemName)
+        ) || {
+          name:
+            itemName,
+        };
+
+      const availableItems =
+        availableMenuItems.filter(
+          (item) =>
+            normalizeText(item.name) !==
+            normalizeText(itemName)
+        );
+
+      const fallbackRecommendations =
+        buildFallbackRecommendations({
+          selectedItem:
+            selected,
+          cartItems:
+            [],
+          candidateItems:
+            availableItems,
         });
 
       if (
-        !error &&
-        Array.isArray(menuItems)
+        !process.env.OPENAI_API_KEY
       ) {
-        const soldTodayMap =
-          await getSoldTodayMap();
+        return res.json({
+          success: true,
+          recommendations:
+            fallbackRecommendations.map(
+              (item) => item.name
+            ),
+          data:
+            fallbackRecommendations,
+          source:
+            'fallback',
+          message:
+            'OPENAI_API_KEY missing. Used local pairing fallback.',
+        });
+      }
 
-        const selected =
-          (menuItems || []).find(
-            (item) =>
-              normalizeText(item.name) ===
-              normalizeText(itemName)
-          );
+      const prompt = `
+Recommend exactly 3 food pairings for this Chef Oppa menu item:
+${itemName}
 
-        const availableItems =
-          (menuItems || [])
-            .map((item) =>
-              enrichDailyInventoryItem(
-                item,
-                soldTodayMap
-              )
-            )
-            .filter(
-              isMobileVisibleMenuItem
-            )
-            .filter(
-              (item) =>
-                normalizeText(item.name) !==
-                normalizeText(itemName)
-            );
+Only choose from this available menu list:
+${JSON.stringify(
+  availableItems.map(
+    simplifyCandidateItem
+  ),
+  null,
+  2
+)}
 
-        const fallbackRecommendations =
-          buildFallbackRecommendations({
-            selectedItem:
-              selected,
-            cartItems:
-              [],
-            candidateItems:
-              availableItems,
+Rules:
+- Return valid JSON only.
+- Do not recommend unavailable items.
+- Do not recommend the selected item.
+- Use this format:
+{
+  "recommendations": [
+    {
+      "id": 1,
+      "name": "Dish Name",
+      "reason": "Short reason"
+    }
+  ]
+}
+`;
+
+      let completion;
+
+      try {
+        completion =
+          await client.chat.completions.create({
+            model: MODEL,
+            messages: [
+              {
+                role: 'system',
+                content:
+                  'You are a Korean restaurant food recommendation AI. Return valid JSON only.',
+              },
+              {
+                role: 'user',
+                content:
+                  prompt,
+              },
+            ],
+            temperature: 0.7,
           });
+      } catch (openAiError) {
+        console.log(
+          'OPENAI PAIRING ERROR:',
+          openAiError?.response?.data ||
+            openAiError?.message ||
+            openAiError
+        );
 
         return res.json({
           success: true,
@@ -1455,74 +1414,114 @@ router.post(
             fallbackRecommendations,
           source:
             'fallback',
-        });
-      }
-
-      if (
-        !process.env.OPENAI_API_KEY
-      ) {
-        return res.status(500).json({
-          success: false,
           message:
-            'OPENAI_API_KEY is missing in backend .env.',
+            'AI request failed. Used local pairing fallback.',
         });
       }
-
-      const completion =
-        await client.chat.completions.create({
-          model: MODEL,
-          messages: [
-            {
-              role: 'system',
-              content: `
-You are a Korean restaurant food recommendation AI.
-
-Recommend exactly 3 menu pairings for the selected food.
-
-Rules:
-- Short responses only
-- Return only food names
-- No numbering
-- No explanations
-- Separate each item with commas
-              `,
-            },
-            {
-              role: 'user',
-              content:
-                `Recommend food pairings for ${itemName}`,
-            },
-          ],
-          temperature: 0.7,
-          max_completion_tokens: 80,
-        });
 
       const rawReply =
         completion.choices?.[0]
           ?.message?.content || '';
 
+      let parsed;
+
+      try {
+        parsed =
+          JSON.parse(rawReply);
+      } catch (parseError) {
+        console.log(
+          'AI PAIRING RAW REPLY:',
+          rawReply
+        );
+
+        return res.json({
+          success: true,
+          recommendations:
+            fallbackRecommendations.map(
+              (item) => item.name
+            ),
+          data:
+            fallbackRecommendations,
+          source:
+            'fallback',
+          message:
+            'AI returned invalid JSON. Used local pairing fallback.',
+        });
+      }
+
       const recommendations =
-        rawReply
-          .split(',')
-          .map((item) =>
-            item.trim()
-          )
-          .filter(Boolean);
+        Array.isArray(
+          parsed.recommendations
+        )
+          ? parsed.recommendations
+          : [];
+
+      const enrichedRecommendations =
+        recommendations
+          .map((rec) => {
+            const matchedItem =
+              availableItems.find(
+                (item) =>
+                  Number(item.id) ===
+                  Number(rec.id)
+              );
+
+            if (!matchedItem) {
+              return null;
+            }
+
+            return {
+              ...matchedItem,
+              reason:
+                rec.reason ||
+                'Pairs well with this dish.',
+            };
+          })
+          .filter(Boolean)
+          .slice(0, 3);
+
+      if (
+        enrichedRecommendations.length === 0
+      ) {
+        return res.json({
+          success: true,
+          recommendations:
+            fallbackRecommendations.map(
+              (item) => item.name
+            ),
+          data:
+            fallbackRecommendations,
+          source:
+            'fallback',
+          message:
+            'AI returned no valid menu matches. Used local pairing fallback.',
+        });
+      }
 
       return res.json({
         success: true,
-        recommendations,
+        recommendations:
+          enrichedRecommendations.map(
+            (item) => item.name
+          ),
+        data:
+          enrichedRecommendations,
+        source:
+          'openai',
       });
     } catch (error) {
       console.log(
         'AI PAIRING ERROR:',
-        error
+        error?.response?.data ||
+          error?.message ||
+          error
       );
 
       return res.status(500).json({
         success: false,
         message:
-          error.message,
+          error.message ||
+          'Failed to recommend pairings.',
       });
     }
   }

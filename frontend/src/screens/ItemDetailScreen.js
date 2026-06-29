@@ -47,12 +47,8 @@ import {
   getAvailabilityDisplayText,
   shouldShowLowStockWarning,
   isCustomItem,
+  isValidIngredientInventoryMenuItem,
 } from "../utils/inventory";
-
-const VALID_NORMAL_INVENTORY_TYPES = [
-  "per_order",
-  "per_head",
-];
 
 const normalizeText = (value) => {
   return String(value || "")
@@ -75,14 +71,6 @@ const isAvailableTrue = (value) => {
   );
 };
 
-const hasInventoryType = (item) => {
-  return (
-    item?.inventory_type !== null &&
-    item?.inventory_type !== undefined &&
-    String(item.inventory_type).trim() !== ""
-  );
-};
-
 const hasDailyLimit = (item) => {
   return (
     item?.daily_limit !== null &&
@@ -100,11 +88,37 @@ const toNumber = (value) => {
 };
 
 const getRemainingToday = (item) => {
-  return toNumber(item?.remaining_today);
+  if (!item) {
+    return 0;
+  }
+
+  if (isCustomItem(item)) {
+    return 1;
+  }
+
+  return toNumber(
+    item?.remaining_today ??
+      item?.available_quantity ??
+      item?.max_order_quantity ??
+      0
+  );
 };
 
 const getMaxOrderQuantity = (item) => {
-  return toNumber(item?.max_order_quantity);
+  if (!item) {
+    return 0;
+  }
+
+  if (isCustomItem(item)) {
+    return 1;
+  }
+
+  return toNumber(
+    item?.max_order_quantity ??
+      item?.remaining_today ??
+      item?.available_quantity ??
+      0
+  );
 };
 
 const getAllowedOrderQuantity = (item) => {
@@ -144,46 +158,7 @@ const getAllowedOrderQuantity = (item) => {
 };
 
 const isValidDailyInventoryMenuItem = (item) => {
-  const inventoryType =
-    normalizeInventoryType(item?.inventory_type);
-
-  const available =
-    isAvailableTrue(item?.is_available);
-
-  if (!available) {
-    return false;
-  }
-
-  if (!hasInventoryType(item)) {
-    return false;
-  }
-
-  if (inventoryType === "custom") {
-    return true;
-  }
-
-  if (
-    !VALID_NORMAL_INVENTORY_TYPES.includes(
-      inventoryType
-    )
-  ) {
-    return false;
-  }
-
-  if (!hasDailyLimit(item)) {
-    return false;
-  }
-
-  const remainingToday =
-    getRemainingToday(item);
-
-  const maxOrderQuantity =
-    getMaxOrderQuantity(item);
-
-  return (
-    remainingToday > 0 ||
-    maxOrderQuantity > 0
-  );
+  return isValidIngredientInventoryMenuItem(item);
 };
 
 export default function ItemDetailScreen({
@@ -1050,11 +1025,10 @@ export default function ItemDetailScreen({
           return;
         }
 
-        const visibleItems =
-          response.data.filter(
-            isValidDailyInventoryMenuItem
-          );
-
+       const visibleItems =
+  response.data.filter(
+    isValidIngredientInventoryMenuItem
+  );
         syncMenuInventory(
           visibleItems
         );
@@ -1092,45 +1066,45 @@ export default function ItemDetailScreen({
     item?.name,
   ]);
 
-  const fetchRecommendations =
-    async () => {
-      try {
-        setLoadingRecommendations(true);
+     const fetchRecommendations =
+  async () => {
+    try {
+      setLoadingRecommendations(true);
 
-        const response =
-          await getDishRecommendations({
-            selectedItem: item,
-            cartItems,
-          });
+      const response =
+        await getDishRecommendations({
+          selectedItem: item,
+          cartItems,
+        });
 
-        if (response.success) {
-          const recommendedItems =
-            (response.data || []).filter(
-              isValidDailyInventoryMenuItem
-            );
-
-          setRecommendations(
-            recommendedItems
+      if (response.success) {
+        const recommendedItems =
+          (response.data || []).filter(
+            isValidIngredientInventoryMenuItem
           );
 
-          mergeInventoryItems(
-            recommendedItems
-          );
-        } else {
-          setRecommendations([]);
-        }
-      } catch (error) {
-        console.log(
-          "AI RECOMMENDATIONS ERROR:",
-          error?.response?.data ||
-          error.message
+        setRecommendations(
+          recommendedItems
         );
 
+        mergeInventoryItems(
+          recommendedItems
+        );
+      } else {
         setRecommendations([]);
-      } finally {
-        setLoadingRecommendations(false);
       }
-    };
+    } catch (error) {
+      console.log(
+        "AI RECOMMENDATIONS ERROR:",
+        error?.response?.data ||
+          error.message
+      );
+
+      setRecommendations([]);
+    } finally {
+      setLoadingRecommendations(false);
+    }
+  };
 
   const formatMoney = (value) => {
     const n =
@@ -1236,12 +1210,10 @@ export default function ItemDetailScreen({
   const isLowStock =
     shouldShowLowStockWarning(item);
 
-  const availabilityText =
-    customItem
-      ? "Custom request available"
-      : isValidForMobile
-        ? getAvailabilityDisplayText(item)
-        : "Not enabled in Daily Menu Inventory";
+ const availabilityText =
+  customItem
+    ? "Custom request available"
+    : getAvailabilityDisplayText(item);
 
   const itemDescription =
     getItemDescription(item);
@@ -1253,98 +1225,104 @@ export default function ItemDetailScreen({
     getMealType(item);
 
   const handleAddToCart = async () => {
-    if (!item) {
-      return;
-    }
+  if (!item) {
+    return;
+  }
 
-    const tableCheck =
-      await ensureCanOrder();
+  const tableCheck =
+    await ensureCanOrder();
 
-    if (!tableCheck.allowed) {
-      Alert.alert(
-        "Table Not Assigned",
-        tableCheck.message ||
+  if (!tableCheck.allowed) {
+    Alert.alert(
+      "Table Not Assigned",
+      tableCheck.message ||
         assignmentMessage
-      );
+    );
 
-      return;
-    }
+    return;
+  }
 
-    if (!isValidDailyInventoryMenuItem(item)) {
-      Alert.alert(
-        "Unavailable",
-        "This item is not enabled in Daily Menu Inventory."
-      );
+  if (
+    !isValidIngredientInventoryMenuItem(
+      item
+    )
+  ) {
+    Alert.alert(
+      "Unavailable",
+      getAvailabilityDisplayText(item) ||
+        "This item is currently unavailable based on ingredient stock."
+    );
 
-      return;
-    }
+    return;
+  }
 
-    if (!isAvailable) {
-      Alert.alert(
-        "Out of Stock",
+  if (!isAvailable) {
+    Alert.alert(
+      "Out of Stock",
+      getAvailabilityDisplayText(item) ||
         "This item is currently out of stock."
-      );
+    );
 
-      return;
-    }
+    return;
+  }
 
-    if (customItem) {
-      const requestText =
-        specialRequest.trim();
+  if (customItem) {
+    const requestText =
+      specialRequest.trim();
 
-      if (!requestText) {
-        Alert.alert(
-          "Chef Oppa Special Request",
-          "Please describe your Chef Oppa Special request before adding it to cart."
-        );
-
-        return;
-      }
-
-      if (currentCartQuantity >= 1) {
-        Alert.alert(
-          "Already Added",
-          "Chef Oppa Special can only be added once per order."
-        );
-
-        return;
-      }
-
-      addToCart({
-        ...item,
-        quantity: 1,
-        price: 0,
-        notes: requestText,
-        special_request: requestText,
-        inventory_type: "custom",
-      });
-
-      setSpecialRequest("");
-
-      return;
-    }
-
-    if (allowedQuantity <= 0) {
+    if (!requestText) {
       Alert.alert(
-        "Sold Out",
-        "This item is sold out for today."
+        "Chef Oppa Special Request",
+        "Please describe your Chef Oppa Special request before adding it to cart."
       );
 
       return;
     }
 
-    if (!canAddMoreCurrentItem) {
+    if (currentCartQuantity >= 1) {
       Alert.alert(
-        "Limited Stock",
-        `You can only order up to ${allowedQuantity} of this item today.`
+        "Already Added",
+        "Chef Oppa Special can only be added once per order."
       );
 
       return;
     }
 
-    addToCart(item);
-  };
+    addToCart({
+      ...item,
+      quantity: 1,
+      price: 0,
+      notes: requestText,
+      special_request: requestText,
+      inventory_type: "custom",
+    });
 
+    setSpecialRequest("");
+
+    return;
+  }
+
+  if (allowedQuantity <= 0) {
+    Alert.alert(
+      "Out of Stock",
+      getAvailabilityDisplayText(item) ||
+        "This item is currently out of stock."
+    );
+
+    return;
+  }
+
+  if (!canAddMoreCurrentItem) {
+    Alert.alert(
+      "Limited Stock",
+      `You can only order up to ${allowedQuantity} of this item.`
+    );
+
+    return;
+  }
+
+  addToCart(item);
+};
   const handleAddRecommendedItem =
     async (recommendedItem) => {
       if (!recommendedItem) {
@@ -1369,10 +1347,11 @@ export default function ItemDetailScreen({
           recommendedItem
         )
       ) {
-        Alert.alert(
-          "Unavailable",
-          "This recommended item is not enabled in Daily Menu Inventory."
-        );
+      Alert.alert(
+  "Unavailable",
+  getAvailabilityDisplayText(recommendedItem) ||
+    "This recommended item is currently unavailable based on ingredient stock."
+);
 
         return;
       }
@@ -1446,9 +1425,10 @@ export default function ItemDetailScreen({
       )
     ) {
       Alert.alert(
-        "Unavailable",
-        "This item is no longer enabled in Daily Menu Inventory."
-      );
+  "Unavailable",
+  getAvailabilityDisplayText(enrichedItem) ||
+    "This item is no longer available based on ingredient stock."
+);
 
       return;
     }
@@ -1552,7 +1532,7 @@ export default function ItemDetailScreen({
       return;
     }
 
-    const invalidDailyInventoryItems =
+   const invalidIngredientInventoryItems =
       cartItems.filter((cartItem) => {
         const enrichedItem =
           getEnrichedItem(cartItem);
@@ -1566,11 +1546,11 @@ export default function ItemDetailScreen({
       });
 
     if (
-      invalidDailyInventoryItems.length > 0
+      invalidIngredientInventoryItems.length > 0
     ) {
       Alert.alert(
         "Unavailable Item",
-        "Some items in your cart are no longer enabled in Daily Menu Inventory. Please remove them before confirming your order."
+       "Some items in your cart are no longer available based on ingredient stock. Please remove them before confirming your order."
       );
 
       return;
@@ -1600,7 +1580,7 @@ export default function ItemDetailScreen({
     if (overLimitItems.length > 0) {
       Alert.alert(
         "Limited Stock",
-        "Some items exceed the available quantity for today. Please adjust your cart before confirming your order."
+        "Some items exceed the available ingredient stock. Please adjust your cart before confirming your order."
       );
 
       return;
@@ -1820,7 +1800,7 @@ export default function ItemDetailScreen({
     const customCartItem =
       isCustomItem(enrichedItem);
 
-    const validDailyInventoryItem =
+    const validIngredientInventoryItem =
       customCartItem ||
       isValidDailyInventoryMenuItem(
         enrichedItem
@@ -1835,7 +1815,7 @@ export default function ItemDetailScreen({
 
     const atMaxQuantity =
       customCartItem ||
-      !validDailyInventoryItem ||
+      !validIngredientInventoryItem ||
       allowedCartQuantity <= 0 ||
       Number(cartItem.quantity || 0) >=
       allowedCartQuantity ||
@@ -1886,14 +1866,14 @@ export default function ItemDetailScreen({
               !customCartItem &&
               allowedCartQuantity > 0 ? (
               <Text style={styles.cartLimitText}>
-                Limit today: {allowedCartQuantity}
+                Limit: {allowedCartQuantity}
               </Text>
             ) : null}
 
             {!customCartItem &&
-              !validDailyInventoryItem ? (
+              !validIngredientInventoryItem? (
               <Text style={styles.cartInvalidText}>
-                No longer available today
+                No longer available based on ingredient stock
               </Text>
             ) : null}
 
@@ -2490,10 +2470,10 @@ export default function ItemDetailScreen({
                           ? currentCartQuantity >= 1
                             ? "Request Already Added"
                             : "Add Request to Cart"
-                          : !isValidForMobile
-                            ? "Not Enabled Today"
-                            : allowedQuantity <= 0
-                              ? "Sold Out Today"
+                         : !isValidForMobile
+  ? "Unavailable"
+  : allowedQuantity <= 0
+    ? "Out of Stock"
                               : !canAddMoreCurrentItem
                                 ? "Limit Reached"
                                 : "Add to Order"}
@@ -2687,7 +2667,7 @@ export default function ItemDetailScreen({
                 </Text>
               ) : null}
 
-              <View
+             <View
                 style={[
                   styles.cartFooter,
                   {
@@ -2741,7 +2721,7 @@ export default function ItemDetailScreen({
                     },
                     (cartItems.length === 0 ||
                       !canOrder) &&
-                    styles.checkoutButtonDisabled,
+                      styles.checkoutButtonDisabled,
                   ]}
                   disabled={
                     cartItems.length === 0 ||
