@@ -69,14 +69,16 @@ export default function OrderStatusScreen({
       const shortest =
         Math.min(width, height);
 
-      const longest =
-        Math.max(width, height);
+      const usableWidth =
+        width -
+        insets.left -
+        insets.right;
 
       const isPhone =
         shortest < 600;
 
       const isVeryNarrow =
-        width < 390;
+        usableWidth < 390;
 
       const isLandscape =
         width > height;
@@ -84,11 +86,6 @@ export default function OrderStatusScreen({
       const isShortLandscape =
         isLandscape &&
         height < 430;
-
-      const usableWidth =
-        width -
-        insets.left -
-        insets.right;
 
       const clamp = (
         value,
@@ -108,7 +105,7 @@ export default function OrderStatusScreen({
 
       const scale = (
         size,
-        min = size * 0.72,
+        min = size * 0.75,
         max = size * 1.12
       ) => {
         return Math.round(
@@ -117,17 +114,7 @@ export default function OrderStatusScreen({
       };
 
       const bottomBarNeedsWrap =
-        usableWidth < 720;
-
-      const compactBottomBar =
-        usableWidth < 420;
-
-      const bottomBarHeight =
-        bottomBarNeedsWrap
-          ? compactBottomBar
-            ? scale(132, 118, 148)
-            : scale(124, 108, 138)
-          : scale(82, 70, 92);
+        usableWidth < 560;
 
       const useCompactHeader =
         isVeryNarrow ||
@@ -136,19 +123,15 @@ export default function OrderStatusScreen({
 
       return {
         isPhone,
-        isVeryNarrow,
         isLandscape,
-        isShortLandscape,
         bottomBarNeedsWrap,
-        compactBottomBar,
-        useCompactHeader,
-
-        safeTopExtra: 0,
 
         safeBottomExtra:
           Math.max(
             insets.bottom +
-            (Platform.OS === 'android' ? 10 : 8),
+              (Platform.OS === 'android'
+                ? 10
+                : 8),
             16
           ),
 
@@ -207,12 +190,6 @@ export default function OrderStatusScreen({
             ? scale(14, 12, 15)
             : scale(16, 12, 16),
 
-        errorPadding:
-          scale(12, 9, 12),
-
-        errorRadius:
-          scale(12, 9, 12),
-
         cardPadding:
           isVeryNarrow
             ? scale(14, 12, 16)
@@ -258,14 +235,6 @@ export default function OrderStatusScreen({
             ? scale(11, 9, 13)
             : scale(18, 10, 18),
 
-        paymentBadgePaddingV:
-          scale(6, 5, 6),
-
-        paymentBadgePaddingH:
-          isPhone
-            ? scale(11, 9, 13)
-            : scale(14, 9, 14),
-
         paymentMessage:
           isPhone
             ? scale(14, 12, 15)
@@ -275,31 +244,6 @@ export default function OrderStatusScreen({
           isPhone
             ? scale(20, 17, 21)
             : scale(22, 17, 22),
-
-        paymentMessagePaddingV:
-          scale(10, 7, 10),
-
-        paymentMessagePaddingH:
-          scale(14, 10, 14),
-
-        continuePaymentMargin:
-          scale(12, 8, 14),
-
-        continuePaymentPaddingV:
-          isPhone
-            ? scale(11, 9, 13)
-            : scale(12, 9, 13),
-
-        continuePaymentPaddingH:
-          scale(16, 12, 18),
-
-        continuePaymentRadius:
-          scale(14, 10, 14),
-
-        continuePaymentText:
-          isPhone
-            ? scale(15, 13, 16)
-            : scale(16, 13, 17),
 
         dividerMargin:
           isPhone
@@ -366,29 +310,13 @@ export default function OrderStatusScreen({
             ? scale(22, 19, 24)
             : scale(25, 19, 25),
 
-        bottomBarLeft:
-          isVeryNarrow
-            ? scale(12, 10, 14)
-            : isPhone
-              ? scale(14, 12, 16)
-              : scale(24, 16, 24),
-
-        bottomBarBottom:
-          Math.max(
-            insets.bottom +
-            (Platform.OS === 'android' ? 8 : 6),
-            12
-          ),
-
-        bottomBarPadding:
+        footerPadding:
           isPhone
             ? scale(10, 8, 12)
             : scale(14, 10, 14),
 
-        bottomBarRadius:
+        footerRadius:
           scale(18, 14, 18),
-
-        bottomBarHeight,
 
         autoText:
           isPhone
@@ -414,14 +342,12 @@ export default function OrderStatusScreen({
             : scale(16, 12, 16),
 
         listBottom:
-          bottomBarHeight +
-          Math.max(
-            insets.bottom + 36,
-            58
-          ),
+          scale(14, 10, 18),
 
         maxContentWidth:
-          clamp(longest * 0.94, 340, 1100),
+          isLandscape
+            ? clamp(usableWidth * 0.92, 360, 980)
+            : clamp(usableWidth * 0.96, 320, 760),
       };
     }, [
       width,
@@ -606,20 +532,19 @@ export default function OrderStatusScreen({
         );
 
         setOrders(activeOrders);
-
         setError('');
       } else {
         setError(
           response.message ||
-          'Failed to load orders.'
+            'Failed to load orders.'
         );
       }
     } catch (err) {
       console.log(
         'ACTIVE ORDERS ERROR:',
         err?.response?.data ||
-        err.message ||
-        err
+          err.message ||
+          err
       );
 
       setError(
@@ -639,7 +564,9 @@ export default function OrderStatusScreen({
   };
 
   const formatDateTime = (value) => {
-    if (!value) return '';
+    if (!value) {
+      return '';
+    }
 
     const date =
       value instanceof Date
@@ -759,7 +686,7 @@ export default function OrderStatusScreen({
     return (
       orderId &&
       Number(order?.id) ===
-      Number(orderId)
+        Number(orderId)
     );
   };
 
@@ -846,12 +773,9 @@ export default function OrderStatusScreen({
   const getEffectiveOrderStatus = (
     order
   ) => {
-    const orderStatus =
-      normalizeOrderStatus(
-        order.status
-      );
-
-    return orderStatus;
+    return normalizeOrderStatus(
+      order.status
+    );
   };
 
   const isCustomOrderItem = (
@@ -860,8 +784,8 @@ export default function OrderStatusScreen({
     const category =
       String(
         orderItem?.category ||
-        orderItem?.menu_item?.category ||
-        ''
+          orderItem?.menu_item?.category ||
+          ''
       )
         .trim()
         .toLowerCase();
@@ -869,8 +793,8 @@ export default function OrderStatusScreen({
     const inventoryType =
       String(
         orderItem?.inventory_type ||
-        orderItem?.menu_item?.inventory_type ||
-        ''
+          orderItem?.menu_item?.inventory_type ||
+          ''
       )
         .trim()
         .toLowerCase();
@@ -878,9 +802,9 @@ export default function OrderStatusScreen({
     const name =
       String(
         orderItem?.name ||
-        orderItem?.menu_name ||
-        orderItem?.menu_item?.name ||
-        ''
+          orderItem?.menu_name ||
+          orderItem?.menu_item?.name ||
+          ''
       )
         .trim()
         .toLowerCase();
@@ -918,21 +842,15 @@ export default function OrderStatusScreen({
       return styles.statusAwaitingPayment;
     }
 
-    if (
-      normalized === 'pending'
-    ) {
+    if (normalized === 'pending') {
       return styles.statusPending;
     }
 
-    if (
-      normalized === 'preparing'
-    ) {
+    if (normalized === 'preparing') {
       return styles.statusPreparing;
     }
 
-    if (
-      normalized === 'ready'
-    ) {
+    if (normalized === 'ready') {
       return styles.statusReady;
     }
 
@@ -960,21 +878,15 @@ export default function OrderStatusScreen({
     const normalized =
       normalizePaymentStatus(paymentStatus);
 
-    if (
-      normalized === 'paid'
-    ) {
+    if (normalized === 'paid') {
       return styles.paymentPaid;
     }
 
-    if (
-      normalized === 'expired'
-    ) {
+    if (normalized === 'expired') {
       return styles.paymentExpired;
     }
 
-    if (
-      normalized === 'failed'
-    ) {
+    if (normalized === 'failed') {
       return styles.paymentFailed;
     }
 
@@ -1090,7 +1002,7 @@ export default function OrderStatusScreen({
     ) {
       return Number(
         order.total_amount ||
-        order.total
+          order.total
       );
     }
 
@@ -1108,8 +1020,8 @@ export default function OrderStatusScreen({
         const price =
           Number(
             item.price ||
-            item.menu_item?.price ||
-            0
+              item.menu_item?.price ||
+              0
           );
 
         const quantity =
@@ -1243,12 +1155,6 @@ export default function OrderStatusScreen({
             <View
               style={[
                 styles.paymentBadge,
-                {
-                  paddingVertical:
-                    responsive.paymentBadgePaddingV,
-                  paddingHorizontal:
-                    responsive.paymentBadgePaddingH,
-                },
                 getPaymentStatusStyle(
                   item.payment_status
                 ),
@@ -1280,10 +1186,6 @@ export default function OrderStatusScreen({
                   responsive.paymentMessage,
                 lineHeight:
                   responsive.paymentMessageLine,
-                paddingVertical:
-                  responsive.paymentMessagePaddingV,
-                paddingHorizontal:
-                  responsive.paymentMessagePaddingH,
               },
             ]}
           >
@@ -1293,23 +1195,16 @@ export default function OrderStatusScreen({
 
         {showContinueQrPayment ? (
           <TouchableOpacity
+            activeOpacity={0.85}
             style={[
               styles.continuePaymentBtn,
               {
-                marginTop:
-                  responsive.continuePaymentMargin,
-                paddingVertical:
-                  responsive.continuePaymentPaddingV,
-                paddingHorizontal:
-                  responsive.continuePaymentPaddingH,
                 borderRadius:
-                  responsive.continuePaymentRadius,
+                  responsive.buttonRadius,
               },
             ]}
             onPress={() =>
-              handleContinueQrPayment(
-                item
-              )
+              handleContinueQrPayment(item)
             }
           >
             <Text
@@ -1317,7 +1212,7 @@ export default function OrderStatusScreen({
                 styles.continuePaymentText,
                 {
                   fontSize:
-                    responsive.continuePaymentText,
+                    responsive.buttonText,
                 },
               ]}
               numberOfLines={1}
@@ -1372,19 +1267,19 @@ export default function OrderStatusScreen({
                 customItem
                   ? 1
                   : Number(
-                    orderItem.quantity ||
-                    0
-                  );
+                      orderItem.quantity ||
+                        0
+                    );
 
               const price =
                 customItem
                   ? 0
                   : Number(
-                    orderItem.price ||
-                    orderItem.menu_item
-                      ?.price ||
-                    0
-                  );
+                      orderItem.price ||
+                        orderItem.menu_item
+                          ?.price ||
+                        0
+                    );
 
               const requestText =
                 getRequestText(
@@ -1466,9 +1361,8 @@ export default function OrderStatusScreen({
                     {customItem
                       ? 'To be confirmed'
                       : `₱${formatMoney(
-                        price *
-                        quantity
-                      )}`}
+                          price * quantity
+                        )}`}
                   </Text>
                 </View>
               );
@@ -1574,8 +1468,7 @@ export default function OrderStatusScreen({
               padding:
                 responsive.containerPadding,
               paddingTop:
-                responsive.containerPadding +
-                responsive.safeTopExtra,
+                responsive.containerPadding,
               paddingBottom:
                 responsive.safeBottomExtra,
             },
@@ -1593,9 +1486,7 @@ export default function OrderStatusScreen({
             <TouchableOpacity
               style={styles.topBarLeft}
               onPress={() =>
-                navigation.navigate(
-                  'Menu'
-                )
+                navigation.navigate('Menu')
               }
             >
               <Text
@@ -1669,10 +1560,6 @@ export default function OrderStatusScreen({
                 {
                   fontSize:
                     responsive.errorText,
-                  padding:
-                    responsive.errorPadding,
-                  borderRadius:
-                    responsive.errorRadius,
                 },
               ]}
             >
@@ -1681,15 +1568,7 @@ export default function OrderStatusScreen({
           ) : null}
 
           {orders.length === 0 ? (
-            <View
-              style={[
-                styles.emptyBox,
-                {
-                  paddingBottom:
-                    responsive.listBottom,
-                },
-              ]}
-            >
+            <View style={styles.emptyBox}>
               <Text
                 style={[
                   styles.emptyIcon,
@@ -1730,6 +1609,7 @@ export default function OrderStatusScreen({
             </View>
           ) : (
             <FlatList
+              style={styles.listArea}
               data={orders}
               keyExtractor={(item) =>
                 String(item.id)
@@ -1750,63 +1630,60 @@ export default function OrderStatusScreen({
 
           <View
             style={[
-              styles.bottomBar,
+              styles.footerWrap,
               {
-                left:
-                  responsive.bottomBarLeft,
-                right:
-                  responsive.bottomBarLeft,
-                bottom:
-                  responsive.bottomBarBottom,
-                padding:
-                  responsive.bottomBarPadding,
-                borderRadius:
-                  responsive.bottomBarRadius,
-                minHeight:
-                  responsive.bottomBarHeight,
-                flexDirection:
-                  responsive.bottomBarNeedsWrap
-                    ? 'column'
-                    : 'row',
-                alignItems:
-                  responsive.bottomBarNeedsWrap
-                    ? 'stretch'
-                    : 'center',
+                maxWidth:
+                  responsive.maxContentWidth,
               },
             ]}
           >
-            <Text
-              style={[
-                styles.autoText,
-                {
-                  fontSize:
-                    responsive.autoText,
-                  textAlign:
-                    responsive.bottomBarNeedsWrap
-                      ? 'center'
-                      : 'left',
-                },
-              ]}
-              numberOfLines={1}
-              adjustsFontSizeToFit
-            >
-              Updates every 5 seconds
-            </Text>
-
             <View
               style={[
-                styles.bottomActions,
+                styles.footerCard,
                 {
-                  justifyContent:
+                  padding:
+                    responsive.footerPadding,
+                  borderRadius:
+                    responsive.footerRadius,
+                  flexDirection:
                     responsive.bottomBarNeedsWrap
-                      ? 'center'
-                      : 'flex-end',
+                      ? 'column'
+                      : 'row',
+                  alignItems:
+                    responsive.bottomBarNeedsWrap
+                      ? 'stretch'
+                      : 'center',
                 },
               ]}
             >
+              <View style={styles.autoInfo}>
+                <View style={styles.liveDot} />
+
+                <Text
+                  style={[
+                    styles.autoText,
+                    {
+                      fontSize:
+                        responsive.autoText,
+                      textAlign:
+                        responsive.bottomBarNeedsWrap
+                          ? 'center'
+                          : 'left',
+                    },
+                  ]}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
+                >
+                  Auto-refresh every 5 seconds
+                </Text>
+              </View>
+
               <TouchableOpacity
+                activeOpacity={0.85}
                 style={[
                   styles.refreshBtn,
+                  responsive.bottomBarNeedsWrap &&
+                    styles.refreshBtnFull,
                   {
                     paddingVertical:
                       responsive.buttonPaddingV,
@@ -1822,6 +1699,18 @@ export default function OrderStatusScreen({
               >
                 <Text
                   style={[
+                    styles.refreshIcon,
+                    {
+                      fontSize:
+                        responsive.buttonText,
+                    },
+                  ]}
+                >
+                  ↻
+                </Text>
+
+                <Text
+                  style={[
                     styles.refreshText,
                     {
                       fontSize:
@@ -1832,39 +1721,6 @@ export default function OrderStatusScreen({
                   adjustsFontSizeToFit
                 >
                   Refresh
-                </Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[
-                  styles.menuBtn,
-                  {
-                    paddingVertical:
-                      responsive.buttonPaddingV,
-                    paddingHorizontal:
-                      responsive.buttonPaddingH,
-                    borderRadius:
-                      responsive.buttonRadius,
-                  },
-                ]}
-                onPress={() =>
-                  navigation.navigate(
-                    'Menu'
-                  )
-                }
-              >
-                <Text
-                  style={[
-                    styles.menuText,
-                    {
-                      fontSize:
-                        responsive.buttonText,
-                    },
-                  ]}
-                  numberOfLines={1}
-                  adjustsFontSizeToFit
-                >
-                  Continue Ordering
                 </Text>
               </TouchableOpacity>
             </View>
@@ -1912,13 +1768,13 @@ const styles =
       justifyContent:
         'space-between',
       alignItems: 'center',
-      gap: 12,
       flexShrink: 0,
     },
 
     topBarLeft: {
       flex: 1,
       minWidth: 0,
+      marginRight: 12,
     },
 
     backText: {
@@ -1952,6 +1808,13 @@ const styles =
       fontWeight: '700',
       textAlign: 'center',
       marginBottom: 12,
+      padding: 12,
+      borderRadius: 12,
+    },
+
+    listArea: {
+      flex: 1,
+      width: '100%',
     },
 
     listContent: {
@@ -1974,12 +1837,11 @@ const styles =
       justifyContent:
         'space-between',
       alignItems: 'flex-start',
-      gap: 12,
     },
 
     orderHeaderLeft: {
       flex: 1,
-      paddingRight: 8,
+      paddingRight: 12,
       minWidth: 0,
     },
 
@@ -2023,6 +1885,8 @@ const styles =
       marginTop: 8,
       maxWidth: 165,
       minWidth: 78,
+      paddingVertical: 6,
+      paddingHorizontal: 12,
     },
 
     statusBadgeText: {
@@ -2043,6 +1907,8 @@ const styles =
       color: '#333',
       borderRadius: 12,
       fontWeight: '800',
+      paddingVertical: 10,
+      paddingHorizontal: 14,
     },
 
     continuePaymentBtn: {
@@ -2050,6 +1916,9 @@ const styles =
       alignItems: 'center',
       justifyContent: 'center',
       alignSelf: 'stretch',
+      marginTop: 12,
+      paddingVertical: 12,
+      paddingHorizontal: 16,
       shadowColor: '#000',
       shadowOpacity: 0.08,
       shadowRadius: 5,
@@ -2116,12 +1985,11 @@ const styles =
       paddingVertical: 10,
       borderBottomWidth: 1,
       borderBottomColor: '#f2f2f2',
-      gap: 12,
     },
 
     itemLeft: {
       flex: 1,
-      paddingRight: 8,
+      paddingRight: 12,
       minWidth: 0,
     },
 
@@ -2163,7 +2031,6 @@ const styles =
       justifyContent:
         'space-between',
       alignItems: 'center',
-      gap: 12,
     },
 
     totalLabel: {
@@ -2176,6 +2043,7 @@ const styles =
       color: '#f68c45',
       flexShrink: 1,
       textAlign: 'right',
+      marginLeft: 12,
     },
 
     emptyBox: {
@@ -2203,55 +2071,85 @@ const styles =
       maxWidth: 620,
     },
 
-    bottomBar: {
-      position: 'absolute',
-      backgroundColor: '#fff',
+    footerWrap: {
+      width: '100%',
+      alignSelf: 'center',
+      marginTop: 10,
+      paddingBottom: 2,
+    },
+
+    footerCard: {
+      width: '100%',
+      alignSelf: 'center',
+      backgroundColor: '#ffffff',
       borderWidth: 1,
-      borderColor: '#ddd',
-      gap: 10,
+      borderColor: '#f1d2bd',
       shadowColor: '#000',
       shadowOpacity: 0.08,
-      shadowRadius: 8,
+      shadowRadius: 10,
+      shadowOffset: {
+        width: 0,
+        height: 4,
+      },
       elevation: 4,
     },
 
-    autoText: {
-      fontWeight: '800',
-      color: '#777',
-    },
-
-    bottomActions: {
+    autoInfo: {
+      flex: 1,
+      minWidth: 0,
       flexDirection: 'row',
       alignItems: 'center',
-      gap: 10,
-      flexWrap: 'wrap',
+      marginRight: 12,
+    },
+
+    liveDot: {
+      width: 9,
+      height: 9,
+      borderRadius: 99,
+      backgroundColor: '#22c55e',
+      marginRight: 8,
+    },
+
+    autoText: {
+      flexShrink: 1,
+      fontWeight: '900',
+      color: '#6b5b52',
     },
 
     refreshBtn: {
-      backgroundColor: '#333',
-      alignItems: 'center',
-      justifyContent: 'center',
-      flexShrink: 1,
-      flexGrow: 1,
-      minWidth: 105,
-    },
-
-    menuBtn: {
+      flex: 1.15,
       backgroundColor: '#f68c45',
       alignItems: 'center',
       justifyContent: 'center',
-      flexShrink: 1,
-      flexGrow: 1,
-      minWidth: 145,
+      flexDirection: 'row',
+      minWidth: 180,
+      maxWidth: 360,
+      alignSelf: 'stretch',
+      shadowColor: '#f68c45',
+      shadowOpacity: 0.25,
+      shadowRadius: 8,
+      shadowOffset: {
+        width: 0,
+        height: 3,
+      },
+      elevation: 3,
     },
 
-    refreshText: {
+    refreshBtnFull: {
+      width: '100%',
+      maxWidth: '100%',
+      alignSelf: 'stretch',
+      marginTop: 10,
+    },
+
+    refreshIcon: {
       color: '#fff',
       fontWeight: '900',
       textAlign: 'center',
+      marginRight: 7,
     },
 
-    menuText: {
+    refreshText: {
       color: '#fff',
       fontWeight: '900',
       textAlign: 'center',

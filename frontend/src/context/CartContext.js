@@ -30,15 +30,6 @@ const CartContext =
 export const useCart = () =>
   useContext(CartContext);
 
-const toNumberOrZero = (value) => {
-  const numberValue =
-    Number(value);
-
-  return Number.isFinite(numberValue)
-    ? numberValue
-    : 0;
-};
-
 const getMobileMaxQuantity = (item) => {
   if (!item) {
     return 0;
@@ -67,11 +58,6 @@ const isValidIngredientItem = (item) => {
   );
 };
 
-// Compatibility wrapper para hindi masira existing calls
-const isValidDailyInventoryMenuItem = (item) => {
-  return isValidIngredientItem(item);
-};
-
 const getInventoryMessage = (item) => {
   if (!item) {
     return 'This item is currently unavailable.';
@@ -88,9 +74,7 @@ const getInventoryMessage = (item) => {
   );
 };
 
-const getQuantityLimitMessage = (
-  item
-) => {
+const getQuantityLimitMessage = (item) => {
   const maxQuantity =
     getMobileMaxQuantity(item);
 

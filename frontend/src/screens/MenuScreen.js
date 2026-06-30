@@ -2312,11 +2312,7 @@ export default function MenuScreen({
                       : '100%',
                   height:
                     responsive.useSideCart
-                      ? undefined
-                      : undefined,
-                  alignSelf:
-                    responsive.useSideCart
-                      ? 'stretch'
+                      ? '100%'
                       : undefined,
                   minHeight:
                     responsive.useSideCart
@@ -2369,96 +2365,84 @@ export default function MenuScreen({
                 </Text>
               </View>
 
-              <View
-                style={[
-                  styles.cartMiddle,
-                  !responsive.useSideCart &&
-                    styles.cartMiddleStacked,
-                ]}
-              >
-                {cartItems.length === 0 ? (
-                  <View
-                    style={
-                      styles.emptyCartBox
-                    }
-                  >
-                    <Text
-                      style={[
-                        styles.emptyCartText,
-                        {
-                          fontSize:
-                            responsive.cartItemName,
-                        },
-                      ]}
-                    >
-                      No items added yet.
-                    </Text>
-                  </View>
-                ) : (
-                  <FlatList
-                    data={cartItems}
-                    keyExtractor={(item) =>
-                      String(
-                        getItemId(item)
-                      )
-                    }
-                    renderItem={
-                      renderCartItem
-                    }
-                    horizontal={
-                      !responsive.useSideCart
-                    }
-                    showsHorizontalScrollIndicator={
-                      !responsive.useSideCart
-                    }
-                    showsVerticalScrollIndicator={
-                      responsive.useSideCart
-                    }
-                    persistentScrollbar
-                    indicatorStyle="black"
-                    keyboardShouldPersistTaps="handled"
-                    style={[
-                      responsive.useSideCart
-                        ? styles.cartListSide
-                        : {
-                            maxHeight:
-                              responsive.stackedCartListMaxHeight,
-                            minHeight: 82,
-                          },
-                    ]}
-                    contentContainerStyle={{
-                      flexGrow:
-                        responsive.useSideCart
-                          ? 1
-                          : 0,
-                      paddingBottom:
-                        responsive.useSideCart
-                          ? 14
-                          : 4,
-                      paddingRight:
-                        responsive.useSideCart
-                          ? 8
-                          : 0,
-                      gap:
-                        responsive.useSideCart
-                          ? 0
-                          : 12,
-                    }}
-                  />
-                )}
-
-                {cartItems.length > 1 ? (
+              {cartItems.length === 0 ? (
+                <View
+                  style={
+                    styles.emptyCartBox
+                  }
+                >
                   <Text
-                    style={
-                      styles.cartScrollHint
-                    }
+                    style={[
+                      styles.emptyCartText,
+                      {
+                        fontSize:
+                          responsive.cartItemName,
+                      },
+                    ]}
                   >
-                    {responsive.useSideCart
-                      ? 'Scroll to see more items'
-                      : 'Swipe to see more items'}
+                    No items added yet.
                   </Text>
-                ) : null}
-              </View>
+                </View>
+              ) : (
+                <FlatList
+                  data={cartItems}
+                  keyExtractor={(item) =>
+                    String(
+                      getItemId(item)
+                    )
+                  }
+                  renderItem={
+                    renderCartItem
+                  }
+                  horizontal={
+                    !responsive.useSideCart
+                  }
+                  showsHorizontalScrollIndicator={
+                    !responsive.useSideCart
+                  }
+                  showsVerticalScrollIndicator={
+                    responsive.useSideCart
+                  }
+                  persistentScrollbar
+                  indicatorStyle="black"
+                  keyboardShouldPersistTaps="handled"
+                  style={[
+                    responsive.useSideCart
+                      ? styles.cartListSide
+                      : {
+                          maxHeight:
+                            responsive.stackedCartListMaxHeight,
+                          minHeight: 82,
+                        },
+                  ]}
+                  contentContainerStyle={{
+                    paddingBottom:
+                      responsive.useSideCart
+                        ? 14
+                        : 4,
+                    paddingRight:
+                      responsive.useSideCart
+                        ? 8
+                        : 0,
+                    gap:
+                      responsive.useSideCart
+                        ? 0
+                        : 12,
+                  }}
+                />
+              )}
+
+              {cartItems.length > 1 ? (
+                <Text
+                  style={
+                    styles.cartScrollHint
+                  }
+                >
+                  {responsive.useSideCart
+                    ? 'Scroll to see more items'
+                    : 'Swipe to see more items'}
+                </Text>
+              ) : null}
 
               <View style={styles.cartFooter}>
                 <View
@@ -3133,12 +3117,10 @@ const styles =
       borderTopColor: '#ddd',
       flexShrink: 0,
       minHeight: 0,
-      flexDirection: 'column',
     },
 
     cartSidebarSide: {
       minHeight: 0,
-      alignSelf: 'stretch',
     },
 
     cartHeader: {
@@ -3157,16 +3139,6 @@ const styles =
       color: '#222',
     },
 
-    cartMiddle: {
-      flex: 1,
-      minHeight: 0,
-    },
-
-    cartMiddleStacked: {
-      flex: 0,
-      flexShrink: 0,
-    },
-
     cartListSide: {
       flex: 1,
       flexGrow: 1,
@@ -3177,7 +3149,6 @@ const styles =
     emptyCartBox: {
       flex: 1,
       minHeight: 0,
-      justifyContent: 'flex-start',
     },
 
     emptyCartText: {
@@ -3323,7 +3294,7 @@ const styles =
       borderTopColor: '#dddddd',
       paddingTop: 8,
       paddingBottom: 4,
-      marginTop: 8,
+      marginTop: 'auto',
       flexShrink: 0,
     },
 

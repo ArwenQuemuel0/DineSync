@@ -709,8 +709,17 @@ const normalizePaymentMethodForOrder = (
   return 'Pay Later';
 };
 
-const getInitialOrderStatus = () => {
-  return 'pending';
+const getInitialOrderStatus = (paymentMethod) => {
+  const normalizedPaymentMethod =
+    normalizePaymentMethodForOrder(
+      paymentMethod
+    );
+
+  if (normalizedPaymentMethod === 'Pay Later') {
+    return 'pending';
+  }
+
+  return 'awaiting_payment';
 };
 
 // =========================
@@ -752,7 +761,9 @@ export const placeOrder = async (
   }
 
   const initialStatus =
-    getInitialOrderStatus();
+    getInitialOrderStatus(
+      normalizedPaymentMethod
+    );
 
   console.log(
     'PLACE ORDER PAYMENT CHECK:',
@@ -880,6 +891,16 @@ export const placeOrder = async (
       2
     )
   );
+
+  try {
+    await getMenu();
+  } catch (menuRefreshError) {
+    console.log(
+      'MENU REFRESH AFTER ORDER WARNING:',
+      menuRefreshError?.message ||
+        menuRefreshError
+    );
+  }
 
   return response.data;
 };

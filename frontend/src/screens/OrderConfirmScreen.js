@@ -134,6 +134,10 @@ const isValidDailyInventoryMenuItem = (item) => {
   return isValidOrderInventoryItem(item);
 };
 
+const isIngredientCustomItem = (item) => {
+  return isCustomItem(item);
+};
+
 const validateIngredientCartItems = (
   cartItems = [],
   getEnrichedItem
@@ -176,6 +180,9 @@ const validateIngredientCartItems = (
 
     const maxQuantity =
       getMaxOrderQuantity(item);
+
+    const allowedQuantity =
+      getAllowedOrderQuantity(item);
 
     if (quantity <= 0) {
       return {
@@ -834,73 +841,7 @@ export default function OrderConfirmScreen({
       getItemId(item)
     );
   };
-  const handleFinalConfirm = async () => {
-    console.log('CONFIRM BUTTON PRESSED');
 
-    if (loading) {
-      return;
-    }
-
-    if (!cartItems || cartItems.length === 0) {
-      Alert.alert(
-        'Empty Order',
-        'Please add at least one item before confirming.'
-      );
-
-      navigation.navigate('Menu');
-
-      return;
-    }
-
-    if (!finalTableNumber) {
-      Alert.alert(
-        'Table Error',
-        'No table number found. Please login again using the assigned table account.'
-      );
-
-      return;
-    }
-
-    const inventoryCheck =
-      await validateBeforeConfirm();
-
-    console.log(
-      'CONFIRM INVENTORY CHECK:',
-      inventoryCheck
-    );
-
-    if (!inventoryCheck.valid) {
-      Alert.alert(
-        'Limited Stock',
-        inventoryCheck.message ||
-          'Some items are no longer available based on ingredient stock.'
-      );
-
-      return;
-    }
-
-    const paymentSnapshot =
-      getSafeSelectedOption();
-
-    if (
-      hasCustomRequest &&
-      paymentSnapshot.label === 'QR PH'
-    ) {
-      Alert.alert(
-        'QR PH Not Available',
-        'Chef Oppa Special requests must be confirmed by staff. QR PH payment is not available for custom requests.'
-      );
-
-      return;
-    }
-
-    console.log(
-      'SUBMITTING ORDER DIRECTLY:',
-      paymentSnapshot
-    );
-
-    submitOrder(paymentSnapshot);
-  };
   const goToOrderStatusWithMessage = (
     orderId,
     message
@@ -999,24 +940,24 @@ export default function OrderConfirmScreen({
         return;
       }
 
-     console.log('SUBMIT ORDER START:', {
-  cartItems,
-  finalTableNumber,
-  paymentMethod:
-    selectedPaymentOption.apiMethod,
-});
+      console.log('SUBMIT ORDER START:', {
+        cartItems,
+        finalTableNumber,
+        paymentMethod:
+          selectedPaymentOption.apiMethod,
+      });
 
-const orderResponse =
-  await placeOrder(
-    cartItems,
-    finalTableNumber,
-    selectedPaymentOption.apiMethod
-  );
+      const orderResponse =
+        await placeOrder(
+          cartItems,
+          finalTableNumber,
+          selectedPaymentOption.apiMethod
+        );
 
-console.log(
-  'SUBMIT ORDER RESPONSE:',
-  orderResponse
-);
+      console.log(
+        'SUBMIT ORDER RESPONSE:',
+        orderResponse
+      );
 
       if (
         !orderResponse.success ||
@@ -1115,7 +1056,9 @@ console.log(
           TABLE_ASSIGNMENT_MESSAGE;
 
       const normalizedError =
-        normalizeText(errorMessage);
+        String(errorMessage || '')
+          .trim()
+          .toLowerCase();
 
       const isInventoryError =
         statusCode === 422 ||
@@ -1137,6 +1080,87 @@ console.log(
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleFinalConfirm = async () => {
+    console.log('CONFIRM BUTTON PRESSED');
+
+    if (loading) {
+      return;
+    }
+
+    if (!cartItems || cartItems.length === 0) {
+      Alert.alert(
+        'Empty Order',
+        'Please add at least one item before confirming.'
+      );
+
+      navigation.navigate('Menu');
+
+      return;
+    }
+
+    if (!finalTableNumber) {
+      Alert.alert(
+        'Table Error',
+        'No table number found. Please login again using the assigned table account.'
+      );
+
+      return;
+    }
+
+    const inventoryCheck =
+      await validateBeforeConfirm();
+
+    console.log(
+      'CONFIRM INVENTORY CHECK:',
+      inventoryCheck
+    );
+
+    if (!inventoryCheck.valid) {
+      Alert.alert(
+        'Limited Stock',
+        inventoryCheck.message ||
+          'Some items are no longer available based on ingredient stock.'
+      );
+
+      return;
+    }
+
+    const paymentSnapshot =
+      getSafeSelectedOption();
+
+    if (
+      hasCustomRequest &&
+      paymentSnapshot.label === 'QR PH'
+    ) {
+      Alert.alert(
+        'QR PH Not Available',
+        'Chef Oppa Special requests must be confirmed by staff. QR PH payment is not available for custom requests.'
+      );
+
+      return;
+    }
+
+    Alert.alert(
+      'Confirm Order',
+      getConfirmDialogMessage(
+        paymentSnapshot.label
+      ),
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+        {
+          text: 'Confirm',
+          onPress: () =>
+            submitOrder(
+              paymentSnapshot
+            ),
+        },
+      ]
+    );
   };
 
   const renderReceiptItem = (
@@ -1609,31 +1633,31 @@ console.log(
 
         return (
           <TouchableOpacity
-  key={option.label}
-  activeOpacity={0.75}
-  hitSlop={{
-    top: 8,
-    bottom: 8,
-    left: 8,
-    right: 8,
-  }}
-  style={[
-    styles.paymentOption,
-    active &&
-      styles.paymentOptionActive,
-    option.disabled &&
-      styles.paymentOptionDisabled,
-  ]}
-  disabled={option.disabled}
-  onPress={() => {
-    console.log(
-      'PAYMENT OPTION PRESSED:',
-      option.label
-    );
+            key={option.label}
+            activeOpacity={0.75}
+            hitSlop={{
+              top: 8,
+              bottom: 8,
+              left: 8,
+              right: 8,
+            }}
+            style={[
+              styles.paymentOption,
+              active &&
+                styles.paymentOptionActive,
+              option.disabled &&
+                styles.paymentOptionDisabled,
+            ]}
+            disabled={option.disabled}
+            onPress={() => {
+              console.log(
+                'PAYMENT OPTION PRESSED:',
+                option.label
+              );
 
-    handleSelectPayment(option);
-  }}
->
+              handleSelectPayment(option);
+            }}
+          >
             <Text
               style={[
                 styles.paymentOptionTitle,
@@ -1691,7 +1715,7 @@ console.log(
         </Text>
       </View>
 
-         <TouchableOpacity
+      <TouchableOpacity
         activeOpacity={0.75}
         hitSlop={{
           top: 12,
@@ -1735,7 +1759,7 @@ console.log(
     </>
   );
 
-    const optionCard =
+  const optionCard =
     responsive.useTwoPane ? (
       <ScrollView
         style={[
@@ -1750,12 +1774,11 @@ console.log(
           },
           styles.optionTwoPane,
         ]}
+        contentContainerStyle={{
+          paddingBottom: 4,
+        }}
         showsVerticalScrollIndicator={true}
         nestedScrollEnabled={true}
-        keyboardShouldPersistTaps="always"
-        contentContainerStyle={{
-          paddingBottom: 20,
-        }}
       >
         {optionCardContent}
       </ScrollView>
@@ -1774,6 +1797,47 @@ console.log(
         {optionCardContent}
       </View>
     );
+
+  if (loading) {
+    return (
+      <View style={styles.frame}>
+        <StatusBar
+          barStyle="dark-content"
+          backgroundColor="#efefef"
+          translucent={false}
+        />
+
+        <SafeAreaView
+          style={styles.safeArea}
+          edges={[
+            'top',
+            'left',
+            'right',
+            'bottom',
+          ]}
+        >
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator
+              size="large"
+              color="#f68c45"
+            />
+
+            <Text
+              style={[
+                styles.loadingText,
+                {
+                  fontSize:
+                    responsive.buttonText,
+                },
+              ]}
+            >
+              Processing your order...
+            </Text>
+          </View>
+        </SafeAreaView>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.frame}>
@@ -1798,9 +1862,6 @@ console.log(
             {
               padding:
                 responsive.containerPadding,
-              paddingTop:
-                responsive.containerPadding +
-                responsive.safeTopExtra,
               paddingBottom:
                 responsive.safeBottomExtra,
             },

@@ -29,6 +29,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { WebView } from 'react-native-webview';
 
+import { getMenu } from '../api/dinesync';
+
 import { useTableStatus } from '../context/TableStatusContext';
 
 export default function PaymentWebViewScreen({
@@ -262,6 +264,19 @@ export default function PaymentWebViewScreen({
     navigation,
   ]);
 
+  const refetchMenuAfterPayment =
+    async () => {
+      try {
+        await getMenu();
+      } catch (menuRefreshError) {
+        console.log(
+          'MENU REFRESH AFTER PAYMENT WARNING:',
+          menuRefreshError?.message ||
+            menuRefreshError
+        );
+      }
+    };
+
   const markQrPaymentProcessCompleted =
     async () => {
       if (!orderId) {
@@ -381,6 +396,7 @@ export default function PaymentWebViewScreen({
 
     if (isSuccess) {
       markQrPaymentProcessCompleted();
+      refetchMenuAfterPayment();
 
       goToOrderStatus({
         statusMessage:
