@@ -1,4 +1,5 @@
 const express = require('express');
+const axios = require('axios');
 
 const router = express.Router();
 
@@ -23,15 +24,16 @@ const { createInvoice } = require('../utils/xendit');
 const DEFAULT_TABLE_NUMBER = 1;
 
 // =========================
-// DAILY INVENTORY SETTINGS
+// FIXED MENU INVENTORY API
 // =========================
 
-const VALID_NORMAL_INVENTORY_TYPES = [
-  'per_order',
-  'per_head',
-];
+const FIXED_MENU_URL =
+  process.env.LARAVEL_MENU_URL ||
+  process.env.FIXED_MENU_URL ||
+  'https://dinesync.shop/api/menu';
 
-const MANILA_UTC_OFFSET_HOURS = 8;
+const EXPECTED_MENU_DEBUG_SOURCE =
+  'WEB_MENU_INGREDIENT_AVAILABILITY_FIXED_2026';
 
 // =========================
 // BASIC HELPERS
@@ -85,6 +87,18 @@ const isAvailableTrue = (value) => {
   );
 };
 
+const isAvailableFalse = (value) => {
+  return (
+    value === false ||
+    value === 0 ||
+    value === '0' ||
+    normalizeText(value) === 'false' ||
+    normalizeText(value) === 'no' ||
+    normalizeText(value) === 'unavailable' ||
+    normalizeText(value) === 'sold out'
+  );
+};
+
 const isChefOppaSpecialItem = (item) => {
   const category =
     normalizeText(item?.category);
@@ -106,13 +120,235 @@ const isChefOppaSpecialItem = (item) => {
   );
 };
 
+const getOrderItemMenuId = (item) => {
+  return Number(
+    item?.menu_item_id ||
+    item?.id ||
+    0
+  );
+};
+
+const getMenuItemId = (item) => {
+  return Number(
+    item?.menu_item_id ||
+    item?.id ||
+    0
+  );
+};
+
+const getMenuMaxQuantity = (item) => {
+  if (!item) {
+    return 0;
+  }
+
+  if (isChefOppaSpecialItem(item)) {
+    return 1;
+  }
+
+  const maxQty =
+    toNumberOrNull(
+      item?.max_order_quantity ??
+      item?.available_quantity ??
+      item?.remaining_today
+    );
+
+  if (maxQty === null) {
+    return 0;
+  }
+
+  return Math.max(0, maxQty);
+};
+
+const getMenuStockMessage = (item) => {
+  if (!item) {
+    return 'This item is currently unavailable.';
+  }
+
+  const maxQty =
+    getMenuMaxQuantity(item);
+
+  const isAvailable =
+    item?.is_available === true &&
+    maxQty > 0;
+
+  if (isAvailable) {
+    return (
+      item?.stock_label ||
+      item?.daily_inventory_label ||
+      `Only ${maxQty} order(s) available based on ingredient stock.`
+    );
+  }
+
+  return (
+    item?.unavailable_reason ||
+    item?.stock_label ||
+    item?.daily_inventory_label ||
+    `${item?.name || 'This item'} is currently unavailable.`
+  );
+};
+
+const normalizeMenuAvailabilityItem = (item) => {
+  const maxQty =
+    getMenuMaxQuantity(item);
+
+  const isAvailable =
+    isChefOppaSpecialItem(item)
+      ? !isAvailableFalse(item?.is_available)
+      : isAvailableTrue(item?.is_available) &&
+        maxQty > 0;
+
+  return {
+    ...item,
+
+    id:
+      item?.id ??
+      item?.menu_item_id,
+
+    menu_item_id:
+      item?.menu_item_id ??
+      item?.id,
+
+    name:
+      item?.name || 'Menu Item',
+
+    category:
+      item?.category || '',
+
+    price:
+      Number(item?.price || 0),
+
+    is_available:
+      isAvailable,
+
+    max_order_quantity:
+      isAvailable ? maxQty : 0,
+
+    available_quantity:
+      isAvailable ? maxQty : 0,
+
+    remaining_today:
+      isAvailable ? maxQty : 0,
+
+    stock_label:
+      item?.stock_label ||
+      item?.daily_inventory_label ||
+      null,
+
+    daily_inventory_label:
+      item?.daily_inventory_label ||
+      item?.stock_label ||
+      null,
+
+    unavailable_reason:
+      isAvailable
+        ? null
+        : (
+            item?.unavailable_reason ||
+            item?.stock_label ||
+            item?.daily_inventory_label ||
+            'Unavailable based on ingredient stock.'
+          ),
+
+    inventory_type:
+      normalizeInventoryType(
+        item?.inventory_type ||
+        'ingredient'
+      ),
+  };
+};
+
+const extractMenuItemsFromPayload = (payload) => {
+  if (Array.isArray(payload)) {
+    return payload;
+  }
+
+  if (
+    payload &&
+    Array.isArray(payload.data)
+  ) {
+    return payload.data;
+  }
+
+  if (
+    payload &&
+    payload.data &&
+    Array.isArray(payload.data.data)
+  ) {
+    return payload.data.data;
+  }
+
+  if (
+    payload &&
+    payload.data &&
+    payload.data.data &&
+    Array.isArray(payload.data.data.data)
+  ) {
+    return payload.data.data.data;
+  }
+
+  return [];
+};
+
+const getMenuDebugSourceFromPayload = (payload) => {
+  return (
+    payload?.debug_source ||
+    payload?.data?.debug_source ||
+    payload?.data?.data?.debug_source ||
+    null
+  );
+};
+
+const fetchFixedMenuInventory = async () => {
+  const response =
+    await axios.get(
+      FIXED_MENU_URL,
+      {
+        timeout: 20000,
+        headers: {
+          Accept: 'application/json',
+          'Cache-Control': 'no-cache',
+          Pragma: 'no-cache',
+        },
+        params: {
+          _ts: Date.now(),
+        },
+      }
+    );
+
+  const debugSource =
+    getMenuDebugSourceFromPayload(
+      response.data
+    );
+
+  const rawItems =
+    extractMenuItemsFromPayload(
+      response.data
+    );
+
+  console.log(
+    'ORDER INVENTORY MENU DEBUG SOURCE:',
+    debugSource
+  );
+
+  console.log(
+    'ORDER INVENTORY MENU ITEMS COUNT:',
+    rawItems.length
+  );
+
+  return {
+    debugSource,
+    items:
+      rawItems.map(
+        normalizeMenuAvailabilityItem
+      ),
+  };
+};
+
 // =========================
 // DATE / TIME HELPERS
 // IMPORTANT:
 // Backend stores UTC.
 // Mobile displays using Asia/Manila.
-// This prevents Supabase timestamp strings without "Z"
-// from being interpreted incorrectly by React Native.
 // =========================
 
 const getUtcNowIso = () => {
@@ -338,160 +574,59 @@ const getTableNumberFromToken = (req) => {
 };
 
 // =========================
-// MANILA TODAY RANGE
+// INGREDIENT-BASED MENU VALIDATION
+// NO DAILY MENU INVENTORY VALIDATION HERE
 // =========================
 
-const getManilaTodayUtcRange = () => {
-  const now =
-    new Date();
-
-  const manilaNow =
-    new Date(
-      now.getTime() +
-      MANILA_UTC_OFFSET_HOURS *
-      60 *
-      60 *
-      1000
-    );
-
-  const year =
-    manilaNow.getUTCFullYear();
-
-  const month =
-    manilaNow.getUTCMonth();
-
-  const day =
-    manilaNow.getUTCDate();
-
-  const startUtc =
-    new Date(
-      Date.UTC(
-        year,
-        month,
-        day,
-        -MANILA_UTC_OFFSET_HOURS,
-        0,
-        0,
-        0
-      )
-    );
-
-  const endUtc =
-    new Date(
-      startUtc.getTime() +
-      24 * 60 * 60 * 1000
-    );
-
-  return {
-    startIso:
-      startUtc.toISOString(),
-    endIso:
-      endUtc.toISOString(),
-  };
-};
-
-// =========================
-// SOLD TODAY HELPERS
-// =========================
-
-const getSoldTodayMap = async () => {
-  const {
-    startIso,
-    endIso,
-  } = getManilaTodayUtcRange();
-
-  const {
-    data: orders,
-    error: ordersError,
-  } = await supabase
-    .from('orders')
-    .select('id, status, created_at')
-    .gte('created_at', startIso)
-    .lt('created_at', endIso);
-
-  if (ordersError) {
-    console.log(
-      'SOLD TODAY ORDERS ERROR:',
-      ordersError
-    );
-
-    return {};
-  }
-
-  const validOrderIds =
-    (orders || [])
-      .filter((order) => {
-        const status =
-          normalizeText(order.status);
-
-        return ![
-          'cancelled',
-          'canceled',
-          'failed',
-          'voided',
-        ].includes(status);
-      })
-      .map((order) => order.id)
-      .filter(Boolean);
-
-  if (validOrderIds.length === 0) {
-    return {};
-  }
-
-  const {
-    data: orderItems,
-    error: orderItemsError,
-  } = await supabase
-    .from('order_items')
-    .select('order_id, menu_item_id, quantity')
-    .in('order_id', validOrderIds);
-
-  if (orderItemsError) {
-    console.log(
-      'SOLD TODAY ORDER ITEMS ERROR:',
-      orderItemsError
-    );
-
-    return {};
-  }
-
-  const soldTodayMap = {};
-
-  (orderItems || []).forEach((item) => {
-    const menuItemId =
-      item.menu_item_id;
-
-    const quantity =
-      Number(item.quantity) || 0;
-
-    if (!menuItemId) {
-      return;
-    }
-
-    if (!soldTodayMap[menuItemId]) {
-      soldTodayMap[menuItemId] = 0;
-    }
-
-    soldTodayMap[menuItemId] += quantity;
-  });
-
-  return soldTodayMap;
-};
-
-// =========================
-// DAILY INVENTORY VALIDATION
-// =========================
-
-const validateDailyInventoryItems = async (
+const validateMenuAvailabilityItems = async (
   items = []
 ) => {
-  const soldTodayMap =
-    await getSoldTodayMap();
+  let menuResult;
+
+  try {
+    menuResult =
+      await fetchFixedMenuInventory();
+  } catch (error) {
+    console.log(
+      'FIXED MENU INVENTORY FETCH ERROR:',
+      error?.response?.data ||
+      error?.message ||
+      error
+    );
+
+    return {
+      valid: false,
+      status: 500,
+      message:
+        'Unable to verify ingredient-based inventory. Please try again.',
+    };
+  }
+
+  if (
+    menuResult.debugSource &&
+    menuResult.debugSource !==
+      EXPECTED_MENU_DEBUG_SOURCE
+  ) {
+    console.log(
+      'WARNING: MENU DEBUG SOURCE IS NOT EXPECTED:',
+      menuResult.debugSource
+    );
+  }
+
+  const menuMap = {};
+
+  menuResult.items.forEach((menuItem) => {
+    const id =
+      getMenuItemId(menuItem);
+
+    if (id) {
+      menuMap[id] = menuItem;
+    }
+  });
 
   for (const item of items) {
     const menuItemId =
-      item.menu_item_id ||
-      item.id;
+      getOrderItemMenuId(item);
 
     const orderedQty =
       Number(item.quantity);
@@ -509,32 +644,21 @@ const validateDailyInventoryItems = async (
       };
     }
 
-    const {
-      data: menuItem,
-      error: menuItemError,
-    } = await supabase
-      .from('menu_items')
-      .select(
-        'id, name, category, price, is_available, inventory_type, daily_limit'
-      )
-      .eq('id', menuItemId)
-      .single();
+    const latestMenuItem =
+      menuMap[menuItemId];
 
-    if (
-      menuItemError ||
-      !menuItem
-    ) {
+    if (!latestMenuItem) {
       return {
         valid: false,
         status: 404,
         message:
-          'Menu item not found.',
+          'Menu item not found or no longer available.',
       };
     }
 
     const isCustom =
       isChefOppaSpecialItem(
-        menuItem
+        latestMenuItem
       );
 
     if (isCustom) {
@@ -547,72 +671,50 @@ const validateDailyInventoryItems = async (
         };
       }
 
+      if (
+        isAvailableFalse(
+          latestMenuItem.is_available
+        )
+      ) {
+        return {
+          valid: false,
+          status: 422,
+          message:
+            latestMenuItem.unavailable_reason ||
+            latestMenuItem.stock_label ||
+            'Chef Oppa Special is currently unavailable.',
+        };
+      }
+
       continue;
     }
 
-    const inventoryType =
-      normalizeInventoryType(
-        menuItem.inventory_type
+    const maxQty =
+      getMenuMaxQuantity(
+        latestMenuItem
       );
 
-    const dailyLimit =
-      toNumberOrNull(
-        menuItem.daily_limit
-      );
+    const isAvailable =
+      latestMenuItem.is_available === true &&
+      maxQty > 0;
 
-    if (
-      !VALID_NORMAL_INVENTORY_TYPES.includes(
-        inventoryType
-      ) ||
-      dailyLimit === null
-    ) {
+    if (!isAvailable) {
       return {
         valid: false,
         status: 422,
         message:
-          `${menuItem.name} is not enabled in Daily Menu Inventory.`,
+          getMenuStockMessage(
+            latestMenuItem
+          ),
       };
     }
 
-    if (
-      !isAvailableTrue(
-        menuItem.is_available
-      )
-    ) {
+    if (orderedQty > maxQty) {
       return {
         valid: false,
         status: 422,
         message:
-          `${menuItem.name} is currently unavailable.`,
-      };
-    }
-
-    const soldToday =
-      Number(
-        soldTodayMap[menuItem.id] || 0
-      );
-
-    const remainingToday =
-      Math.max(
-        0,
-        dailyLimit - soldToday
-      );
-
-    if (remainingToday <= 0) {
-      return {
-        valid: false,
-        status: 422,
-        message:
-          `${menuItem.name} is sold out for today.`,
-      };
-    }
-
-    if (orderedQty > remainingToday) {
-      return {
-        valid: false,
-        status: 422,
-        message:
-          `${menuItem.name} only has ${remainingToday} orders left today.`,
+          `${latestMenuItem.name} only has ${maxQty} order(s) available based on ingredient stock. Please reduce the quantity.`,
       };
     }
   }
@@ -1269,7 +1371,7 @@ router.post('/', async (req, res) => {
     }
 
     const inventoryValidation =
-      await validateDailyInventoryItems(
+      await validateMenuAvailabilityItems(
         items
       );
 
