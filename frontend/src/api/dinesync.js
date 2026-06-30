@@ -321,6 +321,13 @@ const normalizeMenuItem = (item) => {
             item.meal_type
           ).trim()
         : null,
+
+  is_best_seller:
+  item?.is_best_seller ??
+  item?.is_popular ??
+  item?.popular ??
+  item?.featured ??
+  false,
   };
 };
 

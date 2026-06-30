@@ -857,6 +857,8 @@ router.get(
                   'pending',
                   'preparing',
                   'ready',
+                    'served',
+  'completed',
                 ].includes(status)
               );
             })
@@ -933,13 +935,17 @@ router.get(
           activeSessionId
         )
         .in('status', [
-          'pending',
-          'preparing',
-          'ready',
-          'Pending',
-          'Preparing',
-          'Ready',
-        ])
+  'pending',
+  'preparing',
+  'ready',
+  'served',
+  'completed',
+  'Pending',
+  'Preparing',
+  'Ready',
+  'Served',
+  'Completed',
+])
         .order('created_at', {
           ascending: false,
         });
@@ -1764,6 +1770,62 @@ router.get('/:id', async (req, res) => {
       forceDigitalPaymentIfXendit(
         orderRow
       );
+      if (
+  fixedOrderRow?.xendit_invoice_id &&
+  fixedOrderRow?.payment_status === 'pending'
+) {
+  try {
+    const xenditResponse = await axios.get(
+      `https://api.xendit.co/v2/invoices/${fixedOrderRow.xendit_invoice_id}`,
+      {
+        auth: {
+          username: process.env.XENDIT_SECRET_KEY,
+          password: '',
+        },
+      }
+    );
+
+    const xenditStatus = String(
+      xenditResponse.data?.status || ''
+    ).toUpperCase();
+
+    if (
+      xenditStatus === 'PAID' ||
+      xenditStatus === 'SETTLED'
+    ) {
+      const {
+        data: paidOrder,
+        error: paidUpdateError,
+      } = await supabase
+        .from('orders')
+        .update({
+          payment_status: 'paid',
+          status: 'pending',
+          paid_at: getUtcNowIso(),
+          updated_at: getUtcNowIso(),
+        })
+        .eq('id', orderId)
+        .select(
+          'id, order_number, table_number, table_session_id, status, payment_status, payment_method, total_amount, created_at, updated_at, paid_at, xendit_invoice_id, xendit_external_id, xendit_invoice_url, xendit_expiry_date'
+        )
+        .single();
+
+      if (!paidUpdateError && paidOrder) {
+        fixedOrderRow =
+          forceDigitalPaymentIfXendit(
+            paidOrder
+          );
+      }
+    }
+  } catch (xenditCheckError) {
+    console.log(
+      'XENDIT STATUS CHECK WARNING:',
+      xenditCheckError?.response?.data ||
+        xenditCheckError?.message ||
+        xenditCheckError
+    );
+  }
+}
 
     if (
       hasXenditInvoice(orderRow) &&

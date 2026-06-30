@@ -1064,20 +1064,30 @@ export default function MenuScreen({
   };
 
   const isBestSeller = (item) => {
-    if (
-      isExcludedPopularCategory(item)
-    ) {
-      return false;
-    }
+  if (isExcludedPopularCategory(item)) {
+    return false;
+  }
 
-    return (
-      item?.is_best_seller === true ||
-      item?.is_best_seller === 1 ||
-      item?.is_best_seller ===
-        'true' ||
-      item?.is_best_seller === '1'
-    );
-  };
+  return (
+    item?.is_best_seller === true ||
+    item?.is_best_seller === 1 ||
+    item?.is_best_seller === '1' ||
+    item?.is_best_seller === 'true' ||
+    item?.is_best_seller === 'yes' ||
+
+    item?.is_popular === true ||
+    item?.is_popular === 1 ||
+    item?.is_popular === '1' ||
+    item?.is_popular === 'true' ||
+    item?.is_popular === 'yes' ||
+
+    item?.popular === true ||
+    item?.popular === 1 ||
+    item?.popular === '1' ||
+    item?.popular === 'true' ||
+    item?.popular === 'yes'
+  );
+};
 
   const checkLatestTablePermission =
     async () => {
