@@ -42,13 +42,11 @@ import { useTableStatus } from '../context/TableStatusContext';
 
 import {
   getItemId,
-  isItemOrderable,
-  isOutOfStock,
-  canIncreaseQuantity,
-  getAvailabilityDisplayText,
-  shouldShowLowStockWarning,
   isCustomItem,
 } from '../utils/inventory';
+
+const EXPECTED_MENU_DEBUG_SOURCE =
+  'WEB_MENU_INGREDIENT_AVAILABILITY_FIXED_2026';
 
 const ASSIGNED_TABLE_STATUSES = [
   'seated',
@@ -78,40 +76,38 @@ const normalizeInventoryType = (value) => {
     .replace(/[-\s]+/g, '_');
 };
 
-const isExcludedPopularCategory = (item) => {
-  const category =
-    normalizeText(item?.category);
+const toNumber = (value) => {
+  const numberValue = Number(value);
 
-  const mealType =
-    normalizeText(item?.meal_type);
+  return Number.isFinite(numberValue)
+    ? numberValue
+    : 0;
+};
 
-  const inventoryType =
-    normalizeInventoryType(
-      item?.inventory_type
-    );
-
-  const name =
-    normalizeText(item?.name);
-
-  const excluded =
-    excludedPopularCategories
-      .map(normalizeText);
-
+const isBackendAvailableTrue = (value) => {
   return (
-    excluded.includes(category) ||
-    excluded.includes(mealType) ||
-    mealType === 'drink' ||
-    mealType === 'drinks' ||
-    mealType === 'extra' ||
-    mealType === 'extras' ||
-    inventoryType === 'drink' ||
-    inventoryType === 'drinks' ||
-    inventoryType === 'extra' ||
-    inventoryType === 'extras' ||
-    category.includes('drink') ||
-    category.includes('beverage') ||
-    category.includes('extra') ||
-    name.includes('water')
+    value === true ||
+    value === 1 ||
+    value === '1' ||
+    normalizeText(value) === 'true' ||
+    normalizeText(value) === 'yes' ||
+    normalizeText(value) === 'available'
+  );
+};
+
+const getRemainingQuantity = (item) => {
+  return toNumber(
+    item?.remaining_today ??
+      item?.available_quantity ??
+      item?.max_order_quantity
+  );
+};
+
+const getMaxOrderQuantity = (item) => {
+  return toNumber(
+    item?.max_order_quantity ??
+      item?.remaining_today ??
+      item?.available_quantity
   );
 };
 
@@ -156,54 +152,49 @@ const getStrictOrderPermission = (
   );
 };
 
-const isAvailableTrue = (value) => {
-  return (
-    value === true ||
-    value === 1 ||
-    value === '1' ||
-    normalizeText(value) === 'true' ||
-    normalizeText(value) === 'yes' ||
-    normalizeText(value) === 'available'
-  );
-};
+const isExcludedPopularCategory = (item) => {
+  const category =
+    normalizeText(item?.category);
 
-const toNumber = (value) => {
-  const numberValue =
-    Number(value);
+  const mealType =
+    normalizeText(item?.meal_type);
 
-  return Number.isFinite(numberValue)
-    ? numberValue
-    : 0;
-};
-
-const getRemainingQuantity = (item) => {
-  return toNumber(
-    item?.remaining_today ??
-      item?.available_quantity ??
-      item?.max_order_quantity
-  );
-};
-
-const getMaxOrderQuantity = (item) => {
-  return toNumber(
-    item?.max_order_quantity ??
-      item?.remaining_today ??
-      item?.available_quantity
-  );
-};
-
-const isValidIngredientInventoryMenuItem = (item) => {
-  const available =
-    isAvailableTrue(
-      item?.is_available
+  const inventoryType =
+    normalizeInventoryType(
+      item?.inventory_type
     );
 
-  if (!available) {
-    return false;
-  }
+  const name =
+    normalizeText(item?.name);
 
+  const excluded =
+    excludedPopularCategories.map(
+      normalizeText
+    );
+
+  return (
+    excluded.includes(category) ||
+    excluded.includes(mealType) ||
+    mealType === 'drink' ||
+    mealType === 'drinks' ||
+    mealType === 'extra' ||
+    mealType === 'extras' ||
+    inventoryType === 'drink' ||
+    inventoryType === 'drinks' ||
+    inventoryType === 'extra' ||
+    inventoryType === 'extras' ||
+    category.includes('drink') ||
+    category.includes('beverage') ||
+    category.includes('extra') ||
+    name.includes('water')
+  );
+};
+
+const isMenuItemAvailableByBackend = (item) => {
   if (isCustomItem(item)) {
-    return true;
+    return isBackendAvailableTrue(
+      item?.is_available
+    );
   }
 
   const maxOrderQuantity =
@@ -213,9 +204,111 @@ const isValidIngredientInventoryMenuItem = (item) => {
     getRemainingQuantity(item);
 
   return (
-    maxOrderQuantity > 0 ||
-    remainingQuantity > 0
+    isBackendAvailableTrue(
+      item?.is_available
+    ) &&
+    (
+      maxOrderQuantity > 0 ||
+      remainingQuantity > 0
+    )
   );
+};
+
+const isValidIngredientInventoryMenuItem = (item) => {
+  if (
+    !isBackendAvailableTrue(
+      item?.is_available
+    )
+  ) {
+    return false;
+  }
+
+  if (isCustomItem(item)) {
+    return true;
+  }
+
+  return (
+    getMaxOrderQuantity(item) > 0 ||
+    getRemainingQuantity(item) > 0
+  );
+};
+
+const isMenuItemDisabledByStock = (item) => {
+  return !isMenuItemAvailableByBackend(item);
+};
+
+const isItemOrderable = (item) => {
+  return isMenuItemAvailableByBackend(item);
+};
+
+const getAvailabilityDisplayText = (item) => {
+  if (isCustomItem(item)) {
+    return 'Available for request';
+  }
+
+  if (item?.unavailable_reason) {
+    return String(item.unavailable_reason);
+  }
+
+  if (item?.stock_label) {
+    return String(item.stock_label);
+  }
+
+  if (item?.daily_inventory_label) {
+    return String(item.daily_inventory_label);
+  }
+
+  const maxQuantity =
+    Math.max(
+      getMaxOrderQuantity(item),
+      getRemainingQuantity(item)
+    );
+
+  if (
+    !isBackendAvailableTrue(
+      item?.is_available
+    ) ||
+    maxQuantity <= 0
+  ) {
+    return 'Unavailable based on ingredient stock';
+  }
+
+  return `Available: ${maxQuantity}`;
+};
+
+const getMenuCardStockText = (item) => {
+  return getAvailabilityDisplayText(item);
+};
+
+const isIngredientCustomItem = (item) => {
+  return isCustomItem(item);
+};
+
+const canIncreaseQuantity = (
+  item,
+  currentQuantity,
+  addQuantity = 1
+) => {
+  if (isCustomItem(item)) {
+    return false;
+  }
+
+  const maxQuantity =
+    getMaxOrderQuantity(item);
+
+  const nextQuantity =
+    Number(currentQuantity || 0) +
+    Number(addQuantity || 0);
+
+  return (
+    isMenuItemAvailableByBackend(item) &&
+    maxQuantity > 0 &&
+    nextQuantity <= maxQuantity
+  );
+};
+
+const isOutOfStock = (item) => {
+  return !isMenuItemAvailableByBackend(item);
 };
 
 export default function MenuScreen({
@@ -237,21 +330,12 @@ export default function MenuScreen({
       const isLandscape =
         width > height;
 
-      const isPhone =
-        shortest < 600;
-
       const isPhoneWidth =
         width < 430;
 
       const isLandscapePhone =
         isLandscape &&
         shortest < 520;
-
-      const isVeryNarrow =
-        width < 380;
-
-      const isShortHeight =
-        height < 650;
 
       const isVeryShortLandscape =
         isLandscape &&
@@ -298,8 +382,16 @@ export default function MenuScreen({
       const cartWidth =
         useSideCart
           ? isLandscapePhone
-            ? clamp(usableWidth * 0.30, 260, 330)
-            : clamp(usableWidth * 0.27, 250, 370)
+            ? clamp(
+                usableWidth * 0.3,
+                260,
+                330
+              )
+            : clamp(
+                usableWidth * 0.27,
+                250,
+                370
+              )
           : '100%';
 
       const availableMenuWidth =
@@ -334,66 +426,35 @@ export default function MenuScreen({
                 2,
                 3
               )
-          : isPhoneWidth
-            ? 2
-            : 2;
+          : 2;
 
       const menuCardWidth =
         Math.floor(
           (
             availableMenuWidth -
             menuPaddingH * 2 -
-            cardGap * (menuColumns - 1)
+            cardGap *
+              (menuColumns - 1)
           ) / menuColumns
         );
 
-      const finalImageSize =
+      const imageSize =
         isLandscapePhone
           ? scale(70, 52, 74)
           : isPhoneWidth
             ? scale(64, 54, 70)
-            : menuColumns > 1 && !useSideCart
+            : menuColumns > 1 &&
+                !useSideCart
               ? scale(88, 66, 94)
               : scale(102, 74, 110);
 
-      const stackedCartMinHeight =
-        clamp(
-          height * 0.21,
-          isVeryNarrow ? 185 : 205,
-          255
-        );
-
-      const stackedCartMaxHeight =
-        clamp(
-          height * 0.26,
-          isVeryNarrow ? 205 : 230,
-          300
-        );
-
-      const stackedCartListMaxHeight =
-        clamp(
-          height * 0.12,
-          86,
-          125
-        );
-
       return {
-        isPhone,
-        isPhoneWidth,
-        isLandscapePhone,
-        useCompactTopBar,
-        isVeryNarrow,
-        isShortHeight,
         useSideCart,
+        useCompactTopBar,
         cartWidth,
         menuColumns,
         menuCardWidth,
-        stackedCartMinHeight,
-        stackedCartMaxHeight,
-        stackedCartListMaxHeight,
         cardGap,
-
-        topSafeExtra: 0,
 
         topBarMinHeight:
           useCompactTopBar
@@ -501,7 +562,8 @@ export default function MenuScreen({
             ? scale(180, 150, 190)
             : isPhoneWidth
               ? scale(178, 160, 188)
-              : menuColumns > 1 && !useSideCart
+              : menuColumns > 1 &&
+                  !useSideCart
                 ? scale(220, 195, 235)
                 : scale(235, 205, 245),
 
@@ -515,18 +577,17 @@ export default function MenuScreen({
         itemRadius:
           scale(18, 14, 18),
 
-        imageSize:
-          finalImageSize,
-
+        imageSize,
         imageRadius:
-          finalImageSize / 2,
+          imageSize / 2,
 
         itemName:
           isLandscapePhone
             ? scale(17, 13, 17)
             : isPhoneWidth
               ? scale(14, 12, 15)
-              : menuColumns > 1 && !useSideCart
+              : menuColumns > 1 &&
+                  !useSideCart
                 ? scale(18, 13, 18)
                 : scale(21, 16, 21),
 
@@ -586,8 +647,35 @@ export default function MenuScreen({
 
         sidebarPaddingBottom:
           useSideCart
-            ? Math.max(insets.bottom + 6, 10)
-            : Math.max(insets.bottom + 2, 6),
+            ? Math.max(
+                insets.bottom + 6,
+                10
+              )
+            : Math.max(
+                insets.bottom + 2,
+                6
+              ),
+
+        stackedCartMinHeight:
+          clamp(
+            height * 0.21,
+            185,
+            255
+          ),
+
+        stackedCartMaxHeight:
+          clamp(
+            height * 0.26,
+            205,
+            300
+          ),
+
+        stackedCartListMaxHeight:
+          clamp(
+            height * 0.12,
+            86,
+            125
+          ),
 
         cartIcon:
           isLandscapePhone
@@ -691,7 +779,11 @@ export default function MenuScreen({
               : scale(24, 12, 24),
 
         modalWidth:
-          clamp(width * 0.86, 300, 420),
+          clamp(
+            width * 0.86,
+            300,
+            420
+          ),
 
         modalTitle:
           scale(28, 20, 28),
@@ -779,6 +871,89 @@ export default function MenuScreen({
     assignmentMessage ||
     'Please wait for service staff to assign your table before placing an order.';
 
+  const fetchMenu =
+    useCallback(async () => {
+      try {
+        const response =
+          await getMenu();
+
+        const payload =
+          response?.data?.success !== undefined
+            ? response.data
+            : response;
+
+        console.log(
+          'MENU RESPONSE:',
+          payload
+        );
+
+        console.log(
+          'MENU DEBUG SOURCE:',
+          payload?.debug_source
+        );
+
+        if (payload?.success) {
+          const rawItems =
+            Array.isArray(payload.data)
+              ? payload.data
+              : Array.isArray(
+                    payload.data?.data
+                  )
+                ? payload.data.data
+                : [];
+
+          console.log(
+            'MOBILE MENU SOURCE OF TRUTH:',
+            {
+              debug_source:
+                payload.debug_source,
+              expected_debug_source:
+                EXPECTED_MENU_DEBUG_SOURCE,
+              correct_backend:
+                payload.debug_source ===
+                EXPECTED_MENU_DEBUG_SOURCE,
+              returned_count:
+                rawItems.length,
+            }
+          );
+
+          const cleanedItems =
+            rawItems.map((item) => ({
+              ...item,
+              is_available:
+                isBackendAvailableTrue(
+                  item?.is_available
+                ),
+            }));
+
+          setMenuItems(cleanedItems);
+
+          syncMenuInventory?.(
+            cleanedItems
+          );
+        } else {
+          Alert.alert(
+            'Error',
+            payload?.message ||
+              'Failed to fetch menu.'
+          );
+        }
+      } catch (error) {
+        console.error(
+          'Failed to fetch menu:',
+          error?.response?.data ||
+            error.message
+        );
+
+        Alert.alert(
+          'Error',
+          'Failed to fetch menu.'
+        );
+      } finally {
+        setLoading(false);
+      }
+    }, [syncMenuInventory]);
+
   useEffect(() => {
     fetchMenu();
 
@@ -789,7 +964,7 @@ export default function MenuScreen({
 
     return () =>
       clearInterval(refreshTimer);
-  }, []);
+  }, [fetchMenu]);
 
   useEffect(() => {
     if (!tableResetRequired) {
@@ -832,78 +1007,12 @@ export default function MenuScreen({
   useFocusEffect(
     useCallback(() => {
       fetchMenu();
-      refreshTableStatus();
-    }, [refreshTableStatus])
+      refreshTableStatus?.();
+    }, [
+      fetchMenu,
+      refreshTableStatus,
+    ])
   );
-
-  const fetchMenu = async () => {
-    try {
-      const response =
-        await getMenu();
-
-      console.log(
-        'MENU RESPONSE:',
-        response
-      );
-
-      if (response.success) {
-        const rawItems =
-          Array.isArray(response.data)
-            ? response.data
-            : response.data?.data || [];
-
-        const visibleItems =
-  rawItems.map((item) => ({
-    ...item,
-    is_available:
-      isAvailableTrue(item?.is_available) &&
-      (
-        isCustomItem(item) ||
-        getMaxOrderQuantity(item) > 0 ||
-        getRemainingQuantity(item) > 0
-      ),
-  }));
-        console.log(
-          'MOBILE MENU INGREDIENT FILTER:',
-          {
-            raw_count:
-              rawItems.length,
-            visible_count:
-              visibleItems.length,
-            debug_source:
-              response.debug_source,
-          }
-        );
-
-        setMenuItems(
-          visibleItems
-        );
-
-        syncMenuInventory(
-          visibleItems
-        );
-      } else {
-        Alert.alert(
-          'Error',
-          response.message ||
-          'Failed to fetch menu.'
-        );
-      }
-    } catch (error) {
-      console.error(
-        'Failed to fetch menu:',
-        error?.response?.data ||
-        error.message
-      );
-
-      Alert.alert(
-        'Error',
-        'Failed to fetch menu.'
-      );
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const openLogoutModal = () => {
     setLogoutPassword('');
@@ -915,24 +1024,25 @@ export default function MenuScreen({
     setLogoutModalVisible(false);
   };
 
-  const handleConfirmLogout = async () => {
-    const result =
-      await logout(logoutPassword);
+  const handleConfirmLogout =
+    async () => {
+      const result =
+        await logout(logoutPassword);
 
-    if (!result.success) {
-      Alert.alert(
-        'Logout Failed',
-        result.message ||
-        'Unable to logout.'
-      );
+      if (!result?.success) {
+        Alert.alert(
+          'Logout Failed',
+          result?.message ||
+            'Unable to logout.'
+        );
 
-      return;
-    }
+        return;
+      }
 
-    closeLogoutModal();
+      closeLogoutModal();
 
-    navigation.replace('Login');
-  };
+      navigation.replace('Login');
+    };
 
   const formatMoney = (value) => {
     const n = Number(value);
@@ -954,30 +1064,36 @@ export default function MenuScreen({
   };
 
   const isBestSeller = (item) => {
-    if (isExcludedPopularCategory(item)) {
+    if (
+      isExcludedPopularCategory(item)
+    ) {
       return false;
     }
 
     return (
-      item.is_best_seller === true ||
-      item.is_best_seller === 1 ||
-      item.is_best_seller === 'true' ||
-      item.is_best_seller === '1'
+      item?.is_best_seller === true ||
+      item?.is_best_seller === 1 ||
+      item?.is_best_seller ===
+        'true' ||
+      item?.is_best_seller === '1'
     );
   };
 
   const checkLatestTablePermission =
     async () => {
       const latestStatus =
-        await refreshTableStatus();
+        await refreshTableStatus?.();
 
       const tableCheck =
-        await ensureCanOrder();
+        await ensureCanOrder?.();
+
+      const statusToCheck =
+        latestStatus || tableStatus;
 
       const allowed =
         tableCheck?.allowed === true &&
         getStrictOrderPermission(
-          latestStatus,
+          statusToCheck,
           true
         );
 
@@ -989,251 +1105,311 @@ export default function MenuScreen({
       };
     };
 
-  const handleOpenItem = async (item) => {
-    const tableCheck =
-      await checkLatestTablePermission();
+  const handleOpenItem =
+    async (item) => {
+      const tableCheck =
+        await checkLatestTablePermission();
 
-    if (!tableCheck?.allowed) {
-      Alert.alert(
-        'Table Not Assigned',
-        tableCheck?.message ||
-        strictAssignmentMessage
+      if (!tableCheck?.allowed) {
+        Alert.alert(
+          'Table Not Assigned',
+          tableCheck?.message ||
+            strictAssignmentMessage
+        );
+
+        return;
+      }
+
+      if (
+        !isValidIngredientInventoryMenuItem(
+          item
+        )
+      ) {
+        Alert.alert(
+          'Unavailable',
+          getAvailabilityDisplayText(
+            item
+          ) ||
+            'This item is currently unavailable based on ingredient stock.'
+        );
+
+        return;
+      }
+
+      if (!isItemOrderable(item)) {
+        Alert.alert(
+          'Unavailable',
+          getAvailabilityDisplayText(
+            item
+          ) ||
+            'This item is currently unavailable.'
+        );
+
+        return;
+      }
+
+      navigation.navigate(
+        'ItemDetail',
+        { item }
       );
+    };
 
-      return;
-    }
+  const handleIncreaseQuantity =
+    (item) => {
+      const enrichedItem =
+        getEnrichedItem
+          ? getEnrichedItem(item)
+          : item;
 
-    if (
-      !isValidIngredientInventoryMenuItem(item)
-    ) {
-      Alert.alert(
-        'Unavailable',
-        getAvailabilityDisplayText(item) ||
-        'This item is currently unavailable based on ingredient stock.'
-      );
+      if (isCustomItem(enrichedItem)) {
+        return;
+      }
 
-      return;
-    }
-
-    if (!isItemOrderable(item)) {
-      Alert.alert(
-        'Unavailable',
-        getAvailabilityDisplayText(item) ||
-        'This item is currently unavailable.'
-      );
-
-      return;
-    }
-
-    navigation.navigate(
-      'ItemDetail',
-      { item }
-    );
-  };
-
-  const handleIncreaseQuantity = (
-    item
-  ) => {
-    const enrichedItem =
-      getEnrichedItem(item);
-
-    if (isCustomItem(enrichedItem)) {
-      return;
-    }
-
-    if (
-      !isValidIngredientInventoryMenuItem(
-        enrichedItem
-      )
-    ) {
-      Alert.alert(
-        'Unavailable',
-        getAvailabilityDisplayText(enrichedItem) ||
-        'This item is no longer available based on ingredient stock.'
-      );
-
-      return;
-    }
-
-    if (
-      !canIncreaseQuantity(
-        enrichedItem,
-        item.quantity,
-        1
-      )
-    ) {
-      Alert.alert(
-        'Limited Stock',
-        getAvailabilityDisplayText(
+      if (
+        !isValidIngredientInventoryMenuItem(
           enrichedItem
-        ) ||
-        'You reached the available quantity for this item.'
-      );
+        )
+      ) {
+        Alert.alert(
+          'Unavailable',
+          getAvailabilityDisplayText(
+            enrichedItem
+          ) ||
+            'This item is no longer available based on ingredient stock.'
+        );
 
-      return;
-    }
+        return;
+      }
 
-    incrementQuantity(
-      getItemId(item)
-    );
-  };
-
-  const handleDecreaseQuantity = (
-    item
-  ) => {
-    const itemId =
-      getItemId(item);
-
-    updateQuantity(
-      itemId,
-      item.quantity - 1
-    );
-  };
-
-  const handleRemoveFromCart = (
-    item
-  ) => {
-    const itemId =
-      getItemId(item);
-
-    removeFromCart(itemId);
-  };
-
-  const handleCheckout = async () => {
-    if (cartItems.length === 0) {
-      Alert.alert(
-        'Empty Order',
-        'Please add at least one item before proceeding.'
-      );
-
-      return;
-    }
-
-    const tableCheck =
-      await checkLatestTablePermission();
-
-    if (!tableCheck?.allowed) {
-      Alert.alert(
-        'Table Not Assigned',
-        tableCheck?.message ||
-        strictAssignmentMessage
-      );
-
-      return;
-    }
-
-    const inventoryCheck =
-      await refreshCartInventory();
-
-    if (!inventoryCheck.valid) {
-      Alert.alert(
-        'Limited Stock',
-        inventoryCheck.message
-      );
-
-      return;
-    }
-
-    const invalidIngredientItems =
-      cartItems.filter((cartItem) => {
-        const enrichedItem =
-          getEnrichedItem(cartItem);
-
-        return (
-          !isCustomItem(enrichedItem) &&
-          !isValidIngredientInventoryMenuItem(
+      if (
+        isMenuItemDisabledByStock(
+          enrichedItem
+        )
+      ) {
+        Alert.alert(
+          'Unavailable',
+          getMenuCardStockText(
             enrichedItem
           )
         );
-      });
 
-    if (
-      invalidIngredientItems.length > 0
-    ) {
-      Alert.alert(
-        'Unavailable Item',
-        'Some items in your cart are no longer available based on ingredient stock. Please remove them before confirming your order.'
-      );
-
-      return;
-    }
-
-    if (!tableNumber && !user?.table_number) {
-      Alert.alert(
-        'Table Error',
-        'No table number found. Please login again using the assigned table account.'
-      );
-
-      return;
-    }
-
-    navigation.navigate(
-      'OrderConfirm',
-      {
-        cartItems,
-        total: cartTotal,
-        tableNumber:
-          tableNumber ||
-          user?.table_number,
+        return;
       }
-    );
-  };
 
-  const categories = [
-    'All',
-    ...new Set(
-      menuItems
-  .map((m) => m.category)
-        .filter(Boolean)
-    ),
-  ];
-
- const filteredItems =
-  menuItems
-    .filter((item) => {
-      const byCategory =
-        selectedCategory === 'All' ||
-        item.category === selectedCategory;
-
-      const bySearch =
-        !search ||
-        (item.name || '')
-          .toLowerCase()
-          .includes(
-            search.toLowerCase()
-          );
-
-      return byCategory && bySearch;
-    })
-      .sort((a, b) => {
-        const aPopular =
-          isBestSeller(a);
-
-        const bPopular =
-          isBestSeller(b);
-
-        const aAvailable =
-          isItemOrderable(a);
-
-        const bAvailable =
-          isItemOrderable(b);
-
-        if (aPopular !== bPopular) {
-          return Number(bPopular) -
-            Number(aPopular);
-        }
-
-        if (aAvailable !== bAvailable) {
-          return Number(bAvailable) -
-            Number(aAvailable);
-        }
-
-        return String(
-          a.name || ''
-        ).localeCompare(
-          String(b.name || '')
+      const maxQuantity =
+        getMaxOrderQuantity(
+          enrichedItem
         );
-      });
+
+      const currentQuantity =
+        Number(item.quantity || 0);
+
+      if (
+        currentQuantity + 1 >
+        maxQuantity
+      ) {
+        Alert.alert(
+          'Limited Stock',
+          `You can only order up to ${maxQuantity} of this item based on ingredient stock.`
+        );
+
+        return;
+      }
+
+      incrementQuantity(
+        getItemId(item)
+      );
+    };
+
+  const handleDecreaseQuantity =
+    (item) => {
+      const itemId =
+        getItemId(item);
+
+      updateQuantity(
+        itemId,
+        Number(item.quantity || 0) - 1
+      );
+    };
+
+  const handleRemoveFromCart =
+    (item) => {
+      const itemId =
+        getItemId(item);
+
+      removeFromCart(itemId);
+    };
+
+  const handleCheckout =
+    async () => {
+      if (cartItems.length === 0) {
+        Alert.alert(
+          'Empty Order',
+          'Please add at least one item before proceeding.'
+        );
+
+        return;
+      }
+
+      const tableCheck =
+        await checkLatestTablePermission();
+
+      if (!tableCheck?.allowed) {
+        Alert.alert(
+          'Table Not Assigned',
+          tableCheck?.message ||
+            strictAssignmentMessage
+        );
+
+        return;
+      }
+
+      const inventoryCheck =
+        await refreshCartInventory?.();
+
+      if (
+        inventoryCheck &&
+        inventoryCheck.valid === false
+      ) {
+        Alert.alert(
+          'Limited Stock',
+          inventoryCheck.message ||
+            'Some items are no longer available.'
+        );
+
+        return;
+      }
+
+      const invalidIngredientItems =
+        cartItems.filter((cartItem) => {
+          const enrichedItem =
+            getEnrichedItem
+              ? getEnrichedItem(
+                  cartItem
+                )
+              : cartItem;
+
+          return (
+            !isCustomItem(
+              enrichedItem
+            ) &&
+            !isValidIngredientInventoryMenuItem(
+              enrichedItem
+            )
+          );
+        });
+
+      if (
+        invalidIngredientItems.length > 0
+      ) {
+        Alert.alert(
+          'Unavailable Item',
+          'Some items in your cart are no longer available based on ingredient stock. Please remove them before confirming your order.'
+        );
+
+        return;
+      }
+
+      if (
+        !tableNumber &&
+        !user?.table_number
+      ) {
+        Alert.alert(
+          'Table Error',
+          'No table number found. Please login again using the assigned table account.'
+        );
+
+        return;
+      }
+
+      navigation.navigate(
+        'OrderConfirm',
+        {
+          cartItems,
+          total: cartTotal,
+          tableNumber:
+            tableNumber ||
+            user?.table_number,
+        }
+      );
+    };
+
+  const categories =
+    useMemo(() => {
+      return [
+        'All',
+        ...new Set(
+          menuItems
+            .map((m) => m.category)
+            .filter(Boolean)
+        ),
+      ];
+    }, [menuItems]);
+
+  const filteredItems =
+    useMemo(() => {
+      return menuItems
+        .filter((item) => {
+          const byCategory =
+            selectedCategory ===
+              'All' ||
+            item.category ===
+              selectedCategory;
+
+          const bySearch =
+            !search ||
+            (item.name || '')
+              .toLowerCase()
+              .includes(
+                search.toLowerCase()
+              );
+
+          return (
+            byCategory && bySearch
+          );
+        })
+        .sort((a, b) => {
+          const aPopular =
+            isBestSeller(a);
+
+          const bPopular =
+            isBestSeller(b);
+
+          const aDisabled =
+            isMenuItemDisabledByStock(a);
+
+          const bDisabled =
+            isMenuItemDisabledByStock(b);
+
+          if (
+            aPopular !== bPopular
+          ) {
+            return (
+              Number(bPopular) -
+              Number(aPopular)
+            );
+          }
+
+          if (
+            aDisabled !== bDisabled
+          ) {
+            return (
+              Number(aDisabled) -
+              Number(bDisabled)
+            );
+          }
+
+          return String(
+            a.name || ''
+          ).localeCompare(
+            String(b.name || '')
+          );
+        });
+    }, [
+      menuItems,
+      selectedCategory,
+      search,
+    ]);
 
   const totalQuantity =
     cartItems.reduce(
@@ -1244,7 +1420,9 @@ export default function MenuScreen({
     );
 
   const hasCustomRequest =
-    cartItems.some(isCustomItem);
+    cartItems.some(
+      isIngredientCustomItem
+    );
 
   const renderMenuItem = ({
     item,
@@ -1255,26 +1433,21 @@ export default function MenuScreen({
     const customItem =
       isCustomItem(item);
 
-    const isValidForMobile =
-      isValidIngredientInventoryMenuItem(item);
-
     const isAvailable =
-      isValidForMobile &&
-      isItemOrderable(item);
+      isMenuItemAvailableByBackend(item);
 
-    const isLowStock =
-      shouldShowLowStockWarning(item);
+    const disabledByStock =
+      !isAvailable;
 
     const availabilityText =
-      customItem
-        ? 'Custom request available'
-        : getAvailabilityDisplayText(item);
+      getMenuCardStockText(item);
 
     const bestSeller =
       isBestSeller(item);
 
     const disabled =
-      !isAvailable || !strictCanOrder;
+      disabledByStock ||
+      !strictCanOrder;
 
     return (
       <TouchableOpacity
@@ -1303,7 +1476,11 @@ export default function MenuScreen({
         }
       >
         {bestSeller ? (
-          <View style={styles.bestSellerBadge}>
+          <View
+            style={
+              styles.bestSellerBadge
+            }
+          >
             <Text
               style={[
                 styles.bestSellerBadgeText,
@@ -1319,7 +1496,11 @@ export default function MenuScreen({
         ) : null}
 
         {customItem ? (
-          <View style={styles.customBadge}>
+          <View
+            style={
+              styles.customBadge
+            }
+          >
             <Text
               style={[
                 styles.customBadgeText,
@@ -1382,7 +1563,8 @@ export default function MenuScreen({
             ]}
             numberOfLines={1}
           >
-            {item.category || 'Uncategorized'}
+            {item.category ||
+              'Uncategorized'}
           </Text>
 
           <Text
@@ -1399,18 +1581,17 @@ export default function MenuScreen({
           >
             {customItem
               ? 'To be confirmed'
-              : `₱${formatMoney(item.price)}`}
+              : `₱${formatMoney(
+                  item.price
+                )}`}
           </Text>
 
           <Text
             style={[
-              !strictCanOrder
+              !strictCanOrder ||
+              !isAvailable
                 ? styles.notAvailableText
-                : !isAvailable
-                  ? styles.notAvailableText
-                  : isLowStock
-                    ? styles.lowStockText
-                    : styles.availableText,
+                : styles.availableText,
               {
                 fontSize:
                   responsive.stockText,
@@ -1433,7 +1614,9 @@ export default function MenuScreen({
             ]}
           >
             {strictCanOrder
-              ? 'Tap to view'
+              ? disabledByStock
+                ? 'Unavailable'
+                : 'Tap to view'
               : 'Waiting for staff'}
           </Text>
         </View>
@@ -1445,7 +1628,9 @@ export default function MenuScreen({
     item,
   }) => {
     const enrichedItem =
-      getEnrichedItem(item);
+      getEnrichedItem
+        ? getEnrichedItem(item)
+        : item;
 
     const customCartItem =
       isCustomItem(enrichedItem);
@@ -1458,13 +1643,13 @@ export default function MenuScreen({
 
     const atMaxQuantity =
       customCartItem ||
-        !validIngredientInventoryItem
+      !validIngredientInventoryItem
         ? true
         : !canIncreaseQuantity(
-          enrichedItem,
-          item.quantity,
-          1
-        );
+            enrichedItem,
+            item.quantity,
+            1
+          );
 
     return (
       <View
@@ -1500,18 +1685,36 @@ export default function MenuScreen({
             >
               {customCartItem
                 ? 'To be confirmed'
-                : `₱${formatMoney(item.price)}`}
+                : `₱${formatMoney(
+                    item.price
+                  )}`}
             </Text>
 
+            {!customCartItem ? (
+              <Text
+                style={
+                  styles.cartStockText
+                }
+              >
+                {getMenuCardStockText(
+                  enrichedItem
+                )}
+              </Text>
+            ) : null}
+
             {!customCartItem &&
-              !validIngredientInventoryItem ? (
-              <Text style={styles.cartInvalidText}>
+            !validIngredientInventoryItem ? (
+              <Text
+                style={
+                  styles.cartInvalidText
+                }
+              >
                 No longer available based on ingredient stock
               </Text>
             ) : null}
 
             {customCartItem &&
-              item.special_request ? (
+            item.special_request ? (
               <Text
                 style={[
                   styles.cartRequestText,
@@ -1521,7 +1724,8 @@ export default function MenuScreen({
                   },
                 ]}
               >
-                Request: {item.special_request}
+                Request:{' '}
+                {item.special_request}
               </Text>
             ) : null}
           </View>
@@ -1548,8 +1752,14 @@ export default function MenuScreen({
         </View>
 
         {customCartItem ? (
-          <View style={styles.customQtyBox}>
-            <Text style={styles.customQtyText}>
+          <View
+            style={styles.customQtyBox}
+          >
+            <Text
+              style={
+                styles.customQtyText
+              }
+            >
               Qty: 1
             </Text>
           </View>
@@ -1564,7 +1774,8 @@ export default function MenuScreen({
                   height:
                     responsive.qtyButton,
                   borderRadius:
-                    responsive.qtyButton / 3,
+                    responsive.qtyButton /
+                    3,
                 },
               ]}
               onPress={() =>
@@ -1607,23 +1818,18 @@ export default function MenuScreen({
                   height:
                     responsive.qtyButton,
                   borderRadius:
-                    responsive.qtyButton / 3,
+                    responsive.qtyButton /
+                    3,
                 },
                 (atMaxQuantity ||
-                  isOutOfStock(enrichedItem)) &&
+                  isOutOfStock(
+                    enrichedItem
+                  )) &&
                   styles.qtyButtonDisabled,
               ]}
-              disabled={
-                atMaxQuantity ||
-                isOutOfStock(enrichedItem)
-              }
+              disabled={atMaxQuantity}
               onPress={() => {
-                if (
-                  !atMaxQuantity &&
-                  !isOutOfStock(
-                    enrichedItem
-                  )
-                ) {
+                if (!atMaxQuantity) {
                   handleIncreaseQuantity(
                     item
                   );
@@ -1720,7 +1926,11 @@ export default function MenuScreen({
             </View>
 
             {responsive.useCompactTopBar ? (
-              <View style={styles.compactHeaderRight}>
+              <View
+                style={
+                  styles.compactHeaderRight
+                }
+              >
                 <Text
                   style={[
                     styles.tableText,
@@ -1731,16 +1941,27 @@ export default function MenuScreen({
                   ]}
                   numberOfLines={1}
                 >
-                  Table {tableNumber || user?.table_number || '-'}
+                  Table{' '}
+                  {tableNumber ||
+                    user?.table_number ||
+                    '-'}
                 </Text>
 
                 <TouchableOpacity
-                  style={styles.hamburgerButton}
+                  style={
+                    styles.hamburgerButton
+                  }
                   onPress={() =>
-                    setActionMenuVisible(true)
+                    setActionMenuVisible(
+                      true
+                    )
                   }
                 >
-                  <Text style={styles.hamburgerText}>
+                  <Text
+                    style={
+                      styles.hamburgerText
+                    }
+                  >
                     ☰
                   </Text>
                 </TouchableOpacity>
@@ -1757,7 +1978,10 @@ export default function MenuScreen({
                   ]}
                   numberOfLines={1}
                 >
-                  Table {tableNumber || user?.table_number || '-'}
+                  Table{' '}
+                  {tableNumber ||
+                    user?.table_number ||
+                    '-'}
                 </Text>
 
                 <TouchableOpacity
@@ -1830,7 +2054,9 @@ export default function MenuScreen({
                         responsive.topButtonPaddingH,
                     },
                   ]}
-                  onPress={openLogoutModal}
+                  onPress={
+                    openLogoutModal
+                  }
                 >
                   <Text
                     style={[
@@ -1904,8 +2130,12 @@ export default function MenuScreen({
           <FlatList
             horizontal
             data={categories}
-            keyExtractor={(item) => item}
-            showsHorizontalScrollIndicator={false}
+            keyExtractor={(item) =>
+              item
+            }
+            showsHorizontalScrollIndicator={
+              false
+            }
             style={[
               styles.categoryBar,
               {
@@ -1929,11 +2159,14 @@ export default function MenuScreen({
                     paddingHorizontal:
                       responsive.categoryPaddingH,
                   },
-                  selectedCategory === category &&
+                  selectedCategory ===
+                    category &&
                     styles.categoryBtnActive,
                 ]}
                 onPress={() =>
-                  setSelectedCategory(category)
+                  setSelectedCategory(
+                    category
+                  )
                 }
               >
                 <Text
@@ -1943,7 +2176,8 @@ export default function MenuScreen({
                       fontSize:
                         responsive.categoryText,
                     },
-                    selectedCategory === category &&
+                    selectedCategory ===
+                      category &&
                       styles.categoryTextActive,
                   ]}
                   numberOfLines={1}
@@ -1955,7 +2189,11 @@ export default function MenuScreen({
           />
 
           {!strictCanOrder ? (
-            <View style={styles.assignmentBanner}>
+            <View
+              style={
+                styles.assignmentBanner
+              }
+            >
               <Text
                 style={[
                   styles.assignmentBannerText,
@@ -1996,8 +2234,12 @@ export default function MenuScreen({
                 key={`menu-${responsive.menuColumns}-${responsive.useSideCart ? 'side' : 'stack'}`}
                 data={filteredItems}
                 renderItem={renderMenuItem}
-                numColumns={responsive.menuColumns}
-                showsVerticalScrollIndicator={false}
+                numColumns={
+                  responsive.menuColumns
+                }
+                showsVerticalScrollIndicator={
+                  false
+                }
                 keyboardShouldPersistTaps="handled"
                 keyExtractor={(
                   item,
@@ -2009,7 +2251,8 @@ export default function MenuScreen({
                   )
                 }
                 columnWrapperStyle={
-                  responsive.menuColumns > 1
+                  responsive.menuColumns >
+                  1
                     ? {
                         justifyContent:
                           'center',
@@ -2023,19 +2266,33 @@ export default function MenuScreen({
                   paddingBottom:
                     responsive.useSideCart
                       ? 30
-                      : responsive.cardGap + 12,
+                      : responsive.cardGap +
+                        12,
                   alignItems:
-                    responsive.menuColumns === 1
+                    responsive.menuColumns ===
+                    1
                       ? 'center'
                       : undefined,
                 }}
                 ListEmptyComponent={() => (
-                  <View style={styles.emptyMenuBox}>
-                    <Text style={styles.emptyMenuTitle}>
-                      No available menu items
+                  <View
+                    style={
+                      styles.emptyMenuBox
+                    }
+                  >
+                    <Text
+                      style={
+                        styles.emptyMenuTitle
+                      }
+                    >
+                      No menu items found
                     </Text>
 
-                    <Text style={styles.emptyMenuText}>
+                    <Text
+                      style={
+                        styles.emptyMenuText
+                      }
+                    >
                       No menu items are currently available based on ingredient stock.
                     </Text>
                   </View>
@@ -2046,6 +2303,8 @@ export default function MenuScreen({
             <View
               style={[
                 styles.cartSidebar,
+                responsive.useSideCart &&
+                  styles.cartSidebarSide,
                 {
                   width:
                     responsive.useSideCart
@@ -2107,24 +2366,34 @@ export default function MenuScreen({
               </View>
 
               {cartItems.length === 0 ? (
-                <Text
-                  style={[
-                    styles.emptyCartText,
-                    {
-                      fontSize:
-                        responsive.cartItemName,
-                    },
-                  ]}
+                <View
+                  style={
+                    styles.emptyCartBox
+                  }
                 >
-                  No items added yet.
-                </Text>
+                  <Text
+                    style={[
+                      styles.emptyCartText,
+                      {
+                        fontSize:
+                          responsive.cartItemName,
+                      },
+                    ]}
+                  >
+                    No items added yet.
+                  </Text>
+                </View>
               ) : (
                 <FlatList
                   data={cartItems}
                   keyExtractor={(item) =>
-                    String(getItemId(item))
+                    String(
+                      getItemId(item)
+                    )
                   }
-                  renderItem={renderCartItem}
+                  renderItem={
+                    renderCartItem
+                  }
                   horizontal={
                     !responsive.useSideCart
                   }
@@ -2134,10 +2403,10 @@ export default function MenuScreen({
                   showsVerticalScrollIndicator={
                     responsive.useSideCart
                   }
-                  persistentScrollbar={true}
+                  persistentScrollbar
                   indicatorStyle="black"
+                  keyboardShouldPersistTaps="handled"
                   style={[
-                    styles.cartList,
                     responsive.useSideCart
                       ? styles.cartListSide
                       : {
@@ -2164,7 +2433,11 @@ export default function MenuScreen({
               )}
 
               {cartItems.length > 1 ? (
-                <Text style={styles.cartScrollHint}>
+                <Text
+                  style={
+                    styles.cartScrollHint
+                  }
+                >
                   {responsive.useSideCart
                     ? 'Scroll to see more items'
                     : 'Swipe to see more items'}
@@ -2172,7 +2445,9 @@ export default function MenuScreen({
               ) : null}
 
               <View style={styles.cartFooter}>
-                <View style={styles.totalRow}>
+                <View
+                  style={styles.totalRow}
+                >
                   <Text
                     style={[
                       styles.totalLabel,
@@ -2196,12 +2471,19 @@ export default function MenuScreen({
                     numberOfLines={1}
                     adjustsFontSizeToFit
                   >
-                    ₱{formatMoney(cartTotal)}
+                    ₱
+                    {formatMoney(
+                      cartTotal
+                    )}
                   </Text>
                 </View>
 
                 {hasCustomRequest ? (
-                  <Text style={styles.cartWarningText}>
+                  <Text
+                    style={
+                      styles.cartWarningText
+                    }
+                  >
                     Chef Oppa Special requests require staff confirmation for final price and availability.
                   </Text>
                 ) : null}
@@ -2213,15 +2495,19 @@ export default function MenuScreen({
                       paddingVertical:
                         responsive.checkoutPadding,
                     },
-                    (cartItems.length === 0 ||
+                    (cartItems.length ===
+                      0 ||
                       !strictCanOrder) &&
                       styles.checkoutButtonDisabled,
                   ]}
                   disabled={
-                    cartItems.length === 0 ||
+                    cartItems.length ===
+                      0 ||
                     !strictCanOrder
                   }
-                  onPress={handleCheckout}
+                  onPress={
+                    handleCheckout
+                  }
                 >
                   <Text
                     style={[
@@ -2234,7 +2520,8 @@ export default function MenuScreen({
                     numberOfLines={1}
                     adjustsFontSizeToFit
                   >
-                    Confirm Order ({totalQuantity})
+                    Confirm Order (
+                    {totalQuantity})
                   </Text>
                 </TouchableOpacity>
               </View>
@@ -2258,19 +2545,38 @@ export default function MenuScreen({
             setActionMenuVisible(false)
           }
         >
-          <View style={styles.actionMenuCard}>
-            <Text style={styles.actionMenuTitle}>
-              Table {tableNumber || user?.table_number || '-'}
+          <View
+            style={styles.actionMenuCard}
+          >
+            <Text
+              style={
+                styles.actionMenuTitle
+              }
+            >
+              Table{' '}
+              {tableNumber ||
+                user?.table_number ||
+                '-'}
             </Text>
 
             <TouchableOpacity
-              style={styles.actionMenuItem}
+              style={
+                styles.actionMenuItem
+              }
               onPress={() => {
-                setActionMenuVisible(false);
-                navigation.navigate('OrderHistory');
+                setActionMenuVisible(
+                  false
+                );
+                navigation.navigate(
+                  'OrderHistory'
+                );
               }}
             >
-              <Text style={styles.actionMenuItemText}>
+              <Text
+                style={
+                  styles.actionMenuItemText
+                }
+              >
                 Order History
               </Text>
             </TouchableOpacity>
@@ -2281,11 +2587,19 @@ export default function MenuScreen({
                 styles.actionMenuItemOrange,
               ]}
               onPress={() => {
-                setActionMenuVisible(false);
-                navigation.navigate('OrderStatus');
+                setActionMenuVisible(
+                  false
+                );
+                navigation.navigate(
+                  'OrderStatus'
+                );
               }}
             >
-              <Text style={styles.actionMenuItemTextWhite}>
+              <Text
+                style={
+                  styles.actionMenuItemTextWhite
+                }
+              >
                 View Order Status
               </Text>
             </TouchableOpacity>
@@ -2296,11 +2610,17 @@ export default function MenuScreen({
                 styles.actionMenuItemDark,
               ]}
               onPress={() => {
-                setActionMenuVisible(false);
+                setActionMenuVisible(
+                  false
+                );
                 openLogoutModal();
               }}
             >
-              <Text style={styles.actionMenuItemTextWhite}>
+              <Text
+                style={
+                  styles.actionMenuItemTextWhite
+                }
+              >
                 Staff Logout
               </Text>
             </TouchableOpacity>
@@ -2323,7 +2643,9 @@ export default function MenuScreen({
           }
         >
           <ScrollView
-            contentContainerStyle={styles.modalScrollContent}
+            contentContainerStyle={
+              styles.modalScrollContent
+            }
             keyboardShouldPersistTaps="handled"
           >
             <View
@@ -2361,7 +2683,9 @@ export default function MenuScreen({
 
               <TextInput
                 value={logoutPassword}
-                onChangeText={setLogoutPassword}
+                onChangeText={
+                  setLogoutPassword
+                }
                 placeholder="Password"
                 placeholderTextColor="#999"
                 secureTextEntry
@@ -2374,10 +2698,18 @@ export default function MenuScreen({
                 ]}
               />
 
-              <View style={styles.modalActions}>
+              <View
+                style={
+                  styles.modalActions
+                }
+              >
                 <TouchableOpacity
-                  style={styles.cancelButton}
-                  onPress={closeLogoutModal}
+                  style={
+                    styles.cancelButton
+                  }
+                  onPress={
+                    closeLogoutModal
+                  }
                 >
                   <Text
                     style={[
@@ -2393,8 +2725,12 @@ export default function MenuScreen({
                 </TouchableOpacity>
 
                 <TouchableOpacity
-                  style={styles.confirmButton}
-                  onPress={handleConfirmLogout}
+                  style={
+                    styles.confirmButton
+                  }
+                  onPress={
+                    handleConfirmLogout
+                  }
                 >
                   <Text
                     style={[
@@ -2444,41 +2780,11 @@ const styles =
     topBar: {
       backgroundColor: '#b8b3b3',
       flexDirection: 'row',
-      justifyContent: 'space-between',
+      justifyContent:
+        'space-between',
       alignItems: 'center',
       gap: 10,
       flexShrink: 0,
-    },
-
-    topBarCompact: {
-      justifyContent: 'center',
-    },
-
-    topBarMainRow: {
-      width: '100%',
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-      gap: 10,
-    },
-
-    topBarMainRowCompact: {
-      marginBottom: 8,
-    },
-
-    topIconsCompact: {
-      width: '100%',
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-      gap: 7,
-    },
-
-    headerActionButtonCompact: {
-      flex: 1,
-      minHeight: 36,
-      alignItems: 'center',
-      justifyContent: 'center',
     },
 
     brandBox: {
@@ -2530,61 +2836,6 @@ const styles =
       marginTop: -2,
     },
 
-    actionMenuOverlay: {
-      flex: 1,
-      backgroundColor: 'rgba(0, 0, 0, 0.35)',
-      justifyContent: 'flex-start',
-      alignItems: 'flex-end',
-      paddingTop: 70,
-      paddingHorizontal: 16,
-    },
-
-    actionMenuCard: {
-      width: 235,
-      backgroundColor: '#fff',
-      borderRadius: 18,
-      padding: 14,
-      shadowColor: '#000',
-      shadowOpacity: 0.18,
-      shadowRadius: 10,
-      elevation: 8,
-    },
-
-    actionMenuTitle: {
-      fontSize: 16,
-      fontWeight: '900',
-      color: '#333',
-      marginBottom: 10,
-    },
-
-    actionMenuItem: {
-      backgroundColor: '#f7f7f7',
-      borderRadius: 12,
-      paddingVertical: 13,
-      paddingHorizontal: 14,
-      marginTop: 8,
-    },
-
-    actionMenuItemOrange: {
-      backgroundColor: '#f68c45',
-    },
-
-    actionMenuItemDark: {
-      backgroundColor: '#333',
-    },
-
-    actionMenuItemText: {
-      color: '#333',
-      fontWeight: '900',
-      fontSize: 15,
-    },
-
-    actionMenuItemTextWhite: {
-      color: '#fff',
-      fontWeight: '900',
-      fontSize: 15,
-    },
-
     tableText: {
       color: '#fff',
       fontWeight: '900',
@@ -2624,6 +2875,39 @@ const styles =
     logoutButtonText: {
       color: '#fff',
       fontWeight: '800',
+    },
+
+    searchBar: {
+      borderBottomWidth: 1,
+      borderColor: '#ddd',
+      flexDirection: 'row',
+      justifyContent: 'center',
+      alignItems: 'center',
+      backgroundColor: '#fafafa',
+      gap: 10,
+      flexShrink: 0,
+    },
+
+    searchInput: {
+      flex: 1,
+      maxWidth: 760,
+      backgroundColor: '#fff',
+      borderRadius: 28,
+      borderWidth: 1,
+      borderColor: '#ddd',
+      paddingHorizontal: 18,
+      paddingVertical: 10,
+      color: '#222',
+    },
+
+    searchButton: {
+      backgroundColor: '#f68c45',
+      borderRadius: 12,
+    },
+
+    searchButtonText: {
+      color: '#fff',
+      fontWeight: '700',
     },
 
     categoryBar: {
@@ -2796,13 +3080,6 @@ const styles =
       textAlign: 'center',
     },
 
-    lowStockText: {
-      color: '#e67e22',
-      fontWeight: '700',
-      marginTop: 6,
-      textAlign: 'center',
-    },
-
     tapText: {
       marginTop: 6,
       color: '#999',
@@ -2839,30 +3116,18 @@ const styles =
       borderLeftColor: '#ddd',
       borderTopColor: '#ddd',
       flexShrink: 0,
+      minHeight: 0,
     },
 
-    cartList: {
-      flexGrow: 0,
-      minHeight: 72,
-    },
-
-    cartListSide: {
-      flex: 1,
-    },
-
-    cartScrollHint: {
-      color: '#999',
-      fontSize: 11,
-      fontWeight: '800',
-      textAlign: 'center',
-      paddingTop: 2,
-      paddingBottom: 4,
+    cartSidebarSide: {
+      minHeight: 0,
     },
 
     cartHeader: {
       flexDirection: 'row',
       alignItems: 'center',
       marginBottom: 8,
+      flexShrink: 0,
     },
 
     cartIcon: {
@@ -2874,12 +3139,34 @@ const styles =
       color: '#222',
     },
 
+    cartListSide: {
+      flex: 1,
+      flexGrow: 1,
+      flexShrink: 1,
+      minHeight: 0,
+    },
+
+    emptyCartBox: {
+      flex: 1,
+      minHeight: 0,
+    },
+
     emptyCartText: {
       color: '#777',
       marginTop: 4,
       borderBottomWidth: 1,
       borderBottomColor: '#dddddd',
       paddingBottom: 8,
+    },
+
+    cartScrollHint: {
+      color: '#999',
+      fontSize: 11,
+      fontWeight: '800',
+      textAlign: 'center',
+      paddingTop: 2,
+      paddingBottom: 4,
+      flexShrink: 0,
     },
 
     cartItem: {
@@ -2899,7 +3186,8 @@ const styles =
 
     cartItemTop: {
       flexDirection: 'row',
-      justifyContent: 'space-between',
+      justifyContent:
+        'space-between',
       alignItems: 'flex-start',
     },
 
@@ -2917,6 +3205,14 @@ const styles =
       fontWeight: '700',
       color: '#f68c45',
       marginTop: 4,
+    },
+
+    cartStockText: {
+      marginTop: 5,
+      color: '#666',
+      fontSize: 12,
+      fontWeight: '800',
+      lineHeight: 16,
     },
 
     cartInvalidText: {
@@ -2998,11 +3294,14 @@ const styles =
       borderTopColor: '#dddddd',
       paddingTop: 8,
       paddingBottom: 4,
+      marginTop: 'auto',
+      flexShrink: 0,
     },
 
     totalRow: {
       flexDirection: 'row',
-      justifyContent: 'space-between',
+      justifyContent:
+        'space-between',
       alignItems: 'center',
       marginBottom: 10,
       gap: 10,
@@ -3035,37 +3334,60 @@ const styles =
       fontWeight: '800',
     },
 
-    searchBar: {
-      borderBottomWidth: 1,
-      borderColor: '#ddd',
-      flexDirection: 'row',
-      justifyContent: 'center',
-      alignItems: 'center',
-      backgroundColor: '#fafafa',
-      gap: 10,
-      flexShrink: 0,
-    },
-
-    searchInput: {
+    actionMenuOverlay: {
       flex: 1,
-      maxWidth: 760,
+      backgroundColor:
+        'rgba(0, 0, 0, 0.35)',
+      justifyContent: 'flex-start',
+      alignItems: 'flex-end',
+      paddingTop: 70,
+      paddingHorizontal: 16,
+    },
+
+    actionMenuCard: {
+      width: 235,
       backgroundColor: '#fff',
-      borderRadius: 28,
-      borderWidth: 1,
-      borderColor: '#ddd',
-      paddingHorizontal: 18,
-      paddingVertical: 10,
-      color: '#222',
+      borderRadius: 18,
+      padding: 14,
+      shadowColor: '#000',
+      shadowOpacity: 0.18,
+      shadowRadius: 10,
+      elevation: 8,
     },
 
-    searchButton: {
-      backgroundColor: '#f68c45',
+    actionMenuTitle: {
+      fontSize: 16,
+      fontWeight: '900',
+      color: '#333',
+      marginBottom: 10,
+    },
+
+    actionMenuItem: {
+      backgroundColor: '#f7f7f7',
       borderRadius: 12,
+      paddingVertical: 13,
+      paddingHorizontal: 14,
+      marginTop: 8,
     },
 
-    searchButtonText: {
+    actionMenuItemOrange: {
+      backgroundColor: '#f68c45',
+    },
+
+    actionMenuItemDark: {
+      backgroundColor: '#333',
+    },
+
+    actionMenuItemText: {
+      color: '#333',
+      fontWeight: '900',
+      fontSize: 15,
+    },
+
+    actionMenuItemTextWhite: {
       color: '#fff',
-      fontWeight: '700',
+      fontWeight: '900',
+      fontSize: 15,
     },
 
     modalOverlay: {
@@ -3113,7 +3435,8 @@ const styles =
 
     modalActions: {
       flexDirection: 'row',
-      justifyContent: 'space-between',
+      justifyContent:
+        'space-between',
     },
 
     cancelButton: {

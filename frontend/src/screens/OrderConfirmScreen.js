@@ -29,6 +29,7 @@ import {
 import {
   placeOrder,
   extractApiErrorMessage,
+  validateCartAgainstLatestMenu,
 } from '../api/dinesync';
 
 import { useCart } from '../context/CartContext';
@@ -49,7 +50,7 @@ const toNumber = (value) => {
 
   return Number.isFinite(numberValue)
     ? numberValue
-    : 0;
+    : null;
 };
 
 const getRemainingToday = (item) => {
@@ -144,12 +145,15 @@ const validateIngredientCartItems = (
         : cartItem;
 
     const customItem =
-      isCustomItem(item);
+      isIngredientCustomItem(item);
+
+    const quantity =
+      customItem
+        ? Number(cartItem.quantity || 1)
+        : Number(cartItem.quantity || 0);
 
     if (customItem) {
-      if (
-        Number(cartItem.quantity || 0) !== 1
-      ) {
+      if (quantity !== 1) {
         return {
           valid: false,
           message:
@@ -170,13 +174,10 @@ const validateIngredientCartItems = (
       };
     }
 
-    const allowedQuantity =
-      getAllowedOrderQuantity(item);
+    const maxQuantity =
+      getMaxOrderQuantity(item);
 
-    const requestedQuantity =
-      Number(cartItem.quantity || 0);
-
-    if (allowedQuantity <= 0) {
+    if (quantity <= 0) {
       return {
         valid: false,
         message:
@@ -185,8 +186,8 @@ const validateIngredientCartItems = (
     }
 
     if (
-      requestedQuantity >
-      allowedQuantity
+      maxQuantity !== null &&
+      quantity > maxQuantity
     ) {
       return {
         valid: false,
@@ -579,7 +580,7 @@ export default function OrderConfirmScreen({
             ? getEnrichedItem(item)
             : item;
 
-        return isCustomItem(enrichedItem);
+        return isIngredientCustomItem(enrichedItem);
       });
     }, [
       cartItems,
@@ -757,7 +758,7 @@ export default function OrderConfirmScreen({
         : item;
 
     const customItem =
-      isCustomItem(enrichedItem);
+      isIngredientCustomItem(enrichedItem);
 
     if (customItem) {
       Alert.alert(
@@ -783,7 +784,7 @@ export default function OrderConfirmScreen({
     }
 
     const allowedQuantity =
-      getAllowedOrderQuantity(
+      getMaxOrderQuantity(
         enrichedItem
       );
 
@@ -791,8 +792,11 @@ export default function OrderConfirmScreen({
       Number(item.quantity || 0);
 
     if (
-      allowedQuantity <= 0 ||
-      currentQuantity >= allowedQuantity
+      allowedQuantity !== null &&
+      (
+        allowedQuantity <= 0 ||
+        currentQuantity >= allowedQuantity
+      )
     ) {
       Alert.alert(
         'Limited Stock',
@@ -1110,9 +1114,17 @@ console.log(
         errorMessage ===
           TABLE_ASSIGNMENT_MESSAGE;
 
+      const normalizedError =
+        normalizeText(errorMessage);
+
       const isInventoryError =
         statusCode === 422 ||
-        statusCode === 400;
+        statusCode === 400 ||
+        normalizedError.includes('stock') ||
+        normalizedError.includes('available') ||
+        normalizedError.includes('sold out') ||
+        normalizedError.includes('quantity') ||
+        normalizedError.includes('unavailable');
 
       Alert.alert(
         isAssignmentError
@@ -1137,7 +1149,7 @@ console.log(
         : item;
 
     const customItem =
-      isCustomItem(enrichedItem);
+      isIngredientCustomItem(enrichedItem);
 
     const quantity =
       customItem
@@ -1168,7 +1180,7 @@ console.log(
     const allowedQuantity =
       customItem
         ? 1
-        : getAllowedOrderQuantity(
+        : getMaxOrderQuantity(
             enrichedItem
           );
 
@@ -1180,6 +1192,7 @@ console.log(
 
     const overLimit =
       !customItem &&
+      allowedQuantity !== null &&
       allowedQuantity > 0 &&
       quantity > allowedQuantity;
 
