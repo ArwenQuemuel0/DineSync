@@ -509,12 +509,31 @@ export default function OrderHistoryScreen({
     );
   };
 
+
+  const getOrderRefills = (order) => {
+    return Array.isArray(order?.refills)
+      ? order.refills
+      : [];
+  };
+
+  const getRefillStatusLabel = (status) => {
+    const value = String(status || "requested");
+    return value.charAt(0).toUpperCase() + value.slice(1);
+  };
+
   const renderOrderItem = (
     item,
     itemIndex
   ) => {
     const price =
       getItemPrice(item);
+
+    const unlimited =
+      Boolean(
+        item?.is_unlimited ??
+        item?.menu_item?.is_unlimited ??
+        false
+      );
 
     const quantity =
       getItemQuantity(item);
@@ -547,6 +566,18 @@ export default function OrderHistoryScreen({
           >
             {getItemName(item)}
           </Text>
+
+          {unlimited ? (
+            <Text style={styles.unlimitedBadge}>
+              Unlimited
+            </Text>
+          ) : null}
+
+          {unlimited ? (
+            <Text style={styles.unlimitedNotice}>
+              Unlimited refills are available. Please ask the service staff for assistance.
+            </Text>
+          ) : null}
 
           <Text
             style={[
@@ -701,6 +732,46 @@ export default function OrderHistoryScreen({
             {items.map(renderOrderItem)}
           </View>
         )}
+
+
+        {getOrderRefills(order).length > 0 ? (
+          <View style={styles.refillSection}>
+            <Text style={styles.refillTitle}>
+              Refill Requests
+            </Text>
+
+            {getOrderRefills(order).map((refill) => (
+              <View
+                key={String(refill.id)}
+                style={styles.refillCard}
+              >
+                <View style={styles.refillHeader}>
+                  <Text style={styles.refillStatus}>
+                    {getRefillStatusLabel(refill.status)}
+                  </Text>
+                  <Text style={styles.refillDate}>
+                    {formatDateTime(refill.requested_at)}
+                  </Text>
+                </View>
+
+                {(refill.items || []).map((item) => (
+                  <Text
+                    key={String(item.id)}
+                    style={styles.refillItem}
+                  >
+                    • {item.ingredient_name} ({item.quantity} {item.unit})
+                  </Text>
+                ))}
+
+                {refill.notes ? (
+                  <Text style={styles.refillNotes}>
+                    Notes: {refill.notes}
+                  </Text>
+                ) : null}
+              </View>
+            ))}
+          </View>
+        ) : null}
 
         <View
           style={[
@@ -1164,6 +1235,24 @@ const styles =
       flexShrink: 1,
     },
 
+    unlimitedBadge: {
+      marginTop: 4,
+      alignSelf: 'flex-start',
+      backgroundColor: '#2E7D32',
+      color: '#fff',
+      fontWeight: '900',
+      paddingHorizontal: 8,
+      paddingVertical: 3,
+      borderRadius: 999,
+      overflow: 'hidden',
+    },
+
+    unlimitedNotice: {
+      marginTop: 4,
+      color: '#2E7D32',
+      fontWeight: '800',
+    },
+
     noItemsText: {
       color: '#777',
       fontWeight: '700',
@@ -1184,6 +1273,57 @@ const styles =
       fontWeight: '900',
       color: '#333',
       flexShrink: 0,
+    },
+
+
+    refillSection: {
+      marginTop: 16,
+      borderTopWidth: 1,
+      borderTopColor: '#eee',
+      paddingTop: 12,
+    },
+
+    refillTitle: {
+      fontSize: 16,
+      fontWeight: '900',
+      color: '#333',
+      marginBottom: 10,
+    },
+
+    refillCard: {
+      backgroundColor: '#fff8f2',
+      borderWidth: 1,
+      borderColor: '#f0d4be',
+      borderRadius: 10,
+      padding: 10,
+      marginBottom: 8,
+    },
+
+    refillHeader: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      marginBottom: 6,
+    },
+
+    refillStatus: {
+      color: '#f68c45',
+      fontWeight: '900',
+    },
+
+    refillDate: {
+      color: '#777',
+      fontSize: 12,
+    },
+
+    refillItem: {
+      color: '#444',
+      marginBottom: 2,
+    },
+
+    refillNotes: {
+      marginTop: 6,
+      color: '#666',
+      fontStyle: 'italic',
     },
 
     totalValue: {

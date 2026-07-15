@@ -10,6 +10,7 @@ import {
   useWindowDimensions,
   StatusBar,
   Platform,
+  Alert,
 } from "react-native";
 
 import {
@@ -25,6 +26,8 @@ import {
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import { getOrderStatus, getActiveTableOrders } from "../api/dinesync";
+
+import RefillModal from "../components/RefillModal";
 
 import { useAuth } from "../context/AuthContext";
 import { useTableStatus } from "../context/TableStatusContext";
@@ -212,6 +215,21 @@ export default function OrderStatusScreen({ route, navigation }) {
   const [loading, setLoading] = useState(true);
 
   const [error, setError] = useState("");
+
+  const [
+    refillModalVisible,
+    setRefillModalVisible,
+  ] = useState(false);
+
+  const [
+    selectedRefillOrder,
+    setSelectedRefillOrder,
+  ] = useState(null);
+
+  const [
+    selectedRefillOrderItem,
+    setSelectedRefillOrderItem,
+  ] = useState(null);
 
   const [
     completedQrPaymentProcessOrderIds,
@@ -717,6 +735,132 @@ if (isPaidStatus && orderStatus === "pending") {
     }, 0);
   };
 
+  const getRefillableIngredients = (
+    orderItem
+  ) => {
+    const ingredients =
+      orderItem?.ingredients ||
+      orderItem?.menu_item?.ingredients ||
+      [];
+
+    return Array.isArray(ingredients)
+      ? ingredients.filter(
+          (ingredient) =>
+            ingredient?.is_refillable === true &&
+            Number(
+              ingredient?.refill_quantity || 0
+            ) > 0
+        )
+      : [];
+  };
+
+  const isRefillEligibleOrder = (
+    order
+  ) => {
+    const status =
+      normalizeOrderStatus(
+        order?.status
+      );
+
+    return [
+      "pending",
+      "preparing",
+      "ready",
+    ].includes(status);
+  };
+
+  const openRefillModal = (
+    order,
+    orderItem
+  ) => {
+    setSelectedRefillOrder(
+      order
+    );
+
+    setSelectedRefillOrderItem(
+      orderItem
+    );
+
+    setRefillModalVisible(
+      true
+    );
+  };
+
+  const closeRefillModal = () => {
+    setRefillModalVisible(
+      false
+    );
+
+    setSelectedRefillOrder(
+      null
+    );
+
+    setSelectedRefillOrderItem(
+      null
+    );
+  };
+
+  const getRefillStatusStyle = (
+    status
+  ) => {
+    const normalized =
+      String(status || "requested")
+        .trim()
+        .toLowerCase();
+
+    if (normalized === "preparing") {
+      return styles.refillPreparing;
+    }
+
+    if (normalized === "ready") {
+      return styles.refillReady;
+    }
+
+    if (normalized === "served") {
+      return styles.refillServed;
+    }
+
+    if (normalized === "cancelled") {
+      return styles.refillCancelled;
+    }
+
+    return styles.refillRequested;
+  };
+
+  const getRefillStatusLabel = (
+    status
+  ) => {
+    const normalized =
+      String(status || "requested")
+        .trim()
+        .toLowerCase();
+
+    return normalized
+      .charAt(0)
+      .toUpperCase() +
+      normalized.slice(1);
+  };
+
+  const getOrderItemRefills = (
+    order,
+    orderItem
+  ) => {
+    const refills =
+      Array.isArray(order?.refills)
+        ? order.refills
+        : [];
+
+    return refills.filter(
+      (refill) =>
+        Number(
+          refill.order_item_id
+        ) ===
+        Number(
+          orderItem.id
+        )
+    );
+  };
+
   const renderOrderItem = ({ item }) => {
     const items = item.items || item.order_items || [];
 
@@ -902,6 +1046,13 @@ if (isPaidStatus && orderStatus === "pending") {
 
             const customItem = isCustomOrderItem(orderItem);
 
+            const unlimited =
+              Boolean(
+                orderItem?.is_unlimited ??
+                orderItem?.menu_item?.is_unlimited ??
+                false
+              );
+
             const quantity = customItem ? 1 : Number(orderItem.quantity || 0);
 
             const price = customItem
@@ -925,6 +1076,12 @@ if (isPaidStatus && orderStatus === "pending") {
                     {name}
                   </Text>
 
+                  {unlimited ? (
+                    <Text style={styles.unlimitedBadge}>
+                      Unlimited
+                    </Text>
+                  ) : null}
+
                   <Text
                     style={[
                       styles.itemQty,
@@ -935,6 +1092,106 @@ if (isPaidStatus && orderStatus === "pending") {
                   >
                     Qty: {quantity}
                   </Text>
+
+                  {unlimited ? (
+                    <>
+                      <Text
+                        style={[
+                          styles.unlimitedNotice,
+                          {
+                            fontSize: responsive.requestText,
+                          },
+                        ]}
+                      >
+                        Unlimited refills are available.
+                      </Text>
+
+                      {isRefillEligibleOrder(item) &&
+                      getRefillableIngredients(
+                        orderItem
+                      ).length > 0 ? (
+                        <TouchableOpacity
+                          activeOpacity={0.85}
+                          style={styles.requestRefillButton}
+                          onPress={() =>
+                            openRefillModal(
+                              item,
+                              orderItem
+                            )
+                          }
+                        >
+                          <Text style={styles.requestRefillButtonText}>
+                            Request Refill
+                          </Text>
+                        </TouchableOpacity>
+                      ) : null}
+
+                      {getOrderItemRefills(
+                        item,
+                        orderItem
+                      ).length > 0 ? (
+                        <View style={styles.refillHistory}>
+                          <Text style={styles.refillHistoryTitle}>
+                            Refill Requests
+                          </Text>
+
+                          {getOrderItemRefills(
+                            item,
+                            orderItem
+                          ).map((refill) => (
+                            <View
+                              key={String(refill.id)}
+                              style={styles.refillHistoryItem}
+                            >
+                              <View style={styles.refillHistoryTop}>
+                                <Text style={styles.refillTime}>
+                                  {formatDateTime(
+                                    refill.requested_at ||
+                                    refill.created_at
+                                  )}
+                                </Text>
+
+                                <View
+                                  style={[
+                                    styles.refillStatus,
+                                    getRefillStatusStyle(
+                                      refill.status
+                                    ),
+                                  ]}
+                                >
+                                  <Text style={styles.refillStatusText}>
+                                    {getRefillStatusLabel(
+                                      refill.status
+                                    )}
+                                  </Text>
+                                </View>
+                              </View>
+
+                              {(refill.items || []).map(
+                                (refillItem) => (
+                                  <Text
+                                    key={String(
+                                      refillItem.id ||
+                                      refillItem.ingredient_id
+                                    )}
+                                    style={styles.refillIngredient}
+                                  >
+                                    {refillItem.ingredient_name ||
+                                      refillItem.ingredient?.name ||
+                                      "Ingredient"}{" "}
+                                    {Number(
+                                      refillItem.quantity || 0
+                                    )}{" "}
+                                    {refillItem.unit || ""}
+                                  </Text>
+                                )
+                              )}
+                            </View>
+                          ))}
+                        </View>
+                      ) : null}
+                    </>
+                  ) : null}
 
                   {customItem ? (
                     <>
@@ -1285,6 +1542,23 @@ if (isPaidStatus && orderStatus === "pending") {
             </View>
           </View>
         </View>
+
+        <RefillModal
+          visible={refillModalVisible}
+          order={selectedRefillOrder}
+          orderItem={selectedRefillOrderItem}
+          onClose={closeRefillModal}
+          onSuccess={async () => {
+            closeRefillModal();
+
+            await fetchOrders(false);
+
+            Alert.alert(
+              "Request Sent",
+              "Refill request sent to the kitchen."
+            );
+          }}
+        />
       </SafeAreaView>
     </View>
   );
@@ -1570,6 +1844,115 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     color: "#666",
     lineHeight: 20,
+  },
+
+  unlimitedBadge: {
+    marginTop: 4,
+    alignSelf: "flex-start",
+    backgroundColor: "#2E7D32",
+    color: "#fff",
+    fontWeight: "900",
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 999,
+    overflow: "hidden",
+  },
+
+  unlimitedNotice: {
+    marginTop: 5,
+    color: "#2E7D32",
+    fontWeight: "800",
+    lineHeight: 18,
+  },
+
+  requestRefillButton: {
+    alignSelf: "flex-start",
+    marginTop: 9,
+    backgroundColor: "#f68c45",
+    borderRadius: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+  },
+
+  requestRefillButtonText: {
+    color: "#fff",
+    fontWeight: "900",
+    fontSize: 13,
+  },
+
+  refillHistory: {
+    marginTop: 12,
+    backgroundColor: "#fff8f2",
+    borderWidth: 1,
+    borderColor: "#f1d2bd",
+    borderRadius: 12,
+    padding: 10,
+  },
+
+  refillHistoryTitle: {
+    color: "#333",
+    fontWeight: "900",
+    marginBottom: 6,
+  },
+
+  refillHistoryItem: {
+    borderTopWidth: 1,
+    borderTopColor: "#f0dfd2",
+    paddingVertical: 8,
+  },
+
+  refillHistoryTop: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 5,
+  },
+
+  refillTime: {
+    flex: 1,
+    color: "#777",
+    fontWeight: "700",
+    fontSize: 11,
+  },
+
+  refillStatus: {
+    borderRadius: 999,
+    paddingVertical: 4,
+    paddingHorizontal: 9,
+  },
+
+  refillStatusText: {
+    color: "#333",
+    fontWeight: "900",
+    fontSize: 11,
+  },
+
+  refillRequested: {
+    backgroundColor: "#fff3cd",
+  },
+
+  refillPreparing: {
+    backgroundColor: "#dbeafe",
+  },
+
+  refillReady: {
+    backgroundColor: "#dcfce7",
+  },
+
+  refillServed: {
+    backgroundColor: "#e9ecef",
+  },
+
+  refillCancelled: {
+    backgroundColor: "#f8d7da",
+  },
+
+  refillIngredient: {
+    color: "#555",
+    fontWeight: "800",
+    fontSize: 12,
+    lineHeight: 18,
   },
 
   itemPrice: {

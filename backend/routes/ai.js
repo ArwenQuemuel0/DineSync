@@ -812,6 +812,395 @@ const simplifyCandidateItem = (item) => {
   };
 };
 
+
+const normalizeNutritionIngredients = (ingredients) => {
+  if (!Array.isArray(ingredients)) {
+    return [];
+  }
+
+  return ingredients
+    .filter(Boolean)
+    .map((ingredient) => ({
+      name:
+        ingredient?.name ||
+        ingredient?.ingredient_name ||
+        ingredient?.ingredient?.name ||
+        'Ingredient',
+
+      quantity_required:
+        toNumberOrNull(
+          ingredient?.quantity_required ??
+          ingredient?.quantity ??
+          ingredient?.pivot?.quantity_required
+        ),
+
+      unit:
+        ingredient?.unit ||
+        ingredient?.ingredient?.unit ||
+        ingredient?.pivot?.unit ||
+        null,
+    }))
+    .slice(0, 30);
+};
+
+const simplifyNutritionItem = (item = {}) => {
+  const normalized =
+    normalizeMenuItem(item);
+
+  return {
+    id:
+      normalized.id,
+
+    name:
+      normalized.name,
+
+    category:
+      normalized.category,
+
+    description:
+      normalized.description,
+
+    meal_type:
+      normalized.meal_type,
+
+    flavor_tags:
+      normalized.flavor_tags,
+
+    ingredients:
+      normalizeNutritionIngredients(
+        item?.ingredients
+      ),
+  };
+};
+
+const clampNumber = (
+  value,
+  min,
+  max,
+  fallback
+) => {
+  const numeric =
+    Number(value);
+
+  if (!Number.isFinite(numeric)) {
+    return fallback;
+  }
+
+  return Math.min(
+    max,
+    Math.max(min, numeric)
+  );
+};
+
+const normalizeNutritionLevel = (
+  value,
+  fallback = 'Moderate'
+) => {
+  const normalized =
+    normalizeText(value);
+
+  if (normalized === 'low') {
+    return 'Low';
+  }
+
+  if (normalized === 'high') {
+    return 'High';
+  }
+
+  if (normalized === 'moderate' ||
+      normalized === 'medium') {
+    return 'Moderate';
+  }
+
+  return fallback;
+};
+
+const normalizeNutritionTags = (tags) => {
+  if (!Array.isArray(tags)) {
+    return [];
+  }
+
+  return [
+    ...new Set(
+      tags
+        .map((tag) =>
+          String(tag || '').trim()
+        )
+        .filter(Boolean)
+    ),
+  ].slice(0, 5);
+};
+
+const normalizeNutritionResult = (
+  value = {}
+) => {
+  const glutenFree =
+    value?.is_gluten_free ??
+    value?.gluten_free;
+
+  return {
+    calories:
+      Math.round(
+        clampNumber(
+          value?.calories,
+          20,
+          5000,
+          500
+        )
+      ),
+
+    protein:
+      normalizeNutritionLevel(
+        value?.protein
+      ),
+
+    carbs:
+      normalizeNutritionLevel(
+        value?.carbs
+      ),
+
+    fat:
+      normalizeNutritionLevel(
+        value?.fat
+      ),
+
+    is_gluten_free:
+      glutenFree === true ||
+      glutenFree === 1 ||
+      glutenFree === '1' ||
+      normalizeText(glutenFree) === 'true' ||
+      normalizeText(glutenFree) === 'yes',
+
+    health_score:
+      Number(
+        clampNumber(
+          value?.health_score,
+          1,
+          10,
+          6
+        ).toFixed(1)
+      ),
+
+    tags:
+      normalizeNutritionTags(
+        value?.tags
+      ),
+
+    summary:
+      String(
+        value?.summary ||
+        'Estimated nutrition based on the available dish information.'
+      )
+        .trim()
+        .slice(0, 240),
+
+    disclaimer:
+      'AI-generated estimate only. Actual nutrition may vary by serving size and preparation.',
+  };
+};
+
+const buildFallbackNutritionEstimate = (
+  menuItem
+) => {
+  const item =
+    simplifyNutritionItem(
+      menuItem
+    );
+
+  const combinedText =
+    normalizeText(
+      [
+        item.name,
+        item.category,
+        item.description,
+        item.meal_type,
+        ...(item.flavor_tags || []),
+        ...(item.ingredients || [])
+          .map((ingredient) =>
+            ingredient.name
+          ),
+      ].join(' ')
+    );
+
+  let calories = 520;
+  let protein = 'Moderate';
+  let carbs = 'Moderate';
+  let fat = 'Moderate';
+  let healthScore = 6.2;
+  const tags = [];
+
+  if (
+    combinedText.includes('salad') ||
+    combinedText.includes('vegetable')
+  ) {
+    calories -= 180;
+    fat = 'Low';
+    healthScore += 1.2;
+    tags.push('Lighter Choice');
+  }
+
+  if (
+    combinedText.includes('chicken') ||
+    combinedText.includes('beef') ||
+    combinedText.includes('pork') ||
+    combinedText.includes('tuna') ||
+    combinedText.includes('shrimp')
+  ) {
+    calories += 100;
+    protein = 'High';
+    tags.push('High Protein');
+  }
+
+  if (
+    combinedText.includes('rice') ||
+    combinedText.includes('noodle') ||
+    combinedText.includes('ramen') ||
+    combinedText.includes('tteok')
+  ) {
+    calories += 130;
+    carbs = 'High';
+    tags.push('Higher Carbohydrates');
+  }
+
+  if (
+    combinedText.includes('fried') ||
+    combinedText.includes('cheese') ||
+    combinedText.includes('creamy')
+  ) {
+    calories += 180;
+    fat = 'High';
+    healthScore -= 0.8;
+    tags.push('Rich');
+  }
+
+  const likelyContainsGluten =
+    combinedText.includes('noodle') ||
+    combinedText.includes('ramen') ||
+    combinedText.includes('soy sauce') ||
+    combinedText.includes('bread') ||
+    combinedText.includes('breading') ||
+    combinedText.includes('fried');
+
+  tags.push(
+    likelyContainsGluten
+      ? 'May Contain Gluten'
+      : 'Gluten Status Uncertain'
+  );
+
+  if (calories <= 400) {
+    tags.push('Lower Calories');
+  } else if (calories >= 800) {
+    tags.push('Higher Calories');
+  } else {
+    tags.push('Moderate Calories');
+  }
+
+  return normalizeNutritionResult({
+    calories,
+    protein,
+    carbs,
+    fat,
+    is_gluten_free: false,
+    health_score: healthScore,
+    tags,
+    summary:
+      `Estimated nutrition for ${item.name} based on its description and listed ingredients.`,
+  });
+};
+
+const getOpenAiNutritionEstimate = async (
+  menuItem
+) => {
+  if (!client) {
+    return null;
+  }
+
+  const nutritionItem =
+    simplifyNutritionItem(
+      menuItem
+    );
+
+  const prompt = `
+Estimate the nutrition of this restaurant dish.
+
+Dish:
+${JSON.stringify(
+  nutritionItem,
+  null,
+  2
+)}
+
+Important:
+- This is an estimate, not laboratory-tested nutrition data.
+- Use the listed ingredient quantities when available.
+- Do not claim medical certainty.
+- Return valid JSON only.
+- Calories must be a whole number.
+- protein, carbs, and fat must each be exactly one of:
+  "Low", "Moderate", or "High".
+- health_score must be from 1 to 10.
+- is_gluten_free should only be true when the dish is reasonably likely to be gluten free.
+- Return no more than 5 short tags.
+
+Use this exact JSON shape:
+{
+  "calories": 650,
+  "protein": "High",
+  "carbs": "Moderate",
+  "fat": "Moderate",
+  "is_gluten_free": false,
+  "health_score": 7.2,
+  "tags": [
+    "High Protein",
+    "Moderate Calories",
+    "May Contain Gluten"
+  ],
+  "summary": "Short customer-friendly nutrition summary."
+}
+`;
+
+  const completion =
+    await client.chat.completions.create({
+      model: MODEL,
+      messages: [
+        {
+          role: 'system',
+          content:
+            'You estimate restaurant dish nutrition conservatively. Return valid JSON only.',
+        },
+        {
+          role: 'user',
+          content: prompt,
+        },
+      ],
+      response_format: {
+        type: 'json_object',
+      },
+      temperature: 0.2,
+    });
+
+  const rawReply =
+    completion.choices?.[0]
+      ?.message?.content || '';
+
+  if (!rawReply) {
+    return null;
+  }
+
+  try {
+    return normalizeNutritionResult(
+      JSON.parse(rawReply)
+    );
+  } catch (error) {
+    console.log(
+      'AI NUTRITION RAW REPLY:',
+      rawReply
+    );
+
+    return null;
+  }
+};
+
 const getOpenAiRecommendations = async ({
   selectedItem,
   cartItems,
@@ -1061,6 +1450,99 @@ router.post(
   }
 );
 
+
+// =========================
+// POST /api/ai/nutrition-estimate
+// =========================
+
+router.post(
+  '/nutrition-estimate',
+  async (req, res) => {
+    try {
+      const body =
+        req.body || {};
+
+      const menuItem =
+        body.menu_item ||
+        body.menuItem ||
+        body.item ||
+        null;
+
+      if (!menuItem) {
+        return res.status(400).json({
+          success: false,
+          message:
+            'menu_item is required.',
+        });
+      }
+
+      if (
+        !String(
+          menuItem?.name || ''
+        ).trim()
+      ) {
+        return res.status(400).json({
+          success: false,
+          message:
+            'menu_item.name is required.',
+        });
+      }
+
+      const fallbackEstimate =
+        buildFallbackNutritionEstimate(
+          menuItem
+        );
+
+      let aiEstimate = null;
+
+      try {
+        aiEstimate =
+          await getOpenAiNutritionEstimate(
+            menuItem
+          );
+      } catch (openAiError) {
+        console.log(
+          'OPENAI NUTRITION ERROR:',
+          openAiError?.response?.data ||
+          openAiError?.message ||
+          openAiError
+        );
+      }
+
+      const result =
+        aiEstimate ||
+        fallbackEstimate;
+
+      return res.json({
+        success: true,
+        data: result,
+        source:
+          aiEstimate
+            ? 'openai'
+            : 'fallback',
+        message:
+          aiEstimate
+            ? undefined
+            : 'OpenAI estimate was unavailable, so a basic local estimate was used.',
+      });
+    } catch (error) {
+      console.log(
+        'AI NUTRITION ESTIMATE ERROR:',
+        error?.response?.data ||
+        error?.message ||
+        error
+      );
+
+      return res.status(500).json({
+        success: false,
+        message:
+          error.message ||
+          'Failed to estimate nutrition.',
+      });
+    }
+  }
+);
+
 // =========================
 // POST /api/ai/pairing
 // old route compatibility
@@ -1168,6 +1650,13 @@ router.post(
       });
     }
   }
+);
+
+console.log(
+  'AI ROUTES LOADED:',
+  router.stack
+    .map((layer) => layer.route?.path)
+    .filter(Boolean)
 );
 
 module.exports = router;

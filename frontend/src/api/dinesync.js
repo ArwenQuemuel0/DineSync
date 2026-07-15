@@ -6,7 +6,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 // =========================
 
 const BASE_URL =
-  'https://api.dinesync.shop/api';
+  'http://192.168.100.5:3000/api';
 
 console.log(
   '=============================='
@@ -115,6 +115,73 @@ const parseNumericOrZero = (value) => {
   return toNumberOrZero(value);
 };
 
+const normalizeBoolean = (
+  value,
+  fallback = false
+) => {
+  if (
+    value === undefined ||
+    value === null ||
+    value === ''
+  ) {
+    return fallback;
+  }
+
+  if (
+    value === true ||
+    value === 1 ||
+    value === '1'
+  ) {
+    return true;
+  }
+
+  if (
+    value === false ||
+    value === 0 ||
+    value === '0'
+  ) {
+    return false;
+  }
+
+  const normalized =
+    normalizeText(value);
+
+  if (
+    normalized === 'true' ||
+    normalized === 'yes' ||
+    normalized === 'available'
+  ) {
+    return true;
+  }
+
+  if (
+    normalized === 'false' ||
+    normalized === 'no' ||
+    normalized === 'unavailable'
+  ) {
+    return false;
+  }
+
+  return fallback;
+};
+
+const parseNullableNumber = (value) => {
+  if (
+    value === undefined ||
+    value === null ||
+    value === ''
+  ) {
+    return null;
+  }
+
+  const numeric =
+    Number(value);
+
+  return Number.isFinite(numeric)
+    ? numeric
+    : null;
+};
+
 const isAvailableTrue = (value) => {
   return (
     value === true ||
@@ -208,6 +275,50 @@ const normalizeFlavorTags = (value) => {
     .split(',')
     .map((tag) => tag.trim())
     .filter(Boolean);
+};
+
+const normalizeIngredient = (
+  ingredient
+) => {
+  return {
+    ...ingredient,
+
+    id:
+      ingredient?.id ??
+      ingredient?.ingredient_id,
+
+    ingredient_id:
+      ingredient?.ingredient_id ??
+      ingredient?.id,
+
+    quantity_required:
+      parseNumericOrZero(
+        ingredient?.quantity_required
+      ),
+
+    is_refillable:
+      normalizeBoolean(
+        ingredient?.is_refillable,
+        false
+      ),
+
+    refill_quantity:
+      parseNullableNumber(
+        ingredient?.refill_quantity
+      ),
+  };
+};
+
+const normalizeIngredients = (
+  ingredients
+) => {
+  if (!Array.isArray(ingredients)) {
+    return [];
+  }
+
+  return ingredients
+    .filter(Boolean)
+    .map(normalizeIngredient);
 };
 
 const normalizeMenuItem = (item) => {
@@ -322,12 +433,23 @@ const normalizeMenuItem = (item) => {
           ).trim()
         : null,
 
-  is_best_seller:
-  item?.is_best_seller ??
-  item?.is_popular ??
-  item?.popular ??
-  item?.featured ??
-  false,
+    is_unlimited:
+      normalizeBoolean(
+        item?.is_unlimited,
+        false
+      ),
+
+    ingredients:
+      normalizeIngredients(
+        item?.ingredients
+      ),
+
+    is_best_seller:
+      item?.is_best_seller ??
+      item?.is_popular ??
+      item?.popular ??
+      item?.featured ??
+      false,
   };
 };
 
@@ -618,6 +740,14 @@ export const getMenu = async () => {
         response.data?.data?.[0]?.is_available,
       first_max_qty:
         response.data?.data?.[0]?.max_order_quantity,
+      first_is_unlimited:
+        response.data?.data?.[0]?.is_unlimited,
+      first_ingredients_count:
+        Array.isArray(
+          response.data?.data?.[0]?.ingredients
+        )
+          ? response.data.data[0].ingredients.length
+          : 0,
     }
   );
 
@@ -643,6 +773,10 @@ export const getMenu = async () => {
           normalizedItems?.[0]?.is_available,
         first_max_qty:
           normalizedItems?.[0]?.max_order_quantity,
+        first_is_unlimited:
+          normalizedItems?.[0]?.is_unlimited,
+        first_ingredients_count:
+          normalizedItems?.[0]?.ingredients?.length || 0,
       }
     );
 
@@ -997,5 +1131,81 @@ export const getDishRecommendations =
 
     return response.data;
   };
+
+// =========================
+// AI NUTRITION ESTIMATE
+// =========================
+
+export const getNutritionEstimate = async (
+  menuItem
+) => {
+  const response =
+    await api.post(
+      '/ai/nutrition-estimate',
+      {
+        menu_item:
+          normalizeMenuItem(
+            menuItem
+          ),
+      }
+    );
+
+  return response.data;
+};
+
+
+// =========================
+// CUSTOMER REFILLS
+// =========================
+
+export const getOrderRefills = async (
+  orderId
+) => {
+  const response =
+    await api.get(
+      `/orders/${orderId}/refills`
+    );
+
+  return response.data;
+};
+
+export const createRefillRequest = async ({
+  orderId,
+  orderItemId,
+  menuItemId,
+  ingredientIds,
+  notes = '',
+}) => {
+  if (!orderId || !orderItemId) {
+    throw new Error(
+      'Order and order item are required.'
+    );
+  }
+
+  if (
+    !Array.isArray(ingredientIds) ||
+    ingredientIds.length === 0
+  ) {
+    throw new Error(
+      'Please select at least one refill ingredient.'
+    );
+  }
+
+  const response =
+    await api.post(
+      `/orders/${orderId}/items/${orderItemId}/refills`,
+      {
+        order_id: Number(orderId),
+        order_item_id: Number(orderItemId),
+        menu_item_id: Number(menuItemId),
+        ingredient_ids:
+          ingredientIds.map(Number),
+        notes:
+          String(notes || '').trim(),
+      }
+    );
+
+  return response.data;
+};
 
 export default api;

@@ -1175,6 +1175,9 @@ export default function OrderConfirmScreen({
     const customItem =
       isIngredientCustomItem(enrichedItem);
 
+    const unlimited =
+      enrichedItem?.is_unlimited === true;
+
     const quantity =
       customItem
         ? 1
@@ -1246,6 +1249,14 @@ export default function OrderConfirmScreen({
               {item.name}
             </Text>
 
+            {unlimited ? (
+              <View style={styles.unlimitedBadge}>
+                <Text style={styles.unlimitedBadgeText}>
+                  Unlimited
+                </Text>
+              </View>
+            ) : null}
+
             <TouchableOpacity
               style={styles.removeButton}
               onPress={() =>
@@ -1307,6 +1318,20 @@ export default function OrderConfirmScreen({
               >
                 ₱{formatMoney(price)} each
               </Text>
+
+              {unlimited ? (
+                <Text
+                  style={[
+                    styles.unlimitedNotice,
+                    {
+                      fontSize:
+                        responsive.noticeText,
+                    },
+                  ]}
+                >
+                  Unlimited refills are available. Please ask the service staff for assistance.
+                </Text>
+              ) : null}
 
               {allowedQuantity > 0 ? (
                 <Text
@@ -2222,6 +2247,28 @@ const styles =
       textAlign: 'right',
       maxWidth: 150,
       flexShrink: 1,
+    },
+
+    unlimitedBadge: {
+      backgroundColor: '#2E7D32',
+      borderRadius: 999,
+      paddingHorizontal: 8,
+      paddingVertical: 2,
+      marginRight: 6,
+      alignSelf: 'center',
+    },
+
+    unlimitedBadgeText: {
+      color: '#fff',
+      fontWeight: '900',
+      fontSize: 11,
+    },
+
+    unlimitedNotice: {
+      marginTop: 5,
+      color: '#2E7D32',
+      fontWeight: '800',
+      lineHeight: 18,
     },
 
     summaryRow: {

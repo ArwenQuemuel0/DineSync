@@ -573,6 +573,216 @@ const getTableNumberFromToken = (req) => {
   return null;
 };
 
+
+// =========================
+// CUSTOMER REFILL HELPERS
+// =========================
+
+const ACTIVE_REFILL_STATUSES = [
+  'requested',
+  'preparing',
+  'ready',
+];
+
+const REFILLABLE_ORDER_STATUSES = [
+  'pending',
+  'preparing',
+  'ready',
+];
+
+const normalizeRefillStatus = (value) => {
+  const normalized =
+    normalizeText(value)
+      .replace(/[-\s]+/g, '_');
+
+  return [
+    'requested',
+    'preparing',
+    'ready',
+    'served',
+    'cancelled',
+  ].includes(normalized)
+    ? normalized
+    : 'requested';
+};
+
+const getRefillableIngredientsForMenuItem =
+  async (menuItemId) => {
+    const {
+      data: links,
+      error: linkError,
+    } = await supabase
+      .from('menu_item_ingredients')
+      .select(
+        'id, menu_item_id, ingredient_id, quantity_required, is_refillable, refill_quantity'
+      )
+      .eq('menu_item_id', menuItemId)
+      .eq('is_refillable', true);
+
+    if (linkError) {
+      throw linkError;
+    }
+
+    const ingredientIds =
+      (links || [])
+        .map((link) => link.ingredient_id)
+        .filter(Boolean);
+
+    if (ingredientIds.length === 0) {
+      return [];
+    }
+
+    const {
+      data: ingredients,
+      error: ingredientError,
+    } = await supabase
+      .from('ingredients')
+      .select('id, name, current_stock, unit, threshold')
+      .in('id', ingredientIds);
+
+    if (ingredientError) {
+      throw ingredientError;
+    }
+
+    return (links || []).map((link) => {
+      const ingredient =
+        (ingredients || []).find(
+          (row) =>
+            Number(row.id) ===
+            Number(link.ingredient_id)
+        );
+
+      return {
+        ...(ingredient || {}),
+        ingredient_id:
+          link.ingredient_id,
+        quantity_required:
+          toNumberOrZero(
+            link.quantity_required
+          ),
+        is_refillable: true,
+        refill_quantity:
+          toNumberOrZero(
+            link.refill_quantity
+          ),
+      };
+    });
+  };
+
+const getOrderRefills = async (orderId) => {
+  const {
+    data: refills,
+    error: refillError,
+  } = await supabase
+    .from('refills')
+    .select('*')
+    .eq('order_id', orderId)
+    .order('requested_at', {
+      ascending: false,
+    });
+
+  if (refillError) {
+    throw refillError;
+  }
+
+  const refillIds =
+    (refills || [])
+      .map((refill) => refill.id)
+      .filter(Boolean);
+
+  if (refillIds.length === 0) {
+    return [];
+  }
+
+  const {
+    data: refillItems,
+    error: refillItemsError,
+  } = await supabase
+    .from('refill_items')
+    .select('*')
+    .in('refill_id', refillIds);
+
+  if (refillItemsError) {
+    throw refillItemsError;
+  }
+
+  const ingredientIds = [
+    ...new Set(
+      (refillItems || [])
+        .map((item) => item.ingredient_id)
+        .filter(Boolean)
+    ),
+  ];
+
+  let ingredients = [];
+
+  if (ingredientIds.length > 0) {
+    const {
+      data: ingredientRows,
+      error: ingredientError,
+    } = await supabase
+      .from('ingredients')
+      .select('id, name, unit')
+      .in('id', ingredientIds);
+
+    if (ingredientError) {
+      throw ingredientError;
+    }
+
+    ingredients =
+      ingredientRows || [];
+  }
+
+  return (refills || []).map((refill) => ({
+    ...refill,
+    status:
+      normalizeRefillStatus(
+        refill.status
+      ),
+    items:
+      (refillItems || [])
+        .filter(
+          (item) =>
+            Number(item.refill_id) ===
+            Number(refill.id)
+        )
+        .map((item) => {
+          const ingredient =
+            ingredients.find(
+              (row) =>
+                Number(row.id) ===
+                Number(item.ingredient_id)
+            );
+
+          return {
+            ...item,
+            ingredient_name:
+              ingredient?.name ||
+              'Ingredient',
+            ingredient:
+              ingredient || null,
+          };
+        }),
+  }));
+};
+
+const enrichMenuItemsForRefills =
+  async (menuItems = []) => {
+    return Promise.all(
+      (menuItems || []).map(async (menuItem) => ({
+        ...menuItem,
+        is_unlimited:
+          menuItem?.is_unlimited === true,
+        ingredients:
+          menuItem?.is_unlimited === true
+            ? await getRefillableIngredientsForMenuItem(
+                menuItem.id
+              )
+            : [],
+      }))
+    );
+  };
+
 // =========================
 // INGREDIENT-BASED MENU VALIDATION
 // NO DAILY MENU INVENTORY VALIDATION HERE
@@ -1006,7 +1216,7 @@ router.get(
         } = await supabase
           .from('menu_items')
           .select(
-            'id, name, price, category, image'
+            'id, name, price, category, image, is_unlimited'
           )
           .in(
             'id',
@@ -1018,11 +1228,14 @@ router.get(
         }
 
         menuItems =
-          menuData || [];
+          await enrichMenuItemsForRefills(
+            menuData || []
+          );
       }
 
       const enrichedOrders =
-        normalizedOrders.map((order) => {
+        await Promise.all(
+          normalizedOrders.map(async (order) => {
           const items =
             (orderItems || [])
               .filter(
@@ -1062,16 +1275,27 @@ router.get(
                   quantity,
                   subtotal:
                     price * quantity,
+                  is_unlimited:
+                    menuItem?.is_unlimited === true,
+                  ingredients:
+                    menuItem?.ingredients || [],
                   menu_item:
                     menuItem || null,
                 };
               });
 
+          const refills =
+            await getOrderRefills(
+              order.id
+            );
+
           return {
             ...order,
             items,
+            refills,
           };
-        });
+        })
+        );
 
       return res.json({
         success: true,
@@ -1698,6 +1922,384 @@ router.post('/', async (req, res) => {
   }
 });
 
+
+// =========================
+// GET ORDER REFILLS
+// =========================
+
+router.get(
+  '/:orderId/refills',
+  async (req, res) => {
+    try {
+      const orderId =
+        Number(req.params.orderId);
+
+      if (!orderId) {
+        return res.status(400).json({
+          success: false,
+          message: 'Invalid order id.',
+        });
+      }
+
+      const refills =
+        isConfigured
+          ? await getOrderRefills(orderId)
+          : [];
+
+      return res.json({
+        success: true,
+        data: refills,
+      });
+    } catch (error) {
+      return res.status(500).json({
+        success: false,
+        message:
+          error.message ||
+          'Failed to fetch refill requests.',
+      });
+    }
+  }
+);
+
+router.post(
+  '/:orderId/items/:orderItemId/refills',
+  async (req, res) => {
+    try {
+      const orderId =
+        Number(req.params.orderId);
+
+      const orderItemId =
+        Number(req.params.orderItemId);
+
+      const ingredientIds = [
+        ...new Set(
+          (
+            Array.isArray(
+              req.body?.ingredient_ids
+            )
+              ? req.body.ingredient_ids
+              : [req.body?.ingredient_id]
+          )
+            .map(Number)
+            .filter(
+              (id) =>
+                Number.isFinite(id) &&
+                id > 0
+            )
+        ),
+      ];
+
+      if (!orderId || !orderItemId) {
+        return res.status(400).json({
+          success: false,
+          message:
+            'Invalid order or order item.',
+        });
+      }
+
+      if (ingredientIds.length === 0) {
+        return res.status(422).json({
+          success: false,
+          message:
+            'Please select at least one refill ingredient.',
+        });
+      }
+
+      if (!isConfigured) {
+        return res.status(503).json({
+          success: false,
+          message:
+            'Refill service is unavailable.',
+        });
+      }
+
+      const {
+        data: order,
+        error: orderError,
+      } = await supabase
+        .from('orders')
+        .select('id, table_number, status')
+        .eq('id', orderId)
+        .single();
+
+      if (orderError || !order) {
+        return res.status(404).json({
+          success: false,
+          message:
+            'Order not found.',
+        });
+      }
+
+      const orderStatus =
+        normalizeText(order.status);
+
+      if (
+        !REFILLABLE_ORDER_STATUSES.includes(
+          orderStatus
+        )
+      ) {
+        return res.status(422).json({
+          success: false,
+          message:
+            orderStatus === 'cancelled'
+              ? 'Cancelled orders cannot request refills.'
+              : 'This order is not active for refill requests.',
+        });
+      }
+
+      const tokenTableNumber =
+        getTableNumberFromToken(req);
+
+      if (
+        tokenTableNumber &&
+        Number(tokenTableNumber) !==
+        Number(order.table_number)
+      ) {
+        return res.status(403).json({
+          success: false,
+          message:
+            'You cannot request a refill for this order.',
+        });
+      }
+
+      const {
+        data: orderItem,
+        error: orderItemError,
+      } = await supabase
+        .from('order_items')
+        .select('id, order_id, menu_item_id')
+        .eq('id', orderItemId)
+        .eq('order_id', orderId)
+        .single();
+
+      if (orderItemError || !orderItem) {
+        return res.status(404).json({
+          success: false,
+          message:
+            'Order item not found.',
+        });
+      }
+
+      const {
+        data: menuItem,
+        error: menuItemError,
+      } = await supabase
+        .from('menu_items')
+        .select('id, name, is_unlimited')
+        .eq('id', orderItem.menu_item_id)
+        .single();
+
+      if (
+        menuItemError ||
+        !menuItem
+      ) {
+        return res.status(404).json({
+          success: false,
+          message:
+            'Menu item not found.',
+        });
+      }
+
+      if (menuItem.is_unlimited !== true) {
+        return res.status(422).json({
+          success: false,
+          message:
+            'This menu item is not eligible for unlimited refills.',
+        });
+      }
+
+      const refillableIngredients =
+        await getRefillableIngredientsForMenuItem(
+          menuItem.id
+        );
+
+      const refillableMap =
+        new Map(
+          refillableIngredients.map(
+            (ingredient) => [
+              Number(
+                ingredient.ingredient_id ||
+                ingredient.id
+              ),
+              ingredient,
+            ]
+          )
+        );
+
+      const selectedIngredients =
+        ingredientIds.map(
+          (id) =>
+            refillableMap.get(id)
+        );
+
+      if (
+        selectedIngredients.length === 0 ||
+        selectedIngredients.some(
+          (ingredient) => !ingredient
+        )
+      ) {
+        return res.status(422).json({
+          success: false,
+          message:
+            'One or more selected ingredients are not refillable for this menu item.',
+        });
+      }
+
+      for (const ingredient of selectedIngredients) {
+        const quantity =
+          Number(
+            ingredient.refill_quantity || 0
+          );
+
+        const stock =
+          Number(
+            ingredient.current_stock || 0
+          );
+
+        if (quantity <= 0) {
+          return res.status(422).json({
+            success: false,
+            message:
+              `${ingredient.name || 'Ingredient'} does not have a valid refill quantity.`,
+          });
+        }
+
+        if (stock < quantity) {
+          return res.status(422).json({
+            success: false,
+            message:
+              `Insufficient stock for ${ingredient.name || 'the selected ingredient'}.`,
+          });
+        }
+      }
+
+      const {
+        data: activeRefills,
+        error: activeRefillError,
+      } = await supabase
+        .from('refills')
+        .select('id')
+        .eq('order_id', orderId)
+        .eq('order_item_id', orderItemId)
+        .in('status', ACTIVE_REFILL_STATUSES);
+
+      if (activeRefillError) {
+        throw activeRefillError;
+      }
+
+      const activeRefillIds =
+        (activeRefills || [])
+          .map((refill) => refill.id)
+          .filter(Boolean);
+
+      if (activeRefillIds.length > 0) {
+        const {
+          data: duplicateItems,
+          error: duplicateError,
+        } = await supabase
+          .from('refill_items')
+          .select('ingredient_id')
+          .in('refill_id', activeRefillIds)
+          .in('ingredient_id', ingredientIds);
+
+        if (duplicateError) {
+          throw duplicateError;
+        }
+
+        if (
+          duplicateItems &&
+          duplicateItems.length > 0
+        ) {
+          return res.status(409).json({
+            success: false,
+            message:
+              'One or more selected ingredients already have an active refill request.',
+          });
+        }
+      }
+
+      const {
+        data: createdRefill,
+        error: refillError,
+      } = await supabase
+        .from('refills')
+        .insert({
+          order_id: orderId,
+          order_item_id: orderItemId,
+          menu_item_id: menuItem.id,
+          table_number: order.table_number,
+          status: 'requested',
+          notes:
+            String(req.body?.notes || '').trim() || null,
+          requested_at: getUtcNowIso(),
+        })
+        .select('*')
+        .single();
+
+      if (
+        refillError ||
+        !createdRefill
+      ) {
+        throw (
+          refillError ||
+          new Error(
+            'Failed to create refill request.'
+          )
+        );
+      }
+
+      const refillItems =
+        selectedIngredients.map(
+          (ingredient) => ({
+            refill_id:
+              createdRefill.id,
+            ingredient_id:
+              ingredient.ingredient_id ||
+              ingredient.id,
+            quantity:
+              Number(
+                ingredient.refill_quantity
+              ),
+            unit:
+              ingredient.unit || '',
+          })
+        );
+
+      const {
+        error: refillItemsError,
+      } = await supabase
+        .from('refill_items')
+        .insert(refillItems);
+
+      if (refillItemsError) {
+        await supabase
+          .from('refills')
+          .delete()
+          .eq('id', createdRefill.id);
+
+        throw refillItemsError;
+      }
+
+      return res.status(201).json({
+        success: true,
+        message:
+          'Refill request sent to the kitchen.',
+        data: {
+          ...createdRefill,
+          items: refillItems,
+        },
+      });
+    } catch (error) {
+      return res.status(500).json({
+        success: false,
+        message:
+          error.message ||
+          'Failed to create refill request.',
+      });
+    }
+  }
+);
+
 // =========================
 // GET ORDER BY ID
 // GET /api/orders/:id
@@ -1898,7 +2500,7 @@ router.get('/:id', async (req, res) => {
       } = await supabase
         .from('menu_items')
         .select(
-          'id, name, price, category, image'
+          'id, name, price, category, image, is_unlimited'
         )
         .in(
           'id',
@@ -1910,7 +2512,9 @@ router.get('/:id', async (req, res) => {
       }
 
       menuItems =
-        menuData || [];
+        await enrichMenuItemsForRefills(
+          menuData || []
+        );
     }
 
     const enrichedItems =
@@ -1947,10 +2551,19 @@ router.get('/:id', async (req, res) => {
             quantity,
             subtotal:
               price * quantity,
+            is_unlimited:
+              menuItem?.is_unlimited === true,
+            ingredients:
+              menuItem?.ingredients || [],
             menu_item:
               menuItem || null,
           };
         }
+      );
+
+    const refills =
+      await getOrderRefills(
+        orderId
       );
 
     return res.json({
@@ -1959,6 +2572,7 @@ router.get('/:id', async (req, res) => {
         ...fixedOrderRow,
         items:
           enrichedItems,
+        refills,
       },
       order_id:
         fixedOrderRow.id,

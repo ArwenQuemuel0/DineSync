@@ -130,6 +130,193 @@ const forceDigitalPaymentIfXendit = (order) => {
   return normalizedOrder;
 };
 
+
+// =========================
+// ORDER HISTORY REFILL HELPERS
+// =========================
+
+const normalizeRefillStatus = (value) => {
+  const normalized =
+    String(value || 'requested')
+      .trim()
+      .toLowerCase()
+      .replace(/[-\s]+/g, '_');
+
+  if (
+    [
+      'requested',
+      'preparing',
+      'ready',
+      'served',
+      'cancelled',
+    ].includes(normalized)
+  ) {
+    return normalized;
+  }
+
+  return 'requested';
+};
+
+const getOrderHistoryRefills = async (
+  orderIds = []
+) => {
+  if (
+    !Array.isArray(orderIds) ||
+    orderIds.length === 0
+  ) {
+    return [];
+  }
+
+  const {
+    data: refills,
+    error: refillError,
+  } = await supabase
+    .from('refills')
+    .select(
+      'id, order_id, order_item_id, menu_item_id, requested_by, table_number, status, notes, requested_at, preparing_at, ready_at, served_at'
+    )
+    .in(
+      'order_id',
+      orderIds
+    )
+    .order('requested_at', {
+      ascending: true,
+    });
+
+  if (refillError) {
+    throw refillError;
+  }
+
+  const refillIds =
+    (refills || [])
+      .map((refill) => refill.id)
+      .filter(Boolean);
+
+  if (refillIds.length === 0) {
+    return [];
+  }
+
+  const {
+    data: refillItems,
+    error: refillItemsError,
+  } = await supabase
+    .from('refill_items')
+    .select(
+      'id, refill_id, ingredient_id, quantity, unit, created_at, updated_at'
+    )
+    .in(
+      'refill_id',
+      refillIds
+    );
+
+  if (refillItemsError) {
+    throw refillItemsError;
+  }
+
+  const ingredientIds = [
+    ...new Set(
+      (refillItems || [])
+        .map(
+          (item) =>
+            item.ingredient_id
+        )
+        .filter(Boolean)
+    ),
+  ];
+
+  let ingredients = [];
+
+  if (ingredientIds.length > 0) {
+    const {
+      data: ingredientRows,
+      error: ingredientError,
+    } = await supabase
+      .from('ingredients')
+      .select(
+        'id, name, unit'
+      )
+      .in(
+        'id',
+        ingredientIds
+      );
+
+    if (ingredientError) {
+      throw ingredientError;
+    }
+
+    ingredients =
+      ingredientRows || [];
+  }
+
+  return (refills || []).map(
+    (refill) => {
+      const items =
+        (refillItems || [])
+          .filter(
+            (item) =>
+              Number(
+                item.refill_id
+              ) ===
+              Number(
+                refill.id
+              )
+          )
+          .map((item) => {
+            const ingredient =
+              ingredients.find(
+                (row) =>
+                  Number(row.id) ===
+                  Number(
+                    item.ingredient_id
+                  )
+              );
+
+            return {
+              ...item,
+              created_at:
+                normalizeUtcIsoDate(
+                  item.created_at
+                ),
+              updated_at:
+                normalizeUtcIsoDate(
+                  item.updated_at
+                ),
+              ingredient_name:
+                ingredient?.name ||
+                'Ingredient',
+              ingredient:
+                ingredient || null,
+            };
+          });
+
+      return {
+        ...refill,
+        status:
+          normalizeRefillStatus(
+            refill.status
+          ),
+        requested_at:
+          normalizeUtcIsoDate(
+            refill.requested_at
+          ),
+        preparing_at:
+          normalizeUtcIsoDate(
+            refill.preparing_at
+          ),
+        ready_at:
+          normalizeUtcIsoDate(
+            refill.ready_at
+          ),
+        served_at:
+          normalizeUtcIsoDate(
+            refill.served_at
+          ),
+        items,
+      };
+    }
+  );
+};
+
 // =========================
 // GET LOGGED-IN TABLE USER
 // Token format:
@@ -830,16 +1017,11 @@ router.get('/order-history', async (req, res) => {
         restaurantTable.id
       );
 
-    if (
-      sessionLookupError ||
-      !activeSession
-    ) {
-      return res.json({
-        success: true,
-        data: [],
-        message:
-          'No active table session found.',
-      });
+    if (sessionLookupError) {
+      console.log(
+        'ORDER HISTORY SESSION LOOKUP WARNING:',
+        sessionLookupError
+      );
     }
 
     const {
@@ -851,11 +1033,17 @@ router.get('/order-history', async (req, res) => {
         'id, order_number, table_number, table_session_id, status, payment_status, payment_method, total_amount, created_at, updated_at, paid_at, xendit_invoice_id, xendit_external_id, xendit_invoice_url, xendit_expiry_date'
       )
       .eq(
-        'table_session_id',
-        activeSession.id
+        'table_number',
+        user.table_number
       )
+      .in('status', [
+        'served',
+        'completed',
+        'Served',
+        'Completed',
+      ])
       .order('created_at', {
-        ascending: true,
+        ascending: false,
       });
 
     if (ordersError) {
@@ -877,9 +1065,11 @@ router.get('/order-history', async (req, res) => {
         success: true,
         data: [],
         session:
-          normalizeDateFields(
-            activeSession
-          ),
+          activeSession
+            ? normalizeDateFields(
+                activeSession
+              )
+            : null,
       });
     }
 
@@ -918,7 +1108,7 @@ router.get('/order-history', async (req, res) => {
       } = await supabase
         .from('menu_items')
         .select(
-          'id, name, price, category, image'
+          'id, name, price, category, image, is_unlimited'
         )
         .in(
           'id',
@@ -932,6 +1122,11 @@ router.get('/order-history', async (req, res) => {
       menuItems =
         menuData || [];
     }
+
+    const orderRefills =
+      await getOrderHistoryRefills(
+        orderIds
+      );
 
     const enrichedOrders =
       normalizedOrders.map((order) => {
@@ -974,14 +1169,29 @@ router.get('/order-history', async (req, res) => {
                 quantity,
                 subtotal:
                   price * quantity,
+                is_unlimited:
+                  menuItem?.is_unlimited === true,
                 menu_item:
                   menuItem || null,
               };
             });
 
+        const refills =
+          (orderRefills || [])
+            .filter(
+              (refill) =>
+                Number(
+                  refill.order_id
+                ) ===
+                Number(
+                  order.id
+                )
+            );
+
         return {
           ...order,
           items,
+          refills,
         };
       });
 
@@ -990,9 +1200,11 @@ router.get('/order-history', async (req, res) => {
       data:
         enrichedOrders,
       session:
-        normalizeDateFields(
-          activeSession
-        ),
+        activeSession
+          ? normalizeDateFields(
+              activeSession
+            )
+          : null,
     });
   } catch (error) {
     console.error(

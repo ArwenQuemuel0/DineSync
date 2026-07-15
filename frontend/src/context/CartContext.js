@@ -133,6 +133,16 @@ const mergeAndClampCartItem = (
       menuInventory.unavailable_reason ??
       cartItem.unavailable_reason ??
       null,
+
+    is_unlimited:
+      menuInventory.is_unlimited ??
+      cartItem.is_unlimited ??
+      false,
+
+    ingredients:
+      menuInventory.ingredients ??
+      cartItem.ingredients ??
+      [],
   };
 
   if (isCustomItem(merged)) {
@@ -760,6 +770,10 @@ export const CartProvider = ({
                       ? 'custom'
                       : orderableItem.inventory_type ||
                         'ingredient',
+                  is_unlimited:
+                    orderableItem.is_unlimited ?? false,
+                  ingredients:
+                    orderableItem.ingredients ?? [],
                 }
               : cartItem
         );
@@ -795,6 +809,10 @@ export const CartProvider = ({
                 ? 'custom'
                 : orderableItem.inventory_type ||
                   'ingredient',
+            is_unlimited:
+              orderableItem.is_unlimited ?? false,
+            ingredients:
+              orderableItem.ingredients ?? [],
           },
         ];
       }

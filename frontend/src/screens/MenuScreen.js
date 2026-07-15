@@ -277,7 +277,31 @@ const getAvailabilityDisplayText = (item) => {
 };
 
 const getMenuCardStockText = (item) => {
-  return getAvailabilityDisplayText(item);
+  if (isCustomItem(item)) {
+    return '';
+  }
+
+  const remaining =
+    Math.max(
+      getMaxOrderQuantity(item),
+      getRemainingQuantity(item)
+    );
+
+  const available =
+    isMenuItemAvailableByBackend(item);
+
+  if (!available) {
+    return 'Unavailable';
+  }
+
+  if (
+    remaining >= 1 &&
+    remaining <= 3
+  ) {
+    return `Only ${remaining} order${remaining === 1 ? '' : 's'} left`;
+  }
+
+  return '';
 };
 
 const isIngredientCustomItem = (item) => {
@@ -1379,33 +1403,36 @@ export default function MenuScreen({
           );
         })
         .sort((a, b) => {
+          const aAvailable =
+            isMenuItemAvailableByBackend(a);
+
+          const bAvailable =
+            isMenuItemAvailableByBackend(b);
+
           const aPopular =
             isBestSeller(a);
 
           const bPopular =
             isBestSeller(b);
 
-          const aDisabled =
-            isMenuItemDisabledByStock(a);
+          // Available dishes always appear first.
+          if (
+            aAvailable !== bAvailable
+          ) {
+            return (
+              Number(bAvailable) -
+              Number(aAvailable)
+            );
+          }
 
-          const bDisabled =
-            isMenuItemDisabledByStock(b);
-
+          // Within the same availability group,
+          // popular dishes appear first.
           if (
             aPopular !== bPopular
           ) {
             return (
               Number(bPopular) -
               Number(aPopular)
-            );
-          }
-
-          if (
-            aDisabled !== bDisabled
-          ) {
-            return (
-              Number(aDisabled) -
-              Number(bDisabled)
             );
           }
 
@@ -1455,6 +1482,9 @@ export default function MenuScreen({
     const bestSeller =
       isBestSeller(item);
 
+    const unlimited =
+      item?.is_unlimited === true;
+
     const disabled =
       disabledByStock ||
       !strictCanOrder;
@@ -1501,6 +1531,24 @@ export default function MenuScreen({
               ]}
             >
               🔥 Popular
+            </Text>
+          </View>
+        ) : null}
+
+        {unlimited ? (
+          <View
+            style={styles.unlimitedBadge}
+          >
+            <Text
+              style={[
+                styles.unlimitedBadgeText,
+                {
+                  fontSize:
+                    responsive.badgeText,
+                },
+              ]}
+            >
+              Unlimited
             </Text>
           </View>
         ) : null}
@@ -1596,39 +1644,61 @@ export default function MenuScreen({
                 )}`}
           </Text>
 
-          <Text
-            style={[
-              !strictCanOrder ||
-              !isAvailable
-                ? styles.notAvailableText
-                : styles.availableText,
-              {
-                fontSize:
-                  responsive.stockText,
-              },
-            ]}
-            numberOfLines={2}
-          >
-            {!strictCanOrder
-              ? 'Table not assigned'
-              : availabilityText}
-          </Text>
+          {!strictCanOrder ? (
+            <Text
+              style={[
+                styles.notAvailableText,
+                {
+                  fontSize:
+                    responsive.stockText,
+                },
+              ]}
+              numberOfLines={2}
+            >
+              Table not assigned
+            </Text>
+          ) : availabilityText ? (
+            <Text
+              style={[
+                !isAvailable
+                  ? styles.notAvailableText
+                  : styles.lowStockText,
+                {
+                  fontSize:
+                    responsive.stockText,
+                },
+              ]}
+              numberOfLines={2}
+            >
+              {availabilityText}
+            </Text>
+          ) : null}
 
-          <Text
-            style={[
-              styles.tapText,
-              {
-                fontSize:
-                  responsive.tapText,
-              },
-            ]}
-          >
-            {strictCanOrder
-              ? disabledByStock
-                ? 'Unavailable'
-                : 'Tap to view'
-              : 'Waiting for staff'}
-          </Text>
+          {strictCanOrder && !disabledByStock ? (
+            <Text
+              style={[
+                styles.tapText,
+                {
+                  fontSize:
+                    responsive.tapText,
+                },
+              ]}
+            >
+              Tap to view
+            </Text>
+          ) : !strictCanOrder ? (
+            <Text
+              style={[
+                styles.tapText,
+                {
+                  fontSize:
+                    responsive.tapText,
+                },
+              ]}
+            >
+              Waiting for staff
+            </Text>
+          ) : null}
         </View>
       </TouchableOpacity>
     );
@@ -1700,7 +1770,10 @@ export default function MenuScreen({
                   )}`}
             </Text>
 
-            {!customCartItem ? (
+            {!customCartItem &&
+            getMenuCardStockText(
+              enrichedItem
+            ) ? (
               <Text
                 style={
                   styles.cartStockText
@@ -3031,6 +3104,22 @@ const styles =
       fontWeight: '900',
     },
 
+    unlimitedBadge: {
+      position: 'absolute',
+      top: 38,
+      right: 6,
+      backgroundColor: '#2E7D32',
+      borderRadius: 999,
+      paddingVertical: 3,
+      paddingHorizontal: 8,
+      zIndex: 10,
+    },
+
+    unlimitedBadgeText: {
+      color: '#fff',
+      fontWeight: '900',
+    },
+
     itemImageCircle: {
       backgroundColor: '#ececec',
       justifyContent: 'center',
@@ -3079,6 +3168,13 @@ const styles =
     availableText: {
       color: '#4CAF50',
       fontWeight: '700',
+      marginTop: 6,
+      textAlign: 'center',
+    },
+
+    lowStockText: {
+      color: '#e67e22',
+      fontWeight: '800',
       marginTop: 6,
       textAlign: 'center',
     },

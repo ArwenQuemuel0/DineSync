@@ -33,6 +33,7 @@ import {
 import {
   getMenu,
   getDishRecommendations,
+  getNutritionEstimate,
 } from "../api/dinesync";
 
 import { useCart } from "../context/CartContext";
@@ -341,22 +342,22 @@ export default function ItemDetailScreen({
                 ? scale(20, 16, 24)
                 : scale(12, 9, 14);
 
-      const imageSize =
-        useSideCart && isPhoneLandscape
-          ? scale(60, 48, 66)
-          : isTabletLandscape
-            ? scale(76, 62, 90)
-            : isPhoneLandscape
-              ? scale(52, 42, 58)
-              : isLandscape
-                ? isPhone
-                  ? scale(50, 42, 56)
-                  : scale(86, 72, 100)
-                : isPhone
-                  ? scale(92, 78, 106)
-                  : isTablet && !isLandscape
-                    ? scale(132, 112, 150)
-                    : scale(82, 66, 92);
+                const imageSize =
+                useSideCart && isPhoneLandscape
+                  ? scale(90, 72, 100)
+                  : isTabletLandscape
+                    ? scale(140, 120, 170)
+                    : isPhoneLandscape
+                      ? scale(82, 68, 92)
+                      : isLandscape
+                        ? isPhone
+                          ? scale(78, 66, 88)
+                          : scale(145, 125, 170)
+                        : isPhone
+                          ? scale(168, 145, 195)
+                          : isTablet && !isLandscape
+                            ? scale(212, 185, 245)
+                            : scale(162, 140, 188);
 
       const recommendationWidth =
         useSideCart
@@ -399,10 +400,10 @@ export default function ItemDetailScreen({
               ? scale(32, 28, 36)
               : scale(56, 48, 64)
             : isPhone
-              ? scale(54, 46, 62)
+              ? scale(60, 52, 68)
               : isTablet && !isLandscape
-                ? scale(70, 58, 80)
-                : scale(48, 40, 54);
+                ? scale(76, 64, 86)
+                : scale(54, 46, 60);
 
       const cartItemName =
         !useSideCart
@@ -587,29 +588,29 @@ export default function ItemDetailScreen({
 
         description:
           isPhoneLandscape
-            ? scale(11, 9, 12)
+            ? scale(12, 10, 13)
             : isLandscape
               ? isPhone
-                ? scale(10, 9, 11)
-                : scale(14, 11, 16)
+                ? scale(11, 10, 12)
+                : scale(15, 12, 17)
               : isPhone
-                ? scale(14, 12, 15)
+                ? scale(15, 13, 16)
                 : isTablet && !isLandscape
-                  ? scale(17, 14, 18)
-                  : scale(13, 11, 14),
+                  ? scale(18, 15, 19)
+                  : scale(14, 12, 15),
 
         descriptionLine:
           isPhoneLandscape
-            ? scale(15, 13, 16)
+            ? scale(17, 14, 18)
             : isLandscape
               ? isPhone
-                ? scale(13, 11, 14)
-                : scale(19, 15, 21)
+                ? scale(15, 13, 16)
+                : scale(21, 17, 23)
               : isPhone
-                ? scale(19, 16, 20)
+                ? scale(21, 18, 22)
                 : isTablet && !isLandscape
-                  ? scale(23, 19, 25)
-                  : scale(17, 14, 18),
+                  ? scale(25, 21, 27)
+                  : scale(19, 16, 20),
 
         label:
           scale(17, 13, 18),
@@ -712,12 +713,12 @@ export default function ItemDetailScreen({
 
         imageMarginBottom:
           useSideCart
-            ? 5
+            ? 4
             : isLandscape
               ? 3
               : isPhone
-                ? 8
-                : 10,
+                ? 5
+                : 7,
 
         priceMarginTop:
           isLandscape
@@ -956,6 +957,21 @@ export default function ItemDetailScreen({
     setLoadingRecommendations,
   ] = useState(false);
 
+  const [
+    nutritionEstimate,
+    setNutritionEstimate,
+  ] = useState(null);
+
+  const [
+    loadingNutrition,
+    setLoadingNutrition,
+  ] = useState(false);
+
+  const [
+    nutritionError,
+    setNutritionError,
+  ] = useState("");
+
   const {
     addToCart,
     cartItems,
@@ -1065,6 +1081,75 @@ export default function ItemDetailScreen({
     item?.id,
     item?.name,
   ]);
+
+  useEffect(() => {
+    if (
+      item?.name &&
+      !isCustomItem(item)
+    ) {
+      fetchNutritionEstimate();
+    } else {
+      setNutritionEstimate(null);
+      setNutritionError("");
+      setLoadingNutrition(false);
+    }
+  }, [
+    item?.id,
+    item?.name,
+    item?.description,
+  ]);
+
+  const fetchNutritionEstimate =
+    async () => {
+      if (
+        !item ||
+        isCustomItem(item)
+      ) {
+        setNutritionEstimate(null);
+        setNutritionError("");
+        return;
+      }
+
+      try {
+        setLoadingNutrition(true);
+        setNutritionError("");
+
+        const response =
+          await getNutritionEstimate(
+            item
+          );
+
+        if (
+          response?.success &&
+          response?.data
+        ) {
+          setNutritionEstimate(
+            response.data
+          );
+        } else {
+          setNutritionEstimate(null);
+          setNutritionError(
+            response?.message ||
+            "Nutrition estimate is unavailable."
+          );
+        }
+      } catch (error) {
+        console.log(
+          "AI NUTRITION ERROR:",
+          error?.response?.data ||
+          error?.message ||
+          error
+        );
+
+        setNutritionEstimate(null);
+        setNutritionError(
+          error?.response?.data?.message ||
+          "Nutrition estimate is unavailable right now."
+        );
+      } finally {
+        setLoadingNutrition(false);
+      }
+    };
 
      const fetchRecommendations =
   async () => {
@@ -1210,10 +1295,21 @@ export default function ItemDetailScreen({
   const isLowStock =
     shouldShowLowStockWarning(item);
 
- const availabilityText =
-  customItem
-    ? "Custom request available"
-    : getAvailabilityDisplayText(item);
+ const availabilityText = (() => {
+  if (customItem) {
+    return "Custom request available";
+  }
+
+  if (!isAvailable) {
+    return "Unavailable";
+  }
+
+  if (allowedQuantity >= 1 && allowedQuantity <= 3) {
+    return `Only ${allowedQuantity} order${allowedQuantity === 1 ? "" : "s"} left`;
+  }
+
+  return "";
+})();
 
   const itemDescription =
     getItemDescription(item);
@@ -1223,6 +1319,9 @@ export default function ItemDetailScreen({
 
   const mealType =
     getMealType(item);
+
+  const unlimited =
+    item?.is_unlimited === true;
 
   const handleAddToCart = async () => {
   if (!item) {
@@ -2359,7 +2458,7 @@ export default function ItemDetailScreen({
                       : availabilityText}
                   </Text>
 
-                  {!customItem &&
+                  {false && !customItem &&
                     allowedQuantity > 0 ? (
                     <Text
                       style={[
@@ -2394,6 +2493,63 @@ export default function ItemDetailScreen({
                       : itemDescription ||
                       "No description available for this item."}
                   </Text>
+
+                  {!customItem ? (
+                    <View style={styles.nutritionTagRow}>
+                      {loadingNutrition ? (
+                        <View style={styles.nutritionLoadingTag}>
+                          <ActivityIndicator
+                            size="small"
+                            color="#3E6EA8"
+                          />
+                          <Text style={styles.nutritionLoadingTagText}>
+                            Estimating...
+                          </Text>
+                        </View>
+                      ) : nutritionEstimate ? (
+                        <>
+                          <View style={styles.calorieTag}>
+                            <Text style={styles.calorieTagText}>
+                              {Number(
+                                nutritionEstimate.calories || 0
+                              ).toFixed(0)} kcal
+                            </Text>
+                          </View>
+
+                          <View
+                            style={
+                              nutritionEstimate.is_gluten_free
+                                ? styles.glutenFreeTag
+                                : styles.containsGlutenTag
+                            }
+                          >
+                            <Text
+                              style={
+                                nutritionEstimate.is_gluten_free
+                                  ? styles.glutenFreeTagText
+                                  : styles.containsGlutenTagText
+                              }
+                            >
+                              {nutritionEstimate.is_gluten_free
+                                ? "Gluten Free"
+                                : "Contains Gluten"}
+                            </Text>
+                          </View>
+                        </>
+                      ) : null}
+                    </View>
+                  ) : null}
+
+                  {unlimited ? (
+                    <View style={styles.unlimitedNotice}>
+                      <Text style={styles.unlimitedNoticeTitle}>
+                        Unlimited
+                      </Text>
+                      <Text style={styles.unlimitedNoticeText}>
+                        Unlimited refills are available. Please ask the service staff for assistance.
+                      </Text>
+                    </View>
+                  ) : null}
 
                   {customItem ? (
                     <View style={styles.specialRequestBox}>
@@ -2500,7 +2656,7 @@ export default function ItemDetailScreen({
                         },
                       ]}
                     >
-                      Must try pairings!
+                      Recommended Pairings
                     </Text>
 
                     {loadingRecommendations ? (
@@ -2602,17 +2758,23 @@ export default function ItemDetailScreen({
               </View>
 
               {cartItems.length === 0 ? (
-                <Text
-                  style={[
-                    styles.emptyCartText,
-                    {
-                      fontSize:
-                        responsive.cartItemName,
-                    },
-                  ]}
-                >
-                  No items added yet.
-                </Text>
+                <View style={styles.emptyCartState}>
+                  <Text
+                    style={[
+                      styles.emptyCartTitle,
+                      {
+                        fontSize:
+                          responsive.cartItemName,
+                      },
+                    ]}
+                  >
+                    Your cart is empty
+                  </Text>
+
+                  <Text style={styles.emptyCartSubtitle}>
+                    Add a dish to begin your order.
+                  </Text>
+                </View>
               ) : (
                 <FlatList
                   data={cartItems}
@@ -2950,6 +3112,105 @@ const styles =
       width: "100%",
     },
 
+    nutritionTagRow: {
+      width: "100%",
+      flexDirection: "row",
+      flexWrap: "wrap",
+      justifyContent: "center",
+      alignItems: "center",
+      gap: 8,
+      marginTop: 10,
+      marginBottom: 10,
+    },
+
+    calorieTag: {
+      backgroundColor: "#EEF4FF",
+      borderWidth: 1,
+      borderColor: "#4F8EF7",
+      borderRadius: 999,
+      paddingVertical: 5,
+      paddingHorizontal: 12,
+    },
+
+    calorieTagText: {
+      color: "#2D5DA8",
+      fontSize: 11,
+      fontWeight: "900",
+    },
+
+    glutenFreeTag: {
+      backgroundColor: "#EDF8F1",
+      borderWidth: 1,
+      borderColor: "#52B788",
+      borderRadius: 999,
+      paddingVertical: 5,
+      paddingHorizontal: 12,
+    },
+
+    glutenFreeTagText: {
+      color: "#2D6A4F",
+      fontSize: 11,
+      fontWeight: "900",
+    },
+
+    containsGlutenTag: {
+      backgroundColor: "#FFF6E8",
+      borderWidth: 1,
+      borderColor: "#E7A53A",
+      borderRadius: 999,
+      paddingVertical: 5,
+      paddingHorizontal: 12,
+    },
+
+    containsGlutenTagText: {
+      color: "#946200",
+      fontSize: 11,
+      fontWeight: "900",
+    },
+
+    nutritionLoadingTag: {
+      flexDirection: "row",
+      alignItems: "center",
+      backgroundColor: "#F4F7FB",
+      borderWidth: 1,
+      borderColor: "#AFC2D9",
+      borderRadius: 999,
+      paddingVertical: 5,
+      paddingHorizontal: 12,
+      gap: 6,
+    },
+
+    nutritionLoadingTagText: {
+      color: "#49647F",
+      fontSize: 11,
+      fontWeight: "800",
+    },
+
+    unlimitedNotice: {
+      width: "100%",
+      marginTop: 16,
+      backgroundColor: "#E8F5E9",
+      borderWidth: 1,
+      borderColor: "#2E7D32",
+      borderRadius: 12,
+      padding: 12,
+    },
+
+    unlimitedNoticeTitle: {
+      color: "#2E7D32",
+      fontWeight: "900",
+      fontSize: 16,
+      marginBottom: 4,
+      textAlign: "center",
+    },
+
+    unlimitedNoticeText: {
+      color: "#1B5E20",
+      textAlign: "center",
+      fontWeight: "700",
+      lineHeight: 20,
+    },
+
     specialRequestBox: {
       width: "100%",
       marginTop: 18,
@@ -2977,10 +3238,11 @@ const styles =
 
     addToOrderButton: {
       marginTop: 20,
+      marginBottom: 8,
       backgroundColor: "#f68c45",
       borderRadius: 999,
-      minWidth: 150,
-      minHeight: 44,
+      minWidth: 210,
+      minHeight: 46,
       paddingHorizontal: 24,
       paddingVertical: 12,
       alignItems: "center",
@@ -3150,12 +3412,27 @@ const styles =
       color: "#222",
     },
 
-    emptyCartText: {
-      color: "#777",
-      marginTop: 2,
+    emptyCartState: {
+      alignItems: "center",
+      justifyContent: "center",
+      paddingVertical: 26,
+      paddingHorizontal: 10,
       borderBottomWidth: 1,
-      borderBottomColor: "#dddddd",
-      paddingBottom: 6,
+      borderBottomColor: "#eeeeee",
+    },
+
+    emptyCartTitle: {
+      color: "#444",
+      fontWeight: "900",
+      textAlign: "center",
+    },
+
+    emptyCartSubtitle: {
+      color: "#999",
+      fontSize: 11,
+      fontWeight: "700",
+      textAlign: "center",
+      marginTop: 4,
     },
 
     cartItem: {

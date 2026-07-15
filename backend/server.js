@@ -135,7 +135,7 @@ app.get('/payment-failed', (req, res) => {
 app.get('/api/version', (req, res) => {
   return res.json({
     success: true,
-    version: 'with-ai-route-2026-06-28',
+    version: 'with-ai-nutrition-route-2026-07-12',
     api: 'DineSync+ Node API',
     time: new Date().toISOString(),
   });
