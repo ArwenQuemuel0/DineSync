@@ -6,7 +6,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 // =========================
 
 const BASE_URL =
-  'http://192.168.100.5:3000/api';
+  'https://api.dinesync.shop/api';
 
 console.log(
   '=============================='
