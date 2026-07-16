@@ -1503,18 +1503,22 @@ if (isPaidStatus && orderStatus === "pending") {
               </View>
 
               <TouchableOpacity
-                activeOpacity={0.85}
-                style={[
-                  styles.refreshBtn,
-                  responsive.bottomBarNeedsWrap && styles.refreshBtnFull,
-                  {
-                    paddingVertical: responsive.buttonPaddingV,
-                    paddingHorizontal: responsive.buttonPaddingH,
-                    borderRadius: responsive.buttonRadius,
-                  },
-                ]}
-                onPress={() => fetchOrders(true)}
-              >
+  activeOpacity={0.85}
+  style={[
+    styles.refreshBtn,
+    responsive.bottomBarNeedsWrap &&
+      styles.refreshBtnFull,
+    {
+      paddingVertical:
+        responsive.buttonPaddingV,
+      paddingHorizontal:
+        responsive.buttonPaddingH,
+      borderRadius:
+        responsive.buttonRadius,
+    },
+  ]}
+  onPress={() => fetchOrders(true)}
+>
                 <Text
                   style={[
                     styles.refreshIcon,
@@ -2075,6 +2079,7 @@ const styles = StyleSheet.create({
   refreshBtnFull: {
     width: "100%",
     maxWidth: "100%",
+    minWidth: 0,
     alignSelf: "stretch",
     marginTop: 10,
   },
