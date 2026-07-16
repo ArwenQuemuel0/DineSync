@@ -77,7 +77,7 @@ export default function OrderStatusScreen({ route, navigation }) {
       return Math.round(clamp(size * base, min, max));
     };
 
-    const bottomBarNeedsWrap = usableWidth < 560;
+    const bottomBarNeedsWrap = usableWidth < 430;
 
     const useCompactHeader =
       isVeryNarrow || isShortLandscape || usableWidth < 420;
@@ -1482,7 +1482,13 @@ if (isPaidStatus && orderStatus === "pending") {
                 },
               ]}
             >
-              <View style={styles.autoInfo}>
+              <View
+                style={[
+                  styles.autoInfo,
+                  responsive.bottomBarNeedsWrap &&
+                    styles.autoInfoFull,
+                ]}
+              >
                 <View style={styles.liveDot} />
 
                 <Text
@@ -2038,9 +2044,21 @@ const styles = StyleSheet.create({
   autoInfo: {
     flex: 1,
     minWidth: 0,
+    minHeight: 44,
     flexDirection: "row",
     alignItems: "center",
+    justifyContent: "flex-start",
     marginRight: 12,
+  },
+
+  autoInfoFull: {
+    flex: 0,
+    width: "100%",
+    minHeight: 28,
+    marginRight: 0,
+    marginBottom: 10,
+    justifyContent: "center",
+    alignSelf: "stretch",
   },
 
   liveDot: {
@@ -2049,6 +2067,7 @@ const styles = StyleSheet.create({
     borderRadius: 99,
     backgroundColor: "#22c55e",
     marginRight: 8,
+    flexShrink: 0,
   },
 
   autoText: {
@@ -2059,6 +2078,7 @@ const styles = StyleSheet.create({
 
   refreshBtn: {
     flex: 1.15,
+    minHeight: 44,
     backgroundColor: "#f68c45",
     alignItems: "center",
     justifyContent: "center",
@@ -2077,11 +2097,13 @@ const styles = StyleSheet.create({
   },
 
   refreshBtnFull: {
+    flex: 0,
     width: "100%",
-    maxWidth: "100%",
     minWidth: 0,
+    maxWidth: "100%",
+    minHeight: 46,
     alignSelf: "stretch",
-    marginTop: 10,
+    marginTop: 0,
   },
 
   refreshIcon: {
@@ -2089,11 +2111,13 @@ const styles = StyleSheet.create({
     fontWeight: "900",
     textAlign: "center",
     marginRight: 7,
+    includeFontPadding: false,
   },
 
   refreshText: {
     color: "#fff",
     fontWeight: "900",
     textAlign: "center",
+    includeFontPadding: false,
   },
 });
