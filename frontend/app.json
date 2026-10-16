@@ -6,11 +6,6 @@
     "orientation": "default",
     "icon": "./assets/dinesync-icon.png",
     "userInterfaceStyle": "automatic",
-    "splash": {
-      "image": "./assets/dinesync-icon.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
-    },
     "assetBundlePatterns": [
       "*/"
     ],
@@ -33,7 +28,17 @@
       }
     },
     "plugins": [
-      "expo-font"
+      "expo-font",
+      "expo-status-bar",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#ffffff",
+          "image": "./assets/dinesync-icon.png",
+          "imageWidth": 200,
+          "resizeMode": "contain"
+        }
+      ]
     ]
   }
 }
