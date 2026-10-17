@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   View,
@@ -211,6 +211,8 @@ export default function OrderStatusScreen({ route, navigation }) {
   const finalTableNumber = tableNumber || user?.table_number;
 
   const [orders, setOrders] = useState([]);
+  const servedTimersRef = useRef({});
+  const servedDetectedAtRef = useRef({});
 
   const [loading, setLoading] = useState(true);
 
@@ -283,20 +285,28 @@ export default function OrderStatusScreen({ route, navigation }) {
   }, [navigation]);
 
   useEffect(() => {
-  fetchOrders();
+    fetchOrders();
 
-  const interval = setInterval(() => {
-    fetchOrders(false);
-  }, 5000);
+    const interval = setInterval(() => {
+      fetchOrders(false);
+    }, 5000);
 
-  return () => clearInterval(interval);
-}, [finalTableNumber, orderId]);
+    return () => clearInterval(interval);
+  }, [finalTableNumber, orderId]);
 
-useFocusEffect(
-  useCallback(() => {
-    fetchOrders(true);
-  }, [finalTableNumber, orderId])
-);
+  useFocusEffect(
+    useCallback(() => {
+      fetchOrders(true);
+    }, [finalTableNumber, orderId])
+  );
+
+  useEffect(() => {
+    return () => {
+      Object.values(servedTimersRef.current).forEach(clearTimeout);
+      servedTimersRef.current = {};
+    };
+  }, []);
+
   const fetchSpecificOrder = async () => {
     if (!orderId) {
       return null;
@@ -311,24 +321,48 @@ useFocusEffect(
     return null;
   };
 
-const isVisibleOrderStatus = (order) => {
-  const normalized = normalizeOrderStatus(order?.status);
+  const isVisibleOrderStatus = (order) => {
+    const normalized = normalizeOrderStatus(order?.status);
+    const id = String(order?.id);
 
-  if (normalized === "served" || normalized === "completed") {
-    const updatedAt = order?.updated_at || order?.served_at;
+    if (normalized === "served" || normalized === "completed") {
+      if (!servedDetectedAtRef.current[id]) {
+        servedDetectedAtRef.current[id] = Date.now();
+      }
 
-    if (!updatedAt) {
-      return false;
+      const elapsed = Date.now() - servedDetectedAtRef.current[id];
+
+      if (elapsed >= 5000) {
+        return false;
+      }
+
+      if (!servedTimersRef.current[id]) {
+        servedTimersRef.current[id] = setTimeout(() => {
+          setOrders((previousOrders) =>
+            previousOrders.filter(
+              (item) => String(item.id) !== id
+            )
+          );
+
+          delete servedTimersRef.current[id];
+        }, Math.max(0, 5000 - elapsed));
+      }
+
+      return true;
     }
 
-    const servedTime = new Date(updatedAt).getTime();
-    const now = Date.now();
+    if (servedTimersRef.current[id]) {
+      clearTimeout(servedTimersRef.current[id]);
+      delete servedTimersRef.current[id];
+    }
 
-    return now - servedTime <= 5000;
-  }
+    delete servedDetectedAtRef.current[id];
 
-  return isActiveOrderStatus(normalized) || normalized === "awaiting_payment";
-};
+    return (
+      isActiveOrderStatus(normalized) ||
+      normalized === "awaiting_payment"
+    );
+  };
 
   const fetchOrders = async (showLoading = true) => {
     try {
@@ -345,27 +379,27 @@ const isVisibleOrderStatus = (order) => {
       if (orderId) {
         const specificOrder = await fetchSpecificOrder();
 
-      if (specificOrder) {
-  console.log("ORDER STATUS FROM BACKEND:", specificOrder.status);
-  console.log("PAYMENT STATUS FROM BACKEND:", specificOrder.payment_status);
+        if (specificOrder) {
+          console.log("ORDER STATUS FROM BACKEND:", specificOrder.status);
+          console.log("PAYMENT STATUS FROM BACKEND:", specificOrder.payment_status);
 
-  if (isVisibleOrderStatus(specificOrder)) {
-    setOrders([specificOrder]);
-  } else {
-    setOrders([]);
-  }
+          if (isVisibleOrderStatus(specificOrder)) {
+            setOrders([specificOrder]);
+          } else {
+            setOrders([]);
+          }
 
-  setError("");
-  return;
-}
+          setError("");
+          return;
+        }
       }
 
       const response = await getActiveTableOrders(finalTableNumber);
 
       if (response.success) {
         const activeOrders = (response.data || []).filter((order) =>
-  isVisibleOrderStatus(order),
-);
+          isVisibleOrderStatus(order),
+        );
 
         setOrders(activeOrders);
         setError("");
@@ -500,7 +534,7 @@ const isVisibleOrderStatus = (order) => {
 
   const canContinueQrPayment = (order) => {
     const paymentMethod = normalizePaymentMethod(order.payment_method);
-    
+
     const paymentStatus = normalizePaymentStatus(order.payment_status);
 
     const orderStatus = normalizeOrderStatus(order.status);
@@ -556,9 +590,9 @@ const isVisibleOrderStatus = (order) => {
 
     const name = String(
       orderItem?.name ||
-        orderItem?.menu_name ||
-        orderItem?.menu_item?.name ||
-        "",
+      orderItem?.menu_name ||
+      orderItem?.menu_item?.name ||
+      "",
     )
       .trim()
       .toLowerCase();
@@ -612,52 +646,52 @@ const isVisibleOrderStatus = (order) => {
     return getOrderStatusLabel(normalized);
   };
   const getPaymentStatusStyle = (paymentStatus) => {
-  const normalized = normalizePaymentStatus(paymentStatus);
+    const normalized = normalizePaymentStatus(paymentStatus);
 
-  if (
-    normalized === "paid" ||
-    normalized === "verified" ||
-    normalized === "completed" ||
-    normalized === "successful" ||
-    normalized === "settled"
-  ) {
-    return styles.paymentPaid;
-  }
+    if (
+      normalized === "paid" ||
+      normalized === "verified" ||
+      normalized === "completed" ||
+      normalized === "successful" ||
+      normalized === "settled"
+    ) {
+      return styles.paymentPaid;
+    }
 
-  if (normalized === "expired") {
-    return styles.paymentExpired;
-  }
+    if (normalized === "expired") {
+      return styles.paymentExpired;
+    }
 
-  if (normalized === "failed") {
-    return styles.paymentFailed;
-  }
+    if (normalized === "failed") {
+      return styles.paymentFailed;
+    }
 
-  return styles.paymentPending;
-};
-  
-const getPaymentLabel = (order) => {
-  const paymentStatus = normalizePaymentStatus(order.payment_status);
+    return styles.paymentPending;
+  };
 
-  if (
-    paymentStatus === "paid" ||
-    paymentStatus === "verified" ||
-    paymentStatus === "completed" ||
-    paymentStatus === "successful" ||
-    paymentStatus === "settled"
-  ) {
-    return "Paid";
-  }
+  const getPaymentLabel = (order) => {
+    const paymentStatus = normalizePaymentStatus(order.payment_status);
 
-  if (paymentStatus === "expired") {
-    return "Expired";
-  }
+    if (
+      paymentStatus === "paid" ||
+      paymentStatus === "verified" ||
+      paymentStatus === "completed" ||
+      paymentStatus === "successful" ||
+      paymentStatus === "settled"
+    ) {
+      return "Paid";
+    }
 
-  if (paymentStatus === "failed") {
-    return "Failed";
-  }
+    if (paymentStatus === "expired") {
+      return "Expired";
+    }
 
-  return "Pending";
-};
+    if (paymentStatus === "failed") {
+      return "Failed";
+    }
+
+    return "Pending";
+  };
   const getPaymentMessage = (order) => {
     const paymentStatus = normalizePaymentStatus(order.payment_status);
 
@@ -665,12 +699,12 @@ const getPaymentLabel = (order) => {
 
     const paymentMethod = normalizePaymentMethod(order.payment_method);
     const isPaidStatus = [
-  "paid",
-  "verified",
-  "completed",
-  "successful",
-  "settled",
-].includes(paymentStatus);
+      "paid",
+      "verified",
+      "completed",
+      "successful",
+      "settled",
+    ].includes(paymentStatus);
 
     if (
       paymentMethod === "QR PH" &&
@@ -692,16 +726,16 @@ const getPaymentLabel = (order) => {
       return "Order sent to kitchen. Please settle payment later with staff.";
     }
 
-   if (isPaidStatus && paymentMethod === "Cash") {
-  return "Cash payment received. Your order has been sent to the kitchen.";
-}
+    if (isPaidStatus && paymentMethod === "Cash") {
+      return "Cash payment received. Your order has been sent to the kitchen.";
+    }
 
-if (isPaidStatus && paymentMethod === "QR PH") {
-  return "QR PH payment confirmed. Your order has been sent to the kitchen.";
-}
+    if (isPaidStatus && paymentMethod === "QR PH") {
+      return "QR PH payment confirmed. Your order has been sent to the kitchen.";
+    }
 
-if (isPaidStatus && orderStatus === "pending") {
-  return "Payment confirmed. Your order has been sent to the kitchen.";
+    if (isPaidStatus && orderStatus === "pending") {
+      return "Payment confirmed. Your order has been sent to the kitchen.";
     }
 
     if (paymentStatus === "expired") {
@@ -745,12 +779,12 @@ if (isPaidStatus && orderStatus === "pending") {
 
     return Array.isArray(ingredients)
       ? ingredients.filter(
-          (ingredient) =>
-            ingredient?.is_refillable === true &&
-            Number(
-              ingredient?.refill_quantity || 0
-            ) > 0
-        )
+        (ingredient) =>
+          ingredient?.is_refillable === true &&
+          Number(
+            ingredient?.refill_quantity || 0
+          ) > 0
+      )
       : [];
   };
 
@@ -1107,9 +1141,9 @@ if (isPaidStatus && orderStatus === "pending") {
                       </Text>
 
                       {isRefillEligibleOrder(item) &&
-                      getRefillableIngredients(
-                        orderItem
-                      ).length > 0 ? (
+                        getRefillableIngredients(
+                          orderItem
+                        ).length > 0 ? (
                         <TouchableOpacity
                           activeOpacity={0.85}
                           style={styles.requestRefillButton}
@@ -1486,7 +1520,7 @@ if (isPaidStatus && orderStatus === "pending") {
                 style={[
                   styles.autoInfo,
                   responsive.bottomBarNeedsWrap &&
-                    styles.autoInfoFull,
+                  styles.autoInfoFull,
                 ]}
               >
                 <View style={styles.liveDot} />
@@ -1509,22 +1543,22 @@ if (isPaidStatus && orderStatus === "pending") {
               </View>
 
               <TouchableOpacity
-  activeOpacity={0.85}
-  style={[
-    styles.refreshBtn,
-    responsive.bottomBarNeedsWrap &&
-      styles.refreshBtnFull,
-    {
-      paddingVertical:
-        responsive.buttonPaddingV,
-      paddingHorizontal:
-        responsive.buttonPaddingH,
-      borderRadius:
-        responsive.buttonRadius,
-    },
-  ]}
-  onPress={() => fetchOrders(true)}
->
+                activeOpacity={0.85}
+                style={[
+                  styles.refreshBtn,
+                  responsive.bottomBarNeedsWrap &&
+                  styles.refreshBtnFull,
+                  {
+                    paddingVertical:
+                      responsive.buttonPaddingV,
+                    paddingHorizontal:
+                      responsive.buttonPaddingH,
+                    borderRadius:
+                      responsive.buttonRadius,
+                  },
+                ]}
+                onPress={() => fetchOrders(true)}
+              >
                 <Text
                   style={[
                     styles.refreshIcon,
