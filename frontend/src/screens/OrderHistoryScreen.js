@@ -389,14 +389,14 @@ export default function OrderHistoryScreen({
         Alert.alert(
           'Error',
           response.message ||
-            'Failed to load order history.'
+          'Failed to load order history.'
         );
       }
     } catch (error) {
       console.log(
         'ORDER HISTORY ERROR:',
         error?.response?.data ||
-          error.message
+        error.message
       );
 
       Alert.alert(
@@ -422,7 +422,7 @@ export default function OrderHistoryScreen({
       console.log(
         'REFRESH ORDER HISTORY ERROR:',
         error?.response?.data ||
-          error.message
+        error.message
       );
     } finally {
       setRefreshing(false);
@@ -497,9 +497,9 @@ export default function OrderHistoryScreen({
   const getItemPrice = (item) => {
     return Number(
       item.price ||
-        item.menu_item?.price ||
-        item.menu_items?.price ||
-        0
+      item.menu_item?.price ||
+      item.menu_items?.price ||
+      0
     );
   };
 
@@ -544,8 +544,8 @@ export default function OrderHistoryScreen({
     const itemKey =
       String(
         item.id ||
-          item.menu_item_id ||
-          itemIndex
+        item.menu_item_id ||
+        itemIndex
       );
 
     return (
@@ -642,7 +642,7 @@ export default function OrderHistoryScreen({
               ]}
               numberOfLines={1}
             >
-              Batch {index + 1}
+              Batch {order.batch_number ?? index + 1}
             </Text>
 
             <Text

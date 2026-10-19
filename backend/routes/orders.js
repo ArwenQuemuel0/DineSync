@@ -195,7 +195,7 @@ const normalizeMenuAvailabilityItem = (item) => {
     isChefOppaSpecialItem(item)
       ? !isAvailableFalse(item?.is_available)
       : isAvailableTrue(item?.is_available) &&
-        maxQty > 0;
+      maxQty > 0;
 
   return {
     ...item,
@@ -243,11 +243,11 @@ const normalizeMenuAvailabilityItem = (item) => {
       isAvailable
         ? null
         : (
-            item?.unavailable_reason ||
-            item?.stock_label ||
-            item?.daily_inventory_label ||
-            'Unavailable based on ingredient stock.'
-          ),
+          item?.unavailable_reason ||
+          item?.stock_label ||
+          item?.daily_inventory_label ||
+          'Unavailable based on ingredient stock.'
+        ),
 
     inventory_type:
       normalizeInventoryType(
@@ -572,8 +572,6 @@ const getTableNumberFromToken = (req) => {
 
   return null;
 };
-
-
 // =========================
 // CUSTOMER REFILL HELPERS
 // =========================
@@ -776,8 +774,8 @@ const enrichMenuItemsForRefills =
         ingredients:
           menuItem?.is_unlimited === true
             ? await getRefillableIngredientsForMenuItem(
-                menuItem.id
-              )
+              menuItem.id
+            )
             : [],
       }))
     );
@@ -815,7 +813,7 @@ const validateMenuAvailabilityItems = async (
   if (
     menuResult.debugSource &&
     menuResult.debugSource !==
-      EXPECTED_MENU_DEBUG_SOURCE
+    EXPECTED_MENU_DEBUG_SOURCE
   ) {
     console.log(
       'WARNING: MENU DEBUG SOURCE IS NOT EXPECTED:',
@@ -937,6 +935,40 @@ const validateMenuAvailabilityItems = async (
 };
 
 // =========================
+// SESSION-BASED ORDER NUMBERING
+// Resets numbering for every new table session
+// Does not change permanent database IDs
+// =========================
+
+const getSessionOrderNumbers = async (sessionId) => {
+  const numbers = new Map();
+
+  if (!sessionId || !isConfigured) {
+    return numbers;
+  }
+
+  const {
+    data: sessionOrders,
+    error,
+  } = await supabase
+    .from('orders')
+    .select('id, created_at')
+    .eq('table_session_id', sessionId)
+    .order('created_at', { ascending: true })
+    .order('id', { ascending: true });
+
+  if (error) {
+    throw error;
+  }
+
+  (sessionOrders || []).forEach((order, index) => {
+    numbers.set(String(order.id), index + 1);
+  });
+
+  return numbers;
+};
+
+// =========================
 // GET BEST SELLER IDS
 // =========================
 
@@ -1031,7 +1063,6 @@ router.get(
     }
   }
 );
-
 // =========================
 // GET ACTIVE ORDERS BY TABLE
 // GET /api/orders/table/:tableNumber/active
@@ -1067,8 +1098,8 @@ router.get(
                   'pending',
                   'preparing',
                   'ready',
-                    'served',
-  'completed',
+                  'served',
+                  'completed',
                 ].includes(status)
               );
             })
@@ -1145,17 +1176,17 @@ router.get(
           activeSessionId
         )
         .in('status', [
-  'pending',
-  'preparing',
-  'ready',
-  'served',
-  'completed',
-  'Pending',
-  'Preparing',
-  'Ready',
-  'Served',
-  'Completed',
-])
+          'pending',
+          'preparing',
+          'ready',
+          'served',
+          'completed',
+          'Pending',
+          'Preparing',
+          'Ready',
+          'Served',
+          'Completed',
+        ])
         .order('created_at', {
           ascending: false,
         });
@@ -1164,10 +1195,20 @@ router.get(
         throw ordersError;
       }
 
-      const normalizedOrders =
-        (orders || []).map(
-          forceDigitalPaymentIfXendit
+      // Session-based order numbering
+      const sessionOrderNumbers =
+        await getSessionOrderNumbers(
+          activeSessionId
         );
+
+      const normalizedOrders =
+        (orders || []).map((order) => ({
+          ...forceDigitalPaymentIfXendit(order),
+          batch_number:
+            sessionOrderNumbers.get(
+              String(order.id)
+            ) ?? null,
+        }));
 
       const orderIds =
         normalizedOrders.map(
@@ -1236,65 +1277,65 @@ router.get(
       const enrichedOrders =
         await Promise.all(
           normalizedOrders.map(async (order) => {
-          const items =
-            (orderItems || [])
-              .filter(
-                (item) =>
-                  Number(item.order_id) ===
-                  Number(order.id)
-              )
-              .map((item) => {
-                const menuItem =
-                  menuItems.find(
-                    (menu) =>
-                      Number(menu.id) ===
-                      Number(
-                        item.menu_item_id
-                      )
-                  );
+            const items =
+              (orderItems || [])
+                .filter(
+                  (item) =>
+                    Number(item.order_id) ===
+                    Number(order.id)
+                )
+                .map((item) => {
+                  const menuItem =
+                    menuItems.find(
+                      (menu) =>
+                        Number(menu.id) ===
+                        Number(
+                          item.menu_item_id
+                        )
+                    );
 
-                const price =
-                  Number(
-                    item.price ||
-                    menuItem?.price ||
-                    0
-                  );
+                  const price =
+                    Number(
+                      item.price ||
+                      menuItem?.price ||
+                      0
+                    );
 
-                const quantity =
-                  Number(
-                    item.quantity || 0
-                  );
+                  const quantity =
+                    Number(
+                      item.quantity || 0
+                    );
 
-                return {
-                  ...item,
-                  name:
-                    item.name ||
-                    menuItem?.name ||
-                    'Menu Item',
-                  price,
-                  quantity,
-                  subtotal:
-                    price * quantity,
-                  is_unlimited:
-                    menuItem?.is_unlimited === true,
-                  ingredients:
-                    menuItem?.ingredients || [],
-                  menu_item:
-                    menuItem || null,
-                };
-              });
+                  return {
+                    ...item,
+                    name:
+                      item.name ||
+                      menuItem?.name ||
+                      'Menu Item',
+                    price,
+                    quantity,
+                    subtotal:
+                      price * quantity,
+                    is_unlimited:
+                      menuItem?.is_unlimited === true,
+                    ingredients:
+                      menuItem?.ingredients || [],
+                    menu_item:
+                      menuItem || null,
+                  };
+                });
 
-          const refills =
-            await getOrderRefills(
-              order.id
-            );
+            const refills =
+              await getOrderRefills(
+                order.id
+              );
 
-          return {
-            ...order,
-            items,
-            refills,
-          };
-        })
+            return {
+              ...order,
+              items,
+              refills,
+            };
+          })
         );
 
       return res.json({
@@ -1921,8 +1962,6 @@ router.post('/', async (req, res) => {
     });
   }
 });
-
-
 // =========================
 // GET ORDER REFILLS
 // =========================
@@ -1960,6 +1999,10 @@ router.get(
     }
   }
 );
+
+// =========================
+// REQUEST CUSTOMER REFILL
+// =========================
 
 router.post(
   '/:orderId/items/:orderItemId/refills',
@@ -2308,7 +2351,7 @@ router.post(
 router.get('/:id', async (req, res) => {
   try {
     const orderId =
-      parseInt(req.params.id);
+      parseInt(req.params.id, 10);
 
     if (!orderId) {
       return res.status(400).json({
@@ -2351,10 +2394,7 @@ router.get('/:id', async (req, res) => {
       .select(
         'id, order_number, table_number, table_session_id, status, payment_status, payment_method, total_amount, created_at, updated_at, paid_at, xendit_invoice_id, xendit_external_id, xendit_invoice_url, xendit_expiry_date'
       )
-      .eq(
-        'id',
-        orderId
-      )
+      .eq('id', orderId)
       .single();
 
     if (
@@ -2372,62 +2412,71 @@ router.get('/:id', async (req, res) => {
       forceDigitalPaymentIfXendit(
         orderRow
       );
-      if (
-  fixedOrderRow?.xendit_invoice_id &&
-  fixedOrderRow?.payment_status === 'pending'
-) {
-  try {
-    const xenditResponse = await axios.get(
-      `https://api.xendit.co/v2/invoices/${fixedOrderRow.xendit_invoice_id}`,
-      {
-        auth: {
-          username: process.env.XENDIT_SECRET_KEY,
-          password: '',
-        },
-      }
-    );
 
-    const xenditStatus = String(
-      xenditResponse.data?.status || ''
-    ).toUpperCase();
+    // =========================
+    // CHECK XENDIT PAYMENT STATUS
+    // =========================
 
     if (
-      xenditStatus === 'PAID' ||
-      xenditStatus === 'SETTLED'
+      fixedOrderRow?.xendit_invoice_id &&
+      fixedOrderRow?.payment_status === 'pending'
     ) {
-      const {
-        data: paidOrder,
-        error: paidUpdateError,
-      } = await supabase
-        .from('orders')
-        .update({
-          payment_status: 'paid',
-          status: 'pending',
-          paid_at: getUtcNowIso(),
-          updated_at: getUtcNowIso(),
-        })
-        .eq('id', orderId)
-        .select(
-          'id, order_number, table_number, table_session_id, status, payment_status, payment_method, total_amount, created_at, updated_at, paid_at, xendit_invoice_id, xendit_external_id, xendit_invoice_url, xendit_expiry_date'
-        )
-        .single();
+      try {
+        const xenditResponse = await axios.get(
+          `https://api.xendit.co/v2/invoices/${fixedOrderRow.xendit_invoice_id}`,
+          {
+            auth: {
+              username: process.env.XENDIT_SECRET_KEY,
+              password: '',
+            },
+          }
+        );
 
-      if (!paidUpdateError && paidOrder) {
-        fixedOrderRow =
-          forceDigitalPaymentIfXendit(
-            paidOrder
-          );
+        const xenditStatus = String(
+          xenditResponse.data?.status || ''
+        ).toUpperCase();
+
+        if (
+          xenditStatus === 'PAID' ||
+          xenditStatus === 'SETTLED'
+        ) {
+          const {
+            data: paidOrder,
+            error: paidUpdateError,
+          } = await supabase
+            .from('orders')
+            .update({
+              payment_status: 'paid',
+              status: 'pending',
+              paid_at: getUtcNowIso(),
+              updated_at: getUtcNowIso(),
+            })
+            .eq('id', orderId)
+            .select(
+              'id, order_number, table_number, table_session_id, status, payment_status, payment_method, total_amount, created_at, updated_at, paid_at, xendit_invoice_id, xendit_external_id, xendit_invoice_url, xendit_expiry_date'
+            )
+            .single();
+
+          if (!paidUpdateError && paidOrder) {
+            fixedOrderRow =
+              forceDigitalPaymentIfXendit(
+                paidOrder
+              );
+          }
+        }
+      } catch (xenditCheckError) {
+        console.log(
+          'XENDIT STATUS CHECK WARNING:',
+          xenditCheckError?.response?.data ||
+          xenditCheckError?.message ||
+          xenditCheckError
+        );
       }
     }
-  } catch (xenditCheckError) {
-    console.log(
-      'XENDIT STATUS CHECK WARNING:',
-      xenditCheckError?.response?.data ||
-        xenditCheckError?.message ||
-        xenditCheckError
-    );
-  }
-}
+
+    // =========================
+    // CORRECT DIGITAL PAYMENT METHOD
+    // =========================
 
     if (
       hasXenditInvoice(orderRow) &&
@@ -2445,10 +2494,7 @@ router.get('/:id', async (req, res) => {
           updated_at:
             getUtcNowIso(),
         })
-        .eq(
-          'id',
-          orderId
-        )
+        .eq('id', orderId)
         .select(
           'id, order_number, table_number, table_session_id, status, payment_status, payment_method, total_amount, created_at, updated_at, paid_at, xendit_invoice_id, xendit_external_id, xendit_invoice_url, xendit_expiry_date'
         )
@@ -2465,16 +2511,17 @@ router.get('/:id', async (req, res) => {
       }
     }
 
+    // =========================
+    // GET ORDER ITEMS
+    // =========================
+
     const {
       data: orderItems,
       error: itemsError,
     } = await supabase
       .from('order_items')
       .select('*')
-      .eq(
-        'order_id',
-        orderId
-      );
+      .eq('order_id', orderId);
 
     if (itemsError) {
       throw itemsError;
@@ -2502,10 +2549,7 @@ router.get('/:id', async (req, res) => {
         .select(
           'id, name, price, category, image, is_unlimited'
         )
-        .in(
-          'id',
-          menuItemIds
-        );
+        .in('id', menuItemIds);
 
       if (menuError) {
         throw menuError;
@@ -2524,9 +2568,7 @@ router.get('/:id', async (req, res) => {
             menuItems.find(
               (menu) =>
                 Number(menu.id) ===
-                Number(
-                  item.menu_item_id
-                )
+                Number(item.menu_item_id)
             );
 
           const price =
@@ -2561,21 +2603,45 @@ router.get('/:id', async (req, res) => {
         }
       );
 
+    // =========================
+    // GET REFILLS
+    // =========================
+
     const refills =
       await getOrderRefills(
         orderId
       );
 
+    // =========================
+    // SESSION-BASED ORDER NUMBER
+    // =========================
+
+    const sessionOrderNumbers =
+      await getSessionOrderNumbers(
+        fixedOrderRow.table_session_id
+      );
+
+    const batchNumber =
+      sessionOrderNumbers.get(
+        String(fixedOrderRow.id)
+      ) ?? null;
+
+    // =========================
+    // RESPONSE
+    // =========================
+
     return res.json({
       success: true,
       data: {
         ...fixedOrderRow,
-        items:
-          enrichedItems,
+        batch_number: batchNumber,
+        items: enrichedItems,
         refills,
       },
       order_id:
         fixedOrderRow.id,
+      batch_number:
+        batchNumber,
       payment_status:
         fixedOrderRow.payment_status,
       payment_method:

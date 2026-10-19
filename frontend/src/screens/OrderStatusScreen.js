@@ -323,6 +323,8 @@ export default function OrderStatusScreen({ route, navigation }) {
 
   const isVisibleOrderStatus = (order) => {
     const normalized = normalizeOrderStatus(order?.status);
+    const paymentMethod = normalizePaymentMethod(order?.payment_method);
+    const paymentStatus = normalizePaymentStatus(order?.payment_status);
     const id = String(order?.id);
 
     if (normalized === "served" || normalized === "completed") {
@@ -332,18 +334,13 @@ export default function OrderStatusScreen({ route, navigation }) {
 
       const elapsed = Date.now() - servedDetectedAtRef.current[id];
 
-      if (elapsed >= 5000) {
-        return false;
-      }
+      if (elapsed >= 5000) return false;
 
       if (!servedTimersRef.current[id]) {
         servedTimersRef.current[id] = setTimeout(() => {
           setOrders((previousOrders) =>
-            previousOrders.filter(
-              (item) => String(item.id) !== id
-            )
+            previousOrders.filter((item) => String(item.id) !== id)
           );
-
           delete servedTimersRef.current[id];
         }, Math.max(0, 5000 - elapsed));
       }
@@ -357,6 +354,14 @@ export default function OrderStatusScreen({ route, navigation }) {
     }
 
     delete servedDetectedAtRef.current[id];
+
+    if (
+      paymentMethod === "Pay at Counter" &&
+      paymentStatus === "pending" &&
+      normalized !== "cancelled"
+    ) {
+      return true;
+    }
 
     return (
       isActiveOrderStatus(normalized) ||
@@ -378,6 +383,12 @@ export default function OrderStatusScreen({ route, navigation }) {
 
       if (orderId) {
         const specificOrder = await fetchSpecificOrder();
+
+        console.log("ORDER BATCH DEBUG:", {
+          id: specificOrder?.id,
+          table_session_id: specificOrder?.table_session_id,
+          batch_number: specificOrder?.batch_number,
+        });
 
         if (specificOrder) {
           console.log("ORDER STATUS FROM BACKEND:", specificOrder.status);
@@ -926,7 +937,9 @@ export default function OrderStatusScreen({ route, navigation }) {
               ]}
               numberOfLines={2}
             >
-              {item.order_number ? item.order_number : `Order #${item.id}`}
+              {item.batch_number != null
+                ? `Order #${item.batch_number}`
+                : item.order_number || "Order Number Unavailable"}
             </Text>
 
             <Text
@@ -1408,7 +1421,9 @@ export default function OrderStatusScreen({ route, navigation }) {
             adjustsFontSizeToFit
             minimumFontScale={0.75}
           >
-            Order Status
+            {orders.length > 0 && orders[0]?.batch_number != null
+              ? `Order #${orders[0].batch_number}`
+              : "Order Number Unavailable"}
           </Text>
 
           <Text
@@ -1423,7 +1438,7 @@ export default function OrderStatusScreen({ route, navigation }) {
             adjustsFontSizeToFit
             minimumFontScale={0.75}
           >
-            {orderId ? `Order #${orderId}` : "Active Orders"}
+            {orderId ? "Live Order Tracking" : "Active Orders"}
           </Text>
 
           {error ? (

@@ -226,9 +226,9 @@ const getMobileMaxQuantity = (item) => {
   const maxQuantity =
     Number(
       item?.max_order_quantity ??
-        item?.remaining_today ??
-        item?.available_quantity ??
-        0
+      item?.remaining_today ??
+      item?.available_quantity ??
+      0
     );
 
   return Number.isFinite(maxQuantity)
@@ -248,9 +248,9 @@ const getMobileRemainingQuantity = (item) => {
   const remainingQuantity =
     Number(
       item?.remaining_today ??
-        item?.available_quantity ??
-        item?.max_order_quantity ??
-        0
+      item?.available_quantity ??
+      item?.max_order_quantity ??
+      0
     );
 
   return Number.isFinite(remainingQuantity)
@@ -369,8 +369,8 @@ const normalizeMenuItem = (item) => {
         ? 'custom'
         : item?.inventory_type
           ? normalizeInventoryType(
-              item.inventory_type
-            )
+            item.inventory_type
+          )
           : 'ingredient',
 
     price:
@@ -396,8 +396,8 @@ const normalizeMenuItem = (item) => {
     stock_label:
       item?.stock_label
         ? String(
-            item.stock_label
-          ).trim()
+          item.stock_label
+        ).trim()
         : available
           ? custom
             ? 'Staff confirms'
@@ -407,16 +407,16 @@ const normalizeMenuItem = (item) => {
     daily_inventory_label:
       item?.daily_inventory_label
         ? String(
-            item.daily_inventory_label
-          ).trim()
+          item.daily_inventory_label
+        ).trim()
         : null,
 
     unavailable_reason:
       available
         ? null
         : item?.unavailable_reason ||
-          item?.stock_label ||
-          'Unavailable based on ingredient stock.',
+        item?.stock_label ||
+        'Unavailable based on ingredient stock.',
 
     is_available:
       available,
@@ -429,8 +429,8 @@ const normalizeMenuItem = (item) => {
     meal_type:
       item?.meal_type
         ? String(
-            item.meal_type
-          ).trim()
+          item.meal_type
+        ).trim()
         : null,
 
     is_unlimited:
@@ -537,8 +537,8 @@ const validateCartBeforeOrder = (
       custom
         ? 1
         : toNumberOrZero(
-            normalizedItem.quantity
-          );
+          normalizedItem.quantity
+        );
 
     if (
       !isValidIngredientInventoryMenuItem(
@@ -661,24 +661,48 @@ export const loginUser = async (
 // =========================
 // TABLE ONLINE / HEARTBEAT / OFFLINE
 // =========================
-
 export const tableOnline = async () => {
-  const response =
-    await api.post('/table/online');
+  try {
+    const response = await api.post("/table/online");
 
-  return response.data;
+    console.log("TABLE ONLINE HTTP STATUS:", response.status);
+    console.log("TABLE ONLINE JSON:", response.data);
+
+    return response.data;
+  } catch (error) {
+    console.log("TABLE ONLINE HTTP STATUS:", error.response?.status ?? "NO RESPONSE");
+    console.log("TABLE ONLINE JSON:", error.response?.data ?? error.message);
+    throw error;
+  }
 };
 
 export const tableHeartbeat = async () => {
-  const response =
-    await api.post('/table/heartbeat');
+  try {
+    const response = await api.post("/table/heartbeat");
 
-  return response.data;
+    console.log("TABLE HEARTBEAT HTTP STATUS:", response.status);
+    console.log("TABLE HEARTBEAT JSON:", response.data);
+
+    return response.data;
+  } catch (error) {
+    console.log("TABLE HEARTBEAT HTTP STATUS:", error.response?.status ?? "NO RESPONSE");
+    console.log("TABLE HEARTBEAT JSON:", error.response?.data ?? error.message);
+    throw error;
+  }
 };
 
 export const tableOffline = async () => {
   const response =
     await api.post('/table/offline');
+
+  return response.data;
+};
+
+// End table session when staff logs out
+export const endTableSession = async (staffPassword) => {
+  const response = await api.post('/table/end-session', {
+    staff_password: staffPassword,
+  });
 
   return response.data;
 };
@@ -1039,7 +1063,7 @@ export const placeOrder = async (
     console.log(
       'MENU REFRESH AFTER ORDER WARNING:',
       menuRefreshError?.message ||
-        menuRefreshError
+      menuRefreshError
     );
   }
 
