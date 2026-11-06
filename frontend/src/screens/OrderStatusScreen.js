@@ -1421,9 +1421,13 @@ export default function OrderStatusScreen({ route, navigation }) {
             adjustsFontSizeToFit
             minimumFontScale={0.75}
           >
-            {orders.length > 0 && orders[0]?.batch_number != null
-              ? `Order #${orders[0].batch_number}`
-              : "Order Number Unavailable"}
+            {orders.length === 0
+  ? "Active Orders"
+  : orders.length > 1
+    ? "Active Orders"
+    : orders[0]?.batch_number != null
+      ? `Order #${orders[0].batch_number}`
+      : orders[0]?.order_number || "Order Number Unavailable"}
           </Text>
 
           <Text
